@@ -1,4 +1,5 @@
 name: PR Base
+description: "Reusable composite action for PR and deploy builds (Windows)"
 inputs:
   DESCRIPTION:
     description: "Will be used for artifact names"
@@ -42,6 +43,13 @@ inputs:
 runs:
   using: composite
   steps:  
+    - name: Get Git SHA Before Gather
+      id: repo_sha
+      shell: powershell
+      run: |
+        $sha = git rev-parse HEAD
+        echo "sha=$sha" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Gather PRs
       if: ${{ inputs.DEPLOY_BRANCH != '' }}
       uses: Pospelove/auto-merge-action@main
@@ -62,13 +70,6 @@ runs:
               "token": "${{inputs.SKYMP5_PATCHES_PAT}}"
             }
           ]
-    
-    - name: Get Git SHA Before Gather
-      id: repo_sha
-      shell: powershell
-      run: |
-        $sha = git rev-parse HEAD
-        echo "sha=$sha" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Commit gathered PRs
       if: ${{ inputs.DEPLOY_BRANCH != '' }}
@@ -77,7 +78,11 @@ runs:
         git config --global user.email "skyrim_multiplayer_bot@users.noreply.github.com"
         git config --global user.name "Skyrim Multiplayer Bot"
         git add .
-        git commit -m "Merge PRs ${{inputs.DEPLOY_BRANCH}}"
+        if (git diff --staged --quiet) {
+          Write-Host "No changes to commit after gathering PRs."
+        } else {
+          git commit -m "Merge PRs ${{inputs.DEPLOY_BRANCH}}"
+        }
       shell: powershell
 
     - name: Early build skymp5-client
@@ -89,7 +94,7 @@ runs:
 
     - name: Check and install OpenCppCoverage using github-script
       if: runner.os == 'Windows'
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           const { execSync } = require('child_process');
@@ -117,7 +122,7 @@ runs:
 
     - name: Move vcpkg submodule to a larger drive using github-script
       if: runner.os == 'Windows'
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           const fs = require('fs');
@@ -191,7 +196,7 @@ runs:
       run: Get-PSDrive
       shell: powershell
 
-    - uses: actions/github-script@v6
+    - uses: actions/github-script@v9
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -312,7 +317,7 @@ runs:
         path: cmake-profiling-output
 
     - name: BEFORE BUILD
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           console.log("!!! BEFORE BUILD !!!")
@@ -321,7 +326,7 @@ runs:
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
       shell: powershell
     - name: AFTER BUILD
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           console.log("!!! AFTER BUILD !!!")
@@ -329,7 +334,7 @@ runs:
     # before running tests, because of dist check test
     - name: Compile metadata into public format
       if: ${{ runner.os == 'Windows' }}
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           const deployBranch = "${{ inputs.DEPLOY_BRANCH }}";

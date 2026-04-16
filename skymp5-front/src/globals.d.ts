@@ -12,3 +12,8 @@ declare module '*.wav' {
     const src: string;
     export default src;
 }
+
+declare module '*.scss' {
+    const value: Record<string, string>;
+    export default value;
+}

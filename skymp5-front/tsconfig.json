@@ -1,14 +1,17 @@
 {
     "compilerOptions": {
         "outDir": "./dist",
+        "rootDir": "./src",
         "allowJs": true,
         "allowSyntheticDefaultImports": true,
+        "ignoreDeprecations": "6.0",
         "target": "ES6",
         "jsx": "react",
         "sourceMap": true,
         "experimentalDecorators": true,
         "module": "esnext",
         "moduleResolution": "node",
+                "resolveJsonModule": true,
         "importHelpers": true,
         "lib": [
           "es2018",

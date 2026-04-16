@@ -28,8 +28,16 @@ const events = {
   clearAuthData: 'clearAuthData',
   updateRequired: 'updateRequired',
   backToLogin: 'backToLogin',
-  joinDiscord: 'joinDiscord'
+  joinDiscord: 'joinDiscord',
+  selectServer: 'selectServer'
 };
+
+interface AvailableServer {
+  key: string;
+  name: string;
+  online: number;
+  maxPlayers: number;
+}
 
 // Vaiables used on both client and browser side (see browsersideWidgetSetter)
 let browserState = {
@@ -38,6 +46,7 @@ let browserState = {
   loginFailedReason: '',
 };
 let authData: RemoteAuthGameData | null = null;
+let availableServers: AvailableServer[] = [];
 
 export class AuthService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -170,6 +179,7 @@ export class AuthService extends ClientListener {
     logTrace(this, `Showing widgets and starting loop`);
 
     authData = this.readAuthDataFromDisk();
+    this.loadAvailableServers();
     this.refreshWidgets();
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
@@ -197,9 +207,10 @@ export class AuthService extends ClientListener {
     logTrace(this, `onBrowserMessage:`, JSON.stringify(e.arguments));
 
     const eventKey = e.arguments[0];
+    const currentTexts = this.getCurrentTexts();
     switch (eventKey) {
       case events.openDiscordOauth:
-        browserState.comment = 'открываем браузер...';
+        browserState.comment = currentTexts.openingBrowser;
         this.refreshWidgets();
         this.sp.win32.loadUrl(`${settingsService.getMasterUrl()}/api/users/login-discord?state=${this.discordAuthState}`);
 
@@ -208,7 +219,7 @@ export class AuthService extends ClientListener {
         break;
       case events.authAttempt:
         if (authData === null) {
-          browserState.comment = 'сначала войдите';
+          browserState.comment = currentTexts.loginFirst;
           this.refreshWidgets();
           break;
         }
@@ -233,10 +244,20 @@ export class AuthService extends ClientListener {
         this.sp.win32.loadUrl("https://skymp.net/UpdInstall");
         break;
       case events.backToLogin:
-        this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData }));
+        this.refreshWidgets();
         break;
       case events.joinDiscord:
         this.sp.win32.loadUrl("https://discord.gg/9KhSZ6zjGT");
+        break;
+      case events.selectServer:
+        {
+          const requestedServerKey = e.arguments[1];
+          if (typeof requestedServerKey === "string" && requestedServerKey.length > 0) {
+            settingsService.setSelectedServerMasterKey(requestedServerKey);
+            browserState.comment = `${currentTexts.selectedServer}: ${requestedServerKey}`;
+            this.refreshWidgets();
+          }
+        }
         break;
       default:
         break;
@@ -310,7 +331,7 @@ export class AuthService extends ClientListener {
                   discordDiscriminator,
                   discordAvatar,
                 };
-                browserState.comment = 'привязан успешно';
+                browserState.comment = this.getCurrentTexts().linkedSuccessfully;
                 this.refreshWidgets();
               });
               break;
@@ -332,8 +353,66 @@ export class AuthService extends ClientListener {
         });
   };
 
+  private loadAvailableServers(): void {
+    const settingsService = this.controller.lookupListener(SettingsService);
+    const masterApiClient = settingsService.makeMasterApiClient();
+
+    masterApiClient.get('/api/servers', undefined,
+      // @ts-ignore
+      (res) => {
+        if (res.status !== 200) {
+          logTrace(this, `Failed to load server list, status ${res.status}`);
+          return;
+        }
+
+        try {
+          const data = JSON.parse(res.body);
+          if (!Array.isArray(data)) {
+            return;
+          }
+
+          const mapped = data
+            .map((item: Record<string, unknown>) => {
+              const key = item.masterKey || item.key || item.serverKey || item.id;
+              const keyStr = typeof key === 'string' ? key : '';
+              if (!keyStr) {
+                return null;
+              }
+
+              const name = item.name;
+              const online = item.online;
+              const maxPlayers = item.maxPlayers;
+
+              return {
+                key: keyStr,
+                name: typeof name === 'string' && name.length > 0 ? name : keyStr,
+                online: typeof online === 'number' ? online : 0,
+                maxPlayers: typeof maxPlayers === 'number' ? maxPlayers : 0,
+              } as AvailableServer;
+            })
+            .filter((server: AvailableServer | null): server is AvailableServer => !!server)
+            .sort((a, b) => b.online - a.online)
+            .slice(0, 8);
+
+          availableServers = mapped;
+          this.refreshWidgets();
+        } catch (e) {
+          logError(this, `Failed to parse server list`, e);
+        }
+      }
+    );
+  }
+
   private refreshWidgets() {
-    this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData }));
+    const currentTexts = this.getCurrentTexts();
+    this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({
+      events,
+      browserState,
+      authData: authData,
+      availableServers,
+      selectedServerMasterKey: this.controller.lookupListener(SettingsService).getServerMasterKey(),
+      uiText: currentTexts,
+    }));
     this.authDialogOpen = true;
   };
 
@@ -449,10 +528,18 @@ export class AuthService extends ClientListener {
   }
 
   private browsersideWidgetSetter = () => {
+    const serverButtons = (availableServers || []).map((server) => ({
+      type: "button",
+      text: `${selectedServerMasterKey === server.key ? "[x]" : "[ ]"} ${server.name} (${server.online}/${server.maxPlayers})`,
+      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
+      click: () => window.skyrimPlatform.sendMessage(events.selectServer, server.key),
+      hint: `${uiText.serverKey}: ${server.key}`,
+    }));
+
     const loginWidget = {
       type: "form",
       id: 1,
-      caption: "Авторизация",
+      caption: uiText.authorization,
       elements: [
         // {
         //   type: "button",
@@ -483,7 +570,7 @@ export class AuthService extends ClientListener {
               authData.discordUsername
                 ? `${authData.discordUsername}`
                 : `id: ${authData.masterApiId}`
-            ) : "не авторизирован"
+            ) : uiText.notAuthorized
           ),
           tags: [/*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/],
         },
@@ -494,17 +581,28 @@ export class AuthService extends ClientListener {
         // },
         {
           type: "button",
-          text: authData ? "сменить аккаунт" : "войти через skymp",
+          text: authData ? uiText.switchAccount : uiText.loginViaSkymp,
           tags: [/*"ELEMENT_SAME_LINE"*/],
           click: () => window.skyrimPlatform.sendMessage(events.openDiscordOauth),
-          hint: "Вы можете войти или поменять аккаунт",
+          hint: uiText.switchAccountHint,
         },
         {
+          type: "text",
+          text: `${uiText.currentServer}: ${selectedServerMasterKey}`,
+          tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
+        },
+        {
+          type: "text",
+          text: uiText.serverList,
+          tags: [],
+        },
+        ...serverButtons,
+        {
           type: "button",
-          text: "Играть",
+          text: uiText.play,
           tags: ["BUTTON_STYLE_FRAME", "ELEMENT_STYLE_MARGIN_EXTENDED"],
           click: () => window.skyrimPlatform.sendMessage(events.authAttempt),
-          hint: "Подключиться к игровому серверу",
+          hint: uiText.playHint,
         },
         {
           type: "text",
@@ -616,9 +714,24 @@ export class AuthService extends ClientListener {
 
       const dot = slowCounter % 3 === 0 ? '.' : slowCounter % 3 === 1 ? '..' : '...';
 
-      browserState.comment = "подключение" + dot;
+      browserState.comment = this.getCurrentTexts().connecting + dot;
       this.refreshWidgets();
     }
+  }
+
+  private getCurrentLanguage(): 'ru' | 'en' | 'de' {
+    const lang = `${this.sp.settings["skymp5-client"]["lang"] || this.sp.settings["skymp5-client"]["language"] || "ru"}`.toLowerCase();
+    if (lang.startsWith('de')) {
+      return 'de';
+    }
+    if (lang.startsWith('en')) {
+      return 'en';
+    }
+    return 'ru';
+  }
+
+  private getCurrentTexts() {
+    return this.uiText[this.getCurrentLanguage()];
   }
 
   private onceUpdate() {
@@ -657,4 +770,57 @@ export class AuthService extends ClientListener {
   private readonly githubUrl = "https://github.com/skyrim-multiplayer/skymp";
   private readonly patreonUrl = "https://www.patreon.com/skymp";
   private readonly pluginAuthDataName = `auth-data-no-load`;
+  private readonly uiText = {
+    ru: {
+      authorization: 'Авторизация',
+      notAuthorized: 'не авторизирован',
+      switchAccount: 'сменить аккаунт',
+      loginViaSkymp: 'войти через skymp',
+      switchAccountHint: 'Вы можете войти или поменять аккаунт',
+      currentServer: 'Текущий сервер',
+      serverList: 'Список серверов',
+      serverKey: 'Ключ сервера',
+      selectedServer: 'Выбран сервер',
+      play: 'Играть',
+      playHint: 'Подключиться к игровому серверу',
+      openingBrowser: 'открываем браузер...',
+      loginFirst: 'сначала войдите',
+      linkedSuccessfully: 'привязан успешно',
+      connecting: 'подключение',
+    },
+    en: {
+      authorization: 'Authorization',
+      notAuthorized: 'not authorized',
+      switchAccount: 'switch account',
+      loginViaSkymp: 'sign in with skymp',
+      switchAccountHint: 'You can sign in or switch account',
+      currentServer: 'Current server',
+      serverList: 'Server list',
+      serverKey: 'Server key',
+      selectedServer: 'Selected server',
+      play: 'Play',
+      playHint: 'Connect to the game server',
+      openingBrowser: 'opening browser...',
+      loginFirst: 'please log in first',
+      linkedSuccessfully: 'linked successfully',
+      connecting: 'connecting',
+    },
+    de: {
+      authorization: 'Anmeldung',
+      notAuthorized: 'nicht angemeldet',
+      switchAccount: 'Konto wechseln',
+      loginViaSkymp: 'mit skymp anmelden',
+      switchAccountHint: 'Du kannst dich anmelden oder das Konto wechseln',
+      currentServer: 'Aktueller Server',
+      serverList: 'Serverliste',
+      serverKey: 'Server-Schluessel',
+      selectedServer: 'Server ausgewaehlt',
+      play: 'Spielen',
+      playHint: 'Mit dem Spielserver verbinden',
+      openingBrowser: 'Browser wird geoeffnet...',
+      loginFirst: 'bitte zuerst anmelden',
+      linkedSuccessfully: 'erfolgreich verknuepft',
+      connecting: 'verbinde',
+    },
+  } as const;
 }

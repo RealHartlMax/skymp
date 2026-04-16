@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import ru from './locales/ru.json';
 import en from './locales/en.json';
 import de from './locales/de.json';
+import { detectRuntimeLanguage } from './utils/i18nLanguage';
 
 i18n
   .use(initReactI18next)
@@ -18,8 +19,10 @@ i18n
         translation: de
       }
     },
-    lng: 'de', // default language
+    lng: detectRuntimeLanguage(),
     fallbackLng: 'de',
+    supportedLngs: ['de', 'en', 'ru'],
+    load: 'languageOnly',
     interpolation: {
       escapeValue: false
     }

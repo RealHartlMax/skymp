@@ -7,6 +7,7 @@ import SkyrimButtonEndImage from './img/skyrim_button_end.svg';
 import SkyrimButtonEndDisabledImage from './img/skyrim_button_end_disabled.svg';
 import FrameButtonEndImage from './img/frame_button_end.svg';
 import FrameButtonStartImage from './img/frame_button_start.svg';
+import { getFrameButtonClassName, shouldHandleFrameButtonClick } from './utils';
 
 import { DefaultButtonComponentProps, FrameButtonProps } from '../../interfaces';
 import './FrameButton.scss';
@@ -106,9 +107,9 @@ export const FrameButton = ({
         <>
             {isDefault && <button
                 {...other}
-                className={`skymp-button ${disabled ? 'disabled' : 'active'}`}
+                                className={getFrameButtonClassName(disabled)}
                 onClick={(e) => {
-                  if (!disabled) { onClick ? onClick(e) : console.log(e); }
+                                    if (shouldHandleFrameButtonClick(disabled)) { onClick ? onClick(e) : console.log(e); }
                 }}
                 style={{ height: `${height}px`, width: `${width}px` }}>
                 <ButtonItem name={BackgroundImageNames.SKYRIM_BUTTON_START} height={height} disabled={disabled}/>
@@ -121,9 +122,9 @@ export const FrameButton = ({
                 <ButtonItem name={BackgroundImageNames.SKYRIM_BUTTON_END} height={height} disabled={disabled}/>
             </button>}
             {isFrameLeft && <button
-                className={`skymp-button ${disabled ? 'disabled' : 'active'}`}
+                                className={getFrameButtonClassName(disabled)}
                 onClick={(e) => {
-                  if (!disabled) { onClick ? onClick(e) : console.log(e); }
+                                    if (shouldHandleFrameButtonClick(disabled)) { onClick ? onClick(e) : console.log(e); }
                 }}
                 style={{ height: `${height}px`, width: `${width}px` }}>
                 <ButtonItem name={BackgroundImageNames.SKYRIM_BUTTON_START} height={height} disabled={disabled}/>
@@ -137,9 +138,9 @@ export const FrameButton = ({
                 <ButtonItem name={BackgroundImageNames.FRAME_BUTTON_END} height={height} disabled={disabled}/>
             </button>}
             {isFrameRight && <button
-                className={`skymp-button ${disabled ? 'disabled' : 'active'}`}
+                                className={getFrameButtonClassName(disabled)}
                 onClick={(e) => {
-                  if (!disabled) { onClick ? onClick(e) : console.log(e); }
+                                    if (shouldHandleFrameButtonClick(disabled)) { onClick ? onClick(e) : console.log(e); }
                 }}
                 style={{ height: `${height}px`, width: `${width}px` }}>
                 <ButtonItem name={BackgroundImageNames.FRAME_BUTTON_START} height={height} disabled={disabled}/>

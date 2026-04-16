@@ -20,12 +20,19 @@ export interface TargetPeer {
 
 export type TargetPeerCallback = (targetPeer: TargetPeer) => void;
 
+const selectedServerMasterKeyStorageKey = "selectedServerMasterKey";
+
 export class SettingsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
   }
 
   public getServerMasterKey() {
+    const selectedServerMasterKey = this.getSelectedServerMasterKey();
+    if (selectedServerMasterKey) {
+      return selectedServerMasterKey;
+    }
+
     let masterKey = this.sp.settings["skymp5-client"]["server-master-key"];
     if (!masterKey) {
       masterKey = this.sp.settings["skymp5-client"]["master-key"];
@@ -34,6 +41,19 @@ export class SettingsService extends ClientListener {
       masterKey = this.sp.settings["skymp5-client"]["server-ip"] + ":" + this.sp.settings["skymp5-client"]["server-port"];
     }
     return masterKey;
+  }
+
+  public getSelectedServerMasterKey(): string | null {
+    const selected = this.sp.storage[selectedServerMasterKeyStorageKey] as unknown;
+    if (typeof selected === "string" && selected.length > 0) {
+      return selected;
+    }
+    return null;
+  }
+
+  public setSelectedServerMasterKey(masterKey: string): void {
+    this.sp.storage[selectedServerMasterKeyStorageKey] = masterKey;
+    this.targetPeerCache = null;
   }
 
   public getMasterUrl() {

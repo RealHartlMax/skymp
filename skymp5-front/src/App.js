@@ -6,6 +6,8 @@ import AnimList from './features/animList';
 import Constructor from './constructor';
 import SkillsMenu from './features/skillsMenu';
 import TestMenu from './features/testMenu';
+import AdminDashboard from './features/adminDashboard';
+import ServerList from './features/serverList';
 
 class App extends React.Component {
   constructor(props) {
@@ -84,6 +86,8 @@ class App extends React.Component {
           <Chat />
           <SkillsMenu />
           <TestMenu />
+          <AdminDashboard />
+          <ServerList />
         </div>
       );
     } else if (this.state.widgets) {

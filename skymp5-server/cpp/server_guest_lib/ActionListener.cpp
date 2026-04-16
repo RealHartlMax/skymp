@@ -7,6 +7,7 @@
 #include "GetBaseActorValues.h"
 #include "HitData.h"
 #include "MathUtils.h"
+#include "AppearanceValidation.h"
 #include "MovementValidation.h"
 #include "MpObjectReference.h"
 #include "MsgType.h"
@@ -212,12 +213,22 @@ void ActionListener::OnUpdateAppearance(const RawMessageData& rawMsgData,
     return;
   }
 
-  const bool isAllowed = actor->IsRaceMenuOpen();
+  bool isAllowed = actor->IsRaceMenuOpen();
 
   if (isAllowed) {
     actor->SetRaceMenuOpen(false);
-    actor->SetAppearance(&msg.data.value());
-    SendToNeighbours(msg.idx, rawMsgData, true);
+
+    const auto validationError =
+      AppearanceValidation::Validate(*actor->GetParent(), msg.data.value());
+    if (!validationError.empty()) {
+      spdlog::warn(
+        "OnUpdateAppearance - rejected appearance for actor {:#x}: {}",
+        actor->GetFormId(), validationError);
+      isAllowed = false;
+    } else {
+      actor->SetAppearance(&msg.data.value());
+      SendToNeighbours(msg.idx, rawMsgData, true);
+    }
   }
 
   UpdateAppearanceAttemptEvent updateAppearanceAttemptEvent(

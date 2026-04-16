@@ -9,11 +9,18 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate installer repository variable
+        run: |
+          if [ -z "${{ vars.INSTALLER_REPOSITORY }}" ]; then
+            echo "::error::Repository variable INSTALLER_REPOSITORY is not set. Use format owner/repo.";
+            exit 1
+          fi
+
       - name: Repository dispatch
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.SKYMP5_INSTALLER_REPOSITORY_DISPATCH_PAT }}
-          repository: skyrim-multiplayer/skymp5-installer-v2
+          repository: ${{ vars.INSTALLER_REPOSITORY }}
           event-type: 'on-skymp-push'
           client-payload: |
             {

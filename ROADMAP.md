@@ -2,6 +2,16 @@
 
 Welcome to the roadmap of the project! You can see synchronizations here, but there probably would also be non-sync and even non-code parts in the future.
 
+# Build & Release Automation
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| PR builds (Windows/VR/Emscripten) | Active | Reusable action in .github/actions/pr_base/action.yml is used by PR workflows. |
+| Deploy notifications | Active | Deploy workflows post status to Discord using DEPLOY_STATUS_WEBHOOK secret. |
+| Installer trigger | Active | Pushes to main trigger a repository_dispatch to installer repo via .github/workflows/trigger-installer.yml. |
+| Installer repository target | Configurable | The target repository is read from repository variable INSTALLER_REPOSITORY (format owner/repo). |
+| Installer build artifact format | External | The installer itself is produced in the installer repository workflow, not in this repository. |
+
 # Synchronization
 
 | Feature | Status/TODO |

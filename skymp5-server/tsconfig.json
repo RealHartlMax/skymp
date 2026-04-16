@@ -2,12 +2,14 @@
   "compilerOptions": {
     "noImplicitAny": true,
     "allowJs": true,
+    "ignoreDeprecations": "6.0",
     "module": "commonjs",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2022",
     "moduleResolution": "node",
     "sourceMap": true,
+    "rootDir": "ts",
     "outDir": "../build/dist/server/dist_back",
     "baseUrl": ".",
     "paths": {

@@ -20,3 +20,11 @@ Third-party code licenses can be found in [THIRD_PARTY_LICENSES](THIRD_PARTY_LIC
 ### Development with GitHub Codespaces
 
 [![Create Codespace](https://img.shields.io/badge/Codespace-Launch-blue?logo=github)](https://github.com/codespaces/new?repo=skyrim-multiplayer/skymp&ref=main)
+
+### CI and Deployment Notes
+
+- PR builds for Windows, Skyrim VR, and Emscripten run via a shared action at `.github/actions/pr_base/action.yml`.
+- Deploy workflows post status updates to Discord using the `DEPLOY_STATUS_WEBHOOK` repository secret.
+- Installer binaries are not built in this repository.
+- Pushes to `main` trigger `.github/workflows/trigger-installer.yml`, which sends a `repository_dispatch` event to the installer repository.
+- Installer dispatch target is configured via repository variable `INSTALLER_REPOSITORY` (format: `owner/repo`).
