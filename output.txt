@@ -1,0 +1,1 @@
+Ich muss `i18n.ts` nicht anpassen. Die `index.tsx`-Komponente im selben Verzeichnis verwendet bereits `useTranslation`, um die Übersetzungen aus den JSON-Dateien zu laden. Die `content.ts`-Datei wird nur für die Struktur und die Symbole verwendet, nicht für den Text. Ich werde die veralteten Textfelder aus `content.ts` entfernen, um den Code zu bereinigen.
