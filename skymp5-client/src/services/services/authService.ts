@@ -48,6 +48,10 @@ let browserState = {
 let authData: RemoteAuthGameData | null = null;
 let availableServers: AvailableServer[] = [];
 
+// Variables injected at runtime via FunctionInfo.getText() into browsersideWidgetSetter
+declare const selectedServerMasterKey: string;
+declare const uiText: Record<string, string>;
+
 export class AuthService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
