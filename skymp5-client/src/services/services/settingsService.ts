@@ -56,6 +56,11 @@ export class SettingsService extends ClientListener {
     this.targetPeerCache = null;
   }
 
+  public clearSelectedServerMasterKey(): void {
+    this.sp.storage[selectedServerMasterKeyStorageKey] = null;
+    this.targetPeerCache = null;
+  }
+
   public getMasterUrl() {
     return this.normalizeUrl((this.sp.settings["skymp5-client"]["master"] as string) || "https://gateway.skymp.net");
   }

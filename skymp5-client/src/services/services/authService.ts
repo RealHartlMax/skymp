@@ -29,7 +29,8 @@ const events = {
   updateRequired: 'updateRequired',
   backToLogin: 'backToLogin',
   joinDiscord: 'joinDiscord',
-  selectServer: 'selectServer'
+  selectServer: 'selectServer',
+  useConfiguredServer: 'useConfiguredServer'
 };
 
 interface AvailableServer {
@@ -263,6 +264,11 @@ export class AuthService extends ClientListener {
           }
         }
         break;
+      case events.useConfiguredServer:
+        settingsService.clearSelectedServerMasterKey();
+        browserState.comment = currentTexts.usingConfiguredServer;
+        this.refreshWidgets();
+        break;
       default:
         break;
     }
@@ -396,7 +402,7 @@ export class AuthService extends ClientListener {
             })
             .filter((server: AvailableServer | null): server is AvailableServer => !!server)
             .sort((a, b) => b.online - a.online)
-            .slice(0, 8);
+            .slice(0, 50);
 
           availableServers = mapped;
           this.refreshWidgets();
@@ -596,6 +602,13 @@ export class AuthService extends ClientListener {
           tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
         },
         {
+          type: "button",
+          text: uiText.useConfiguredServer,
+          tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
+          click: () => window.skyrimPlatform.sendMessage(events.useConfiguredServer),
+          hint: uiText.useConfiguredServerHint,
+        },
+        {
           type: "text",
           text: uiText.serverList,
           tags: [],
@@ -785,12 +798,15 @@ export class AuthService extends ClientListener {
       serverList: 'Список серверов',
       serverKey: 'Ключ сервера',
       selectedServer: 'Выбран сервер',
+      useConfiguredServer: 'Использовать сервер из настроек',
+      useConfiguredServerHint: 'Сбросить выбранный сервер и взять server-master-key или server-ip:server-port',
       play: 'Играть',
       playHint: 'Подключиться к игровому серверу',
       openingBrowser: 'открываем браузер...',
       loginFirst: 'сначала войдите',
       linkedSuccessfully: 'привязан успешно',
       connecting: 'подключение',
+      usingConfiguredServer: 'Сервер из настроек включен',
     },
     en: {
       authorization: 'Authorization',
@@ -802,12 +818,15 @@ export class AuthService extends ClientListener {
       serverList: 'Server list',
       serverKey: 'Server key',
       selectedServer: 'Selected server',
+      useConfiguredServer: 'Use server from config',
+      useConfiguredServerHint: 'Reset selected server and use server-master-key or server-ip:server-port',
       play: 'Play',
       playHint: 'Connect to the game server',
       openingBrowser: 'opening browser...',
       loginFirst: 'please log in first',
       linkedSuccessfully: 'linked successfully',
       connecting: 'connecting',
+      usingConfiguredServer: 'Configured server is active',
     },
     de: {
       authorization: 'Anmeldung',
@@ -819,12 +838,15 @@ export class AuthService extends ClientListener {
       serverList: 'Serverliste',
       serverKey: 'Server-Schluessel',
       selectedServer: 'Server ausgewaehlt',
+      useConfiguredServer: 'Server aus Konfiguration nutzen',
+      useConfiguredServerHint: 'Ausgewaehlten Server zuruecksetzen und server-master-key oder server-ip:server-port nutzen',
       play: 'Spielen',
       playHint: 'Mit dem Spielserver verbinden',
       openingBrowser: 'Browser wird geoeffnet...',
       loginFirst: 'bitte zuerst anmelden',
       linkedSuccessfully: 'erfolgreich verknuepft',
       connecting: 'verbinde',
+      usingConfiguredServer: 'Konfigurierter Server ist aktiv',
     },
   } as const;
 }
