@@ -30,23 +30,16 @@ env:
 jobs:
     deploy:
         runs-on: ubuntu-latest
+        env:
+            DEPLOY_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.event.client_payload.inputs.branch }}
+            DEPLOY_ACTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action || github.event.client_payload.inputs.action }}
+            DEPLOY_CANARY_FILE: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.inputs.canaryFile || '' }}
         steps:
-          - name: Set up workflow_dispatch inputs
-            if: github.event_name == 'workflow_dispatch'
+          - name: Show resolved deploy inputs
             run: |
-              echo "DEPLOY_BRANCH=${{ github.event.inputs.branch }}" >> $GITHUB_ENV
-              echo "DEPLOY_ACTION=${{ github.event.inputs.action }}" >> $GITHUB_ENV
-
-          - name: Set up repository_dispatch inputs
-            if: github.event_name == 'repository_dispatch'
-            run: |
-              echo "Received Payload:"
-              echo "${{ github.event.client_payload.inputs.branch }}"
-              echo "${{ github.event.client_payload.inputs.action }}"
-
-              echo "DEPLOY_BRANCH=${{ github.event.client_payload.inputs.branch }}" >> $GITHUB_ENV
-              echo "DEPLOY_ACTION=${{ github.event.client_payload.inputs.action }}" >> $GITHUB_ENV
-              echo "DEPLOY_CANARY_FILE=${{ github.event.client_payload.inputs.canaryFile }}" >> $GITHUB_ENV
+                echo "DEPLOY_BRANCH=$DEPLOY_BRANCH"
+                echo "DEPLOY_ACTION=$DEPLOY_ACTION"
+                echo "DEPLOY_CANARY_FILE=$DEPLOY_CANARY_FILE"
 
           - name: Checkout
             uses: actions/checkout@v4
@@ -94,7 +87,7 @@ jobs:
             if: ${{env.DEPLOY_ACTION == 'deploy'}}
             run: |
                 docker run --rm -v "${{ github.workspace }}:/src" \
-                    ${{ env.SKYMP_VCPKG_DEPS_IMAGE }} \
+                    $SKYMP_VCPKG_DEPS_IMAGE \
                     chown -R skymp:skymp /src
 
           - name: CMake Configure
@@ -104,7 +97,7 @@ jobs:
                     -u skymp \
                     -e CI=true \
                     -e DEPLOY_BRANCH=${{ env.DEPLOY_BRANCH }} \
-                    ${{ env.SKYMP_VCPKG_DEPS_IMAGE }} \
+                    $SKYMP_VCPKG_DEPS_IMAGE \
                         ./build.sh --configure \
                             -DBUILD_UNIT_TESTS=OFF \
                             -DBUILD_GAMEMODE=ON \
@@ -126,7 +119,7 @@ jobs:
                     -u skymp \
                     -e CI=true \
                     -e DEPLOY_BRANCH=${{ env.DEPLOY_BRANCH }} \
-                    ${{ env.SKYMP_VCPKG_DEPS_IMAGE }} \
+                    $SKYMP_VCPKG_DEPS_IMAGE \
                         ./build.sh --build
 
           - name: Deploy

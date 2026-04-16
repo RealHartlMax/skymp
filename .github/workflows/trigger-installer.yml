@@ -8,10 +8,12 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      INSTALLER_REPOSITORY: ${{ vars.INSTALLER_REPOSITORY || '' }}
     steps:
       - name: Validate installer repository variable
         run: |
-          if [ -z "${{ vars.INSTALLER_REPOSITORY }}" ]; then
+          if [ -z "$INSTALLER_REPOSITORY" ]; then
             echo "::error::Repository variable INSTALLER_REPOSITORY is not set. Use format owner/repo.";
             exit 1
           fi
@@ -20,7 +22,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.SKYMP5_INSTALLER_REPOSITORY_DISPATCH_PAT }}
-          repository: ${{ vars.INSTALLER_REPOSITORY }}
+          repository: ${{ env.INSTALLER_REPOSITORY }}
           event-type: 'on-skymp-push'
           client-payload: |
             {
