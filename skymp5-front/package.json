@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build": "webpack --config webpack.config.ts",
-    "watch": "webpack serve",
+    "watch": "webpack serve --port auto",
+    "watch:fixed": "webpack serve --port 1234",
+    "dev:lan": "webpack serve --host 0.0.0.0 --port auto",
     "lint": "eslint src --ext .ts",
     "lint:fix": "yarn lint --fix",
     "test": "npm run test:i18n && npm run test:unit",

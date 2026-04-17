@@ -10,7 +10,7 @@ process.env.TS_NODE_COMPILER_OPTIONS = JSON.stringify({
 
 require('ts-node/register/transpile-only');
 
-const { fetchServerList } = require('../src/features/serverList/api.ts');
+const { fetchServerList, fetchLatestUpdate } = require('../src/features/serverList/api.ts');
 
 const run = async (name, fn) => {
   try {
@@ -92,6 +92,55 @@ const baseServer = {
       json: async () => ({ invalid: true })
     }), async () => {
       await assert.rejects(() => fetchServerList('http://localhost:7777'), /invalid-payload/);
+    });
+  });
+
+  await run('fetchLatestUpdate uses endpoint with release channel and current version', async () => {
+    let capturedUrl = '';
+    await withMockFetch(async (url) => {
+      capturedUrl = String(url);
+      return {
+        ok: true,
+        json: async () => ({ version: '1.1.0', downloadUrl: 'https://example.org/download' })
+      };
+    }, async () => {
+      const data = await fetchLatestUpdate('http://localhost:7777', 'beta', '1.0.0');
+      assert.equal(data.version, '1.1.0');
+      assert.equal(capturedUrl, 'http://localhost:7777/api/update/latest?channel=beta&currentVersion=1.0.0');
+    });
+  });
+
+  await run('fetchLatestUpdate supports host:port endpoints and query params', async () => {
+    let capturedUrl = '';
+    await withMockFetch(async (url) => {
+      capturedUrl = String(url);
+      return {
+        ok: true,
+        json: async () => ({ version: '1.2.0' })
+      };
+    }, async () => {
+      await fetchLatestUpdate('192.168.0.2:7777', 'nightly');
+      assert.equal(capturedUrl, 'http://192.168.0.2:7777/api/update/latest?channel=nightly');
+    });
+  });
+
+  await run('fetchLatestUpdate throws for non-OK responses', async () => {
+    await withMockFetch(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({})
+    }), async () => {
+      await assert.rejects(() => fetchLatestUpdate('http://localhost:7777', 'stable'), /launcher-update-api:500/);
+    });
+  });
+
+  await run('fetchLatestUpdate throws for invalid payload', async () => {
+    await withMockFetch(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ version: '' })
+    }), async () => {
+      await assert.rejects(() => fetchLatestUpdate('http://localhost:7777', 'stable'), /invalid-payload/);
     });
   });
 

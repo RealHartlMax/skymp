@@ -2,20 +2,25 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { FrameButton } from '../../components/FrameButton/FrameButton';
 import { collectServerTags, getVisibleServers, isValidHostOrIp, isValidPort, pingClass, pingLabel, SortKey } from './utils';
-import { fetchServerList } from './api';
+import { fetchLatestUpdate, fetchServerList, LatestUpdateDto, ReleaseChannel } from './api';
 import {
   getAutoConnectLast,
+  clearLauncherIgnoredUpdateVersion,
   getCachedServers,
   getFavoriteServerIds,
+  getLauncherIgnoredUpdateVersion,
   getLastServerRef,
   getLauncherApiEndpoint,
   getLauncherDarkMode,
+  getLauncherReleaseChannel,
   setAutoConnectLast,
   setCachedServers,
   setFavoriteServerIds,
+  setLauncherIgnoredUpdateVersion,
   setLastServerRef,
   setLauncherApiEndpoint,
   setLauncherDarkMode,
+  setLauncherReleaseChannel,
 } from './preferences';
 import './styles.scss';
 
@@ -94,6 +99,24 @@ const resolveInitialTheme = (): boolean => {
   return true;
 };
 
+const isReleaseChannel = (value: unknown): value is ReleaseChannel => {
+  return value === 'stable' || value === 'beta' || value === 'nightly';
+};
+
+const normalizeUpdateNotes = (value: string[] | string | undefined): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean);
+};
+
 const ServerList = () => {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
@@ -115,13 +138,40 @@ const ServerList = () => {
   const [serverSource, setServerSource] = useState<ServerSource>('demo');
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [isDarkMode, setIsDarkMode] = useState(resolveInitialTheme());
+  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>(getLauncherReleaseChannel());
   const [didAutoConnect, setDidAutoConnect] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [updateBannerVersion, setUpdateBannerVersion] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<LatestUpdateDto | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const availableTags = useMemo(() => collectServerTags(servers), [servers]);
+  const updateChannel = useMemo<ReleaseChannel>(() => {
+    if (!updateInfo?.channel) return releaseChannel;
+    return isReleaseChannel(updateInfo.channel) ? updateInfo.channel : releaseChannel;
+  }, [releaseChannel, updateInfo]);
+  const updateNotes = useMemo(() => {
+    if (!updateInfo) return [];
+    const notes = normalizeUpdateNotes(updateInfo.changelog ?? updateInfo.notes);
+    return notes.slice(0, 3);
+  }, [updateInfo]);
+  const hiddenNoteCount = useMemo(() => {
+    if (!updateInfo) return 0;
+    const allNotes = normalizeUpdateNotes(updateInfo.changelog ?? updateInfo.notes);
+    return Math.max(0, allNotes.length - 3);
+  }, [updateInfo]);
+
+  const ignoreUpdateVersion = useCallback(() => {
+    if (!updateInfo) return;
+    setLauncherIgnoredUpdateVersion(updateChannel, updateInfo.version);
+    setUpdateDismissed(true);
+  }, [updateChannel, updateInfo]);
+
+  const resetIgnoredUpdateVersion = useCallback(() => {
+    clearLauncherIgnoredUpdateVersion(releaseChannel);
+    setUpdateDismissed(false);
+    void checkForUpdate();
+  }, [checkForUpdate, releaseChannel]);
 
   useEffect(() => {
     document.body.classList.toggle('skymp-theme-light', !isDarkMode);
@@ -229,15 +279,34 @@ const ServerList = () => {
     }
   }, [servers, visible, runAutoConnectIfNeeded]);
 
+  const checkForUpdate = useCallback(async () => {
+    try {
+      const data = await fetchLatestUpdate(apiEndpoint, releaseChannel, CLIENT_VERSION);
+      if (data && data.version !== CLIENT_VERSION) {
+        const channel = isReleaseChannel(data.channel) ? data.channel : releaseChannel;
+        const ignoredVersion = getLauncherIgnoredUpdateVersion(channel);
+        if (ignoredVersion && ignoredVersion === data.version) {
+          setUpdateInfo(null);
+          return;
+        }
+        setUpdateInfo(data);
+      } else {
+        setUpdateInfo(null);
+      }
+    } catch {
+      // ignore — graceful degradation
+    }
+  }, [apiEndpoint, releaseChannel]);
+
   const show = useCallback(async () => {
     setVisible(true);
     setDidAutoConnect(false);
-    setUpdateBannerVersion(null);
+    setUpdateInfo(null);
     setUpdateDismissed(false);
     void checkForUpdate();
     await fetchServers();
     setTimeout(() => searchRef.current?.focus(), 100);
-  }, [fetchServers]);
+  }, [checkForUpdate, fetchServers]);
 
   const hide = useCallback(() => {
     setVisible(false);
@@ -248,18 +317,13 @@ const ServerList = () => {
     setError('');
   }, []);
 
-  const checkForUpdate = useCallback(async () => {
-    try {
-      const res = await fetch('/api/update/latest');
-      if (!res.ok) return;
-      const data = await res.json() as { version?: string };
-      if (data?.version && data.version !== CLIENT_VERSION) {
-        setUpdateBannerVersion(data.version);
-      }
-    } catch {
-      // ignore — graceful degradation
+  useEffect(() => {
+    setLauncherReleaseChannel(releaseChannel);
+    if (visible) {
+      setUpdateDismissed(false);
+      void checkForUpdate();
     }
-  }, []);
+  }, [checkForUpdate, releaseChannel, visible]);
 
   const versionMismatch =
     selected !== null &&
@@ -369,6 +433,23 @@ const ServerList = () => {
             placeholder={t('serverList.apiEndpointPlaceholder')}
             aria-label={t('serverList.apiEndpoint')}
           />
+          <select
+            className="server-list__channel-select"
+            value={releaseChannel}
+            onChange={(e) => setReleaseChannel(e.target.value as ReleaseChannel)}
+            aria-label={t('serverList.releaseChannel')}
+          >
+            <option value="stable">{t('serverList.channel_stable')}</option>
+            <option value="beta">{t('serverList.channel_beta')}</option>
+            <option value="nightly">{t('serverList.channel_nightly')}</option>
+          </select>
+          <button
+            type="button"
+            className="server-list__api-reset"
+            onClick={resetIgnoredUpdateVersion}
+          >
+            {t('serverList.resetIgnoredUpdate')}
+          </button>
           <button type="button" className="server-list__api-apply" onClick={applyApiEndpoint}>
             {t('serverList.applyApiEndpoint')}
           </button>
@@ -580,16 +661,67 @@ const ServerList = () => {
 
         {error && <div className="server-list__error" role="alert">{error}</div>}
       </div>
-      {!updateDismissed && updateBannerVersion && (
+      {!updateDismissed && updateInfo && (
         <div className="server-list__update-banner" role="status">
-          <span>{t('serverList.updateAvailable', { version: updateBannerVersion })}</span>
-          <button
-            type="button"
-            className="server-list__update-dismiss"
-            onClick={() => setUpdateDismissed(true)}
-          >
-            {t('serverList.updateDismiss')}
-          </button>
+          <div className="server-list__update-main">
+            <span>
+              {t('serverList.updateAvailable', {
+                version: updateInfo.version,
+                channel: t(`serverList.channel_${updateChannel}`)
+              })}
+            </span>
+            {updateNotes.length > 0 && (
+              <div className="server-list__update-notes-wrap">
+                <span className="server-list__update-notes-title">{t('serverList.updateNotesTitle')}</span>
+                <ul className="server-list__update-notes">
+                  {updateNotes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+                {hiddenNoteCount > 0 && (
+                  <span className="server-list__update-notes-more">
+                    {t('serverList.updateNotesMore', { count: hiddenNoteCount })}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="server-list__update-actions">
+            {updateInfo.downloadUrl && (
+              <a
+                className="server-list__update-download"
+                href={updateInfo.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('serverList.updateDownload')}
+              </a>
+            )}
+            {updateInfo.releaseNotesUrl && (
+              <a
+                className="server-list__update-download"
+                href={updateInfo.releaseNotesUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('serverList.updateNotesLink')}
+              </a>
+            )}
+            <button
+              type="button"
+              className="server-list__update-dismiss"
+              onClick={ignoreUpdateVersion}
+            >
+              {t('serverList.updateIgnoreVersion')}
+            </button>
+            <button
+              type="button"
+              className="server-list__update-dismiss"
+              onClick={() => setUpdateDismissed(true)}
+            >
+              {t('serverList.updateDismiss')}
+            </button>
+          </div>
         </div>
       )}
     </div>

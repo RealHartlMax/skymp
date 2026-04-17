@@ -41,6 +41,13 @@ interface MutedUserEntry {
   remainingSec: number;
 }
 
+interface BannedUserEntry {
+  userId: number;
+  permanent: boolean;
+  expiresAt: number | null;
+  remainingSec: number | null;
+}
+
 interface FrontendMetricEntry {
   name: string;
   value: number;
@@ -116,7 +123,8 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [players, setPlayers] = useState<AdminPlayer[]>([]);
-  const [bannedUserIds, setBannedUserIds] = useState<number[]>([]);
+  const [bannedUsers, setBannedUsers] = useState<BannedUserEntry[]>([]);
+  const [banDurationMinutes, setBanDurationMinutes] = useState(0);
   const [mutedUsers, setMutedUsers] = useState<MutedUserEntry[]>([]);
   const [adminRole, setAdminRole] = useState<AdminRole>('viewer');
   const [adminUser, setAdminUser] = useState('');
@@ -262,7 +270,7 @@ const AdminDashboard = () => {
       const res = await fetch('/api/admin/bans');
       if (!res.ok) return;
       const bans = await res.json();
-      setBannedUserIds(Array.isArray(bans) ? bans : []);
+      setBannedUsers(Array.isArray(bans) ? bans as BannedUserEntry[] : []);
     } catch {
       // silently ignore
     }
@@ -343,8 +351,13 @@ const AdminDashboard = () => {
   }, [capabilities.canViewLogs, metricLimit, metricNameFilter, metricSourceFilter]);
 
   const kickPlayer = async (userId: number) => {
+    const reason = moderationReason.trim();
     try {
-      const res = await fetch(`/api/admin/players/${userId}/kick`, { method: 'POST' });
+      const res = await fetch(`/api/admin/players/${userId}/kick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { reason } : {}),
+      });
       setForbiddenAwareStatus(res, `${t('adminDashboard.kicked')}: ${userId}`);
       if (res.ok) await fetchData();
     } catch {
@@ -354,8 +367,15 @@ const AdminDashboard = () => {
 
   const banPlayer = async (userId: number) => {
     if (!window.confirm(`${t('adminDashboard.banConfirm')} userId=${userId}?`)) return;
+    const reason = moderationReason.trim();
     try {
-      const res = await fetch(`/api/admin/players/${userId}/ban`, { method: 'POST' });
+      const body: Record<string, unknown> = { durationMinutes: banDurationMinutes };
+      if (reason) body.reason = reason;
+      const res = await fetch(`/api/admin/players/${userId}/ban`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       setForbiddenAwareStatus(res, `${t('adminDashboard.banned')}: ${userId}`);
       if (res.ok) {
         await fetchData();
@@ -519,7 +539,7 @@ const AdminDashboard = () => {
     setVisible(false);
     setStatus(null);
     setPlayers([]);
-    setBannedUserIds([]);
+    setBannedUsers([]);
     setMutedUsers([]);
     setStatusMsg('');
     setConsoleLines([]);
@@ -594,13 +614,14 @@ const AdminDashboard = () => {
     return () => clearInterval(id);
   }, [activeTab, capabilities.canMute, capabilities.canUnmute, fetchMutes, visible]);
 
+  const hasTimedBans = bannedUsers.some((b) => !b.permanent);
   useEffect(() => {
-    if (!visible || activeTab !== 'players' || mutedUsers.length === 0) return;
+    if (!visible || activeTab !== 'players' || (mutedUsers.length === 0 && !hasTimedBans)) return;
     const id = setInterval(() => {
       setNowTs(Date.now());
     }, 1000);
     return () => clearInterval(id);
-  }, [activeTab, mutedUsers.length, visible]);
+  }, [activeTab, hasTimedBans, mutedUsers.length, visible]);
 
   const metricSourceOptions = useMemo(() => metricSummary.sources.map((item) => item.name), [metricSummary.sources]);
 
@@ -615,6 +636,20 @@ const AdminDashboard = () => {
   const activeMuteByUserId = useMemo(
     () => new Map(activeMutedUsers.map((entry) => [entry.userId, entry] as const)),
     [activeMutedUsers],
+  );
+  const activeBannedUsers = useMemo(
+    () => bannedUsers
+      .filter((entry) => entry.permanent || (entry.expiresAt !== null && entry.expiresAt > nowTs))
+      .sort((a, b) => {
+        if (a.permanent !== b.permanent) return a.permanent ? 1 : -1; // timed first
+        if (!a.permanent && !b.permanent) return (a.expiresAt ?? 0) - (b.expiresAt ?? 0);
+        return a.userId - b.userId;
+      }),
+    [bannedUsers, nowTs],
+  );
+  const activeBanByUserId = useMemo(
+    () => new Map(activeBannedUsers.map((entry) => [entry.userId, entry] as const)),
+    [activeBannedUsers],
   );
 
   const openOlderLogs = () => {
@@ -807,6 +842,21 @@ const AdminDashboard = () => {
                       ))}
                     </select>
                   </label>
+                  <label className="admin-dashboard__mute-duration">
+                    <span>{t('adminDashboard.banDuration')}</span>
+                    <select
+                      className="admin-dashboard__log-select"
+                      data-testid="admin-ban-duration-select"
+                      value={banDurationMinutes}
+                      onChange={(e) => setBanDurationMinutes(Number(e.target.value))}
+                      aria-label={t('adminDashboard.banDuration')}
+                    >
+                      <option value={0}>{t('adminDashboard.banPermanent')}</option>
+                      {[60, 180, 720, 1440, 4320, 10080, 43200].map((value) => (
+                        <option key={value} value={value}>{value >= 1440 ? `${value / 1440}d` : `${value}m`}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 {filteredPlayers.length === 0 ? (
@@ -831,6 +881,10 @@ const AdminDashboard = () => {
                         {filteredPlayers.map((player) => {
                           const muteEntry = activeMuteByUserId.get(player.userId);
                           const remainingSec = muteEntry ? Math.max(0, Math.floor((muteEntry.expiresAt - nowTs) / 1000)) : 0;
+                          const banEntry = activeBanByUserId.get(player.userId);
+                          const banRemainingSec = banEntry && !banEntry.permanent && banEntry.expiresAt !== null
+                            ? Math.max(0, Math.floor((banEntry.expiresAt - nowTs) / 1000))
+                            : null;
                           return (
                           <tr key={player.userId} data-testid={`admin-player-row-${player.userId}`}>
                             <td>{player.userId}</td>
@@ -840,6 +894,11 @@ const AdminDashboard = () => {
                               {muteEntry && (
                                 <span className="admin-dashboard__muted-badge" data-testid={`admin-muted-badge-${player.userId}`} title={t('adminDashboard.muted')}>
                                   {t('adminDashboard.muted')}: {formatAdminUptime(remainingSec)}
+                                </span>
+                              )}
+                              {banEntry && (
+                                <span className="admin-dashboard__banned-badge" data-testid={`admin-banned-badge-${player.userId}`} title={t('adminDashboard.banned')}>
+                                  {t('adminDashboard.banned')}{banRemainingSec !== null ? `: ${formatAdminUptime(banRemainingSec)}` : ''}
                                 </span>
                               )}
                             </td>
@@ -900,24 +959,32 @@ const AdminDashboard = () => {
                 {(capabilities.canBan || capabilities.canUnban) && (
                   <div className="admin-dashboard__bans-section">
                     <h3 className="admin-dashboard__section-subtitle">{t('adminDashboard.bannedUsers')}</h3>
-                    {bannedUserIds.length === 0 ? (
+                    {activeBannedUsers.length === 0 ? (
                       <p className="admin-dashboard__bans-empty">{t('adminDashboard.noBans')}</p>
                     ) : (
                       <div className="admin-dashboard__bans-list">
-                        {bannedUserIds.map((userId) => (
-                          <div key={userId} className="admin-dashboard__ban-row">
-                            <span className="admin-dashboard__ban-user">userId: {userId}</span>
+                        {activeBannedUsers.map((entry) => {
+                          const remainingBanSec = entry.permanent ? null : Math.max(0, Math.floor(((entry.expiresAt ?? 0) - nowTs) / 1000));
+                          return (
+                          <div key={entry.userId} className="admin-dashboard__ban-row" data-testid={`admin-banned-row-${entry.userId}`}>
+                            <span className="admin-dashboard__ban-user">
+                              userId: {entry.userId}
+                              {entry.permanent
+                                ? ` • ${t('adminDashboard.banPermanent')}`
+                                : remainingBanSec !== null ? ` • ${t('adminDashboard.banRemaining')}: ${formatAdminUptime(remainingBanSec)}` : ''}
+                            </span>
                             <button
                               type="button"
                               className="admin-dashboard__unban-btn"
-                              onClick={() => unbanPlayer(userId)}
+                              data-testid={`admin-unban-btn-${entry.userId}`}
+                              onClick={() => unbanPlayer(entry.userId)}
                               disabled={!capabilities.canUnban}
                               title={!capabilities.canUnban ? t('adminDashboard.noPermission') : undefined}
                             >
                               {t('adminDashboard.unban')}
                             </button>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </div>

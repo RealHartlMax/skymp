@@ -135,18 +135,34 @@ const summarizeFrontendMetrics = (entries: FrontendMetricEntry[]) => {
   };
 };
 
-const bannedUserIds = new Set<number>();
+// bannedUsers: null = permanent ban; number = expiresAt timestamp (timed ban)
+const bannedUsers = new Map<number, number | null>();
 const mutedUsers = new Map<number, number>(); // userId -> expiresAt (ms timestamp)
+
+const cleanupExpiredBans = (): void => {
+  const now = Date.now();
+  bannedUsers.forEach((expiresAt, userId) => {
+    if (expiresAt !== null && expiresAt <= now) bannedUsers.delete(userId);
+  });
+};
+
+const cleanupExpiredMutes = (): void => {
+  const now = Date.now();
+  mutedUsers.forEach((expiresAt, userId) => {
+    if (expiresAt <= now) mutedUsers.delete(userId);
+  });
+};
 
 // ---------------------------------------------------------------------------
 // Persistence helpers – ban/mute lists survive server restarts
 // ---------------------------------------------------------------------------
 const saveBans = (dataDir: string): void => {
   try {
+    cleanupExpiredBans();
     fs.mkdirSync(dataDir, { recursive: true });
     fs.writeFileSync(
       path.join(dataDir, 'admin-bans.json'),
-      JSON.stringify(Array.from(bannedUserIds)),
+      JSON.stringify(Array.from(bannedUsers.entries())),
       'utf8',
     );
   } catch (e) {
@@ -172,9 +188,20 @@ const loadModerationState = (dataDir: string): void => {
   try {
     const bansPath = path.join(dataDir, 'admin-bans.json');
     if (fs.existsSync(bansPath)) {
-      const ids = JSON.parse(fs.readFileSync(bansPath, 'utf8')) as number[];
-      ids.forEach((id) => bannedUserIds.add(id));
-      console.log(`Loaded ${bannedUserIds.size} banned userId(s) from ${bansPath}`);
+      const raw = JSON.parse(fs.readFileSync(bansPath, 'utf8'));
+      if (Array.isArray(raw)) {
+        if (raw.length === 0 || typeof raw[0] === 'number') {
+          // Old format: plain number[] — migrate to permanent bans
+          (raw as number[]).forEach((id) => bannedUsers.set(id, null));
+        } else {
+          // New format: [userId, expiresAt | null][]
+          const now = Date.now();
+          (raw as [number, number | null][]).forEach(([userId, expiresAt]) => {
+            if (expiresAt === null || expiresAt > now) bannedUsers.set(userId, expiresAt);
+          });
+        }
+      }
+      console.log(`Loaded ${bannedUsers.size} banned userId(s) from ${bansPath}`);
     }
   } catch (e) {
     console.error('Failed to load ban list:', e);
@@ -192,13 +219,6 @@ const loadModerationState = (dataDir: string): void => {
   } catch (e) {
     console.error('Failed to load mute list:', e);
   }
-};
-
-const cleanupExpiredMutes = (): void => {
-  const now = Date.now();
-  mutedUsers.forEach((expiresAt, userId) => {
-    if (expiresAt <= now) mutedUsers.delete(userId);
-  });
 };
 
 const metricsAuthParse = (settings: Settings): void => {
@@ -650,8 +670,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ctx.body = { ok: false, error: 'invalid userId' };
         return;
       }
+      const reason = String(ctx.request.body?.reason ?? '').trim();
       safeCall(() => gScampServer.kick(userId), undefined);
-      addAdminLog('kick', `Kicked userId=${userId}`);
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog('kick', `Kicked userId=${userId}${reasonSuffix}`);
       ctx.body = { ok: true, userId };
     });
 
@@ -663,11 +685,18 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ctx.body = { ok: false, error: 'invalid userId' };
         return;
       }
-      bannedUserIds.add(userId);
+      const durationRaw = Number(ctx.request.body?.durationMinutes);
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      const isPermanent = !Number.isFinite(durationRaw) || durationRaw <= 0;
+      const durationMinutes = isPermanent ? 0 : Math.min(365 * 24 * 60, Math.floor(durationRaw));
+      const expiresAt = isPermanent ? null : Date.now() + durationMinutes * 60 * 1000;
+      bannedUsers.set(userId, expiresAt);
       saveBans(dataDir);
       safeCall(() => gScampServer.kick(userId), undefined);
-      addAdminLog('ban', `Banned userId=${userId}`);
-      ctx.body = { ok: true, userId, banned: true };
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      const durationNote = isPermanent ? ' (permanent)' : ` for ${durationMinutes}m`;
+      addAdminLog('ban', `Banned userId=${userId}${durationNote}${reasonSuffix}`);
+      ctx.body = { ok: true, userId, banned: true, permanent: isPermanent, expiresAt, durationMinutes: isPermanent ? null : durationMinutes };
     });
 
     router.delete('/api/admin/players/:userId/ban', (ctx: any) => {
@@ -678,7 +707,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ctx.body = { ok: false, error: 'invalid userId' };
         return;
       }
-      const wasBanned = bannedUserIds.delete(userId);
+      const wasBanned = bannedUsers.delete(userId);
       saveBans(dataDir);
       addAdminLog('ban', `Unbanned userId=${userId}`);
       ctx.body = { ok: true, userId, wasBanned };
@@ -743,7 +772,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.get('/api/admin/bans', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canUnban')) return;
-      ctx.body = Array.from(bannedUserIds);
+      cleanupExpiredBans();
+      const now = Date.now();
+      ctx.body = Array.from(bannedUsers.entries()).map(([userId, expiresAt]) => ({
+        userId,
+        permanent: expiresAt === null,
+        expiresAt: expiresAt ?? null,
+        remainingSec: expiresAt !== null ? Math.max(0, Math.floor((expiresAt - now) / 1000)) : null,
+      }));
     });
 
     router.get('/api/admin/mutes', (ctx: any) => {

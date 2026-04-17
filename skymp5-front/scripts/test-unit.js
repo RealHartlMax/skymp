@@ -30,6 +30,11 @@ const {
   isValidHostOrIp
 } = require('../src/features/serverList/utils.ts');
 const {
+  getLauncherIgnoredUpdateVersion,
+  setLauncherIgnoredUpdateVersion,
+  clearLauncherIgnoredUpdateVersion
+} = require('../src/features/serverList/preferences.ts');
+const {
   filterAdminPlayers,
   formatAdminPos,
   formatAdminUptime
@@ -174,6 +179,42 @@ run('FrameButton helpers map disabled and clickable state', () => {
   assert.equal(getFrameButtonClassName(false), 'skymp-button active');
   assert.equal(shouldHandleFrameButtonClick(true), false);
   assert.equal(shouldHandleFrameButtonClick(false), true);
+});
+
+run('launcher ignored update version stores and clears by channel', () => {
+  const previousWindow = global.window;
+  const storage = {};
+
+  global.window = {
+    localStorage: {
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(storage, key) ? storage[key] : null),
+      setItem: (key, value) => {
+        storage[key] = String(value);
+      },
+      removeItem: (key) => {
+        delete storage[key];
+      }
+    }
+  };
+
+  try {
+    assert.equal(getLauncherIgnoredUpdateVersion('stable'), null);
+    setLauncherIgnoredUpdateVersion('stable', '1.2.0');
+    setLauncherIgnoredUpdateVersion('beta', '1.3.0-beta.1');
+
+    assert.equal(getLauncherIgnoredUpdateVersion('stable'), '1.2.0');
+    assert.equal(getLauncherIgnoredUpdateVersion('beta'), '1.3.0-beta.1');
+
+    clearLauncherIgnoredUpdateVersion('stable');
+    assert.equal(getLauncherIgnoredUpdateVersion('stable'), null);
+    assert.equal(getLauncherIgnoredUpdateVersion('beta'), '1.3.0-beta.1');
+  } finally {
+    if (previousWindow === undefined) {
+      delete global.window;
+    } else {
+      global.window = previousWindow;
+    }
+  }
 });
 
 run('formatAdminUptime formats seconds, minutes and hours', () => {

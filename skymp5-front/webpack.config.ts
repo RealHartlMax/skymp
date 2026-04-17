@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const webpack = require("webpack");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const config = require("./config");
 
@@ -10,6 +11,7 @@ const distPath = path.isAbsolute(config.outputPath)
 const devServerPort = Number(process.env.SKYMP_FRONT_PORT || config.devServerPort || 1234);
 const devServerHost = process.env.SKYMP_FRONT_HOST || config.devServerHost || '0.0.0.0';
 const devProxyTarget = process.env.SKYMP_FRONT_API_TARGET || config.devProxyTarget || 'http://127.0.0.1:7777';
+const devHealthIntervalMs = Number(process.env.SKYMP_FRONT_HEALTH_MS || config.devHealthIntervalMs || 12000);
 
 module.exports = {
   entry: path.resolve(__dirname, "src/index.js"),
@@ -41,6 +43,12 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, "public/index.html"),
+    }),
+    new webpack.DefinePlugin({
+      __SKYMP_DEV_SERVER_HOST__: JSON.stringify(devServerHost),
+      __SKYMP_DEV_SERVER_PORT__: JSON.stringify(String(devServerPort)),
+      __SKYMP_DEV_PROXY_TARGET__: JSON.stringify(devProxyTarget),
+      __SKYMP_DEV_HEALTH_MS__: JSON.stringify(String(devHealthIntervalMs)),
     }),
   ],
   module: {
