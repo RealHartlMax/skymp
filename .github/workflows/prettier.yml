@@ -8,11 +8,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install yarn packages
-        uses: borales/actions-yarn@v4
-        with:
-          cmd: --cwd=./misc/prettier install
+        run: yarn --cwd=./misc/prettier install
       - name: Check prettier errors
-        uses: borales/actions-yarn@v4
-        with:
-          cmd: --cwd=./misc/prettier prettier-check
+        run: yarn --cwd=./misc/prettier prettier-check
         continue-on-error: true
