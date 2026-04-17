@@ -9,11 +9,42 @@ import TestMenu from './features/testMenu';
 import AdminDashboard from './features/adminDashboard';
 import ServerList from './features/serverList';
 
+const shouldForceLoggedInView = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('devUi') === '1' || window.localStorage.getItem('skymp.dev.loggedIn') === '1';
+  } catch {
+    return false;
+  }
+};
+
+const getDevOverlayTargets = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('devOverlay') || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const isBrowserDevUiMode = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('devUi') === '1';
+  } catch {
+    return false;
+  }
+};
+
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      isLoggined: false,
+      isLoggined: shouldForceLoggedInView(),
+      isDevUiMode: isBrowserDevUiMode(),
       widgets: this.props.elem || null
     };
   }
@@ -46,6 +77,19 @@ class App extends React.Component {
     window.addEventListener('mouseup', this.onMouseUp);
 
     window.skyrimPlatform.widgets.addListener(this.handleWidgetUpdate.bind(this));
+
+    if (shouldForceLoggedInView()) {
+      window.localStorage.setItem('skymp.dev.loggedIn', '1');
+      const overlayTargets = getDevOverlayTargets();
+      setTimeout(() => {
+        if (overlayTargets.includes('serverList')) {
+          window.dispatchEvent(new Event('showServerList'));
+        }
+        if (overlayTargets.includes('admin')) {
+          window.dispatchEvent(new Event('showAdminDashboard'));
+        }
+      }, 0);
+    }
   }
 
   handleWidgetUpdate(newWidgets) {
@@ -82,10 +126,10 @@ class App extends React.Component {
     if (this.state.isLoggined) {
       return (
         <div className={`App ${!window.hasOwnProperty('skyrimPlatform') ? 'bg' : ''}`}>
-          <AnimList />
-          <Chat />
-          <SkillsMenu />
-          <TestMenu />
+          {!this.state.isDevUiMode && <AnimList />}
+          {!this.state.isDevUiMode && <Chat />}
+          {!this.state.isDevUiMode && <SkillsMenu />}
+          {!this.state.isDevUiMode && <TestMenu />}
           <AdminDashboard />
           <ServerList />
         </div>

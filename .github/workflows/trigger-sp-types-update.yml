@@ -8,9 +8,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Get Version
+        id: vars
         run: |
           VERSION=$(sed -n "s/.*\([0-9]\.[0-9]\.[0-9]*\).*/\1/p" ${{ github.workspace }}/skyrim-platform/package.json | head -1)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Found version: $VERSION"
           URL="https://raw.githubusercontent.com/skyrim-multiplayer/skymp/${{ github.sha }}/skyrim-platform/src/platform_se/codegen/convert-files/skyrimPlatform.ts"
           echo "Checking url $URL"
@@ -23,6 +25,7 @@ jobs:
             exit 1
           fi
           echo "URL=$URL" >> $GITHUB_ENV
+          echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Update Types Repo
         uses: peter-evans/repository-dispatch@v1
@@ -30,4 +33,4 @@ jobs:
           token: ${{ secrets.MAHAHUHA_PAT_FOR_SP_ORG_ACCESS }}
           repository: skyrim-platform/skyrim-platform
           event-type: update-types
-          client-payload: '{"version": "${{ env.VERSION }}", "url": "${{ env.URL }}"}'
+          client-payload: '{"version": "${{ steps.vars.outputs.version }}", "url": "${{ steps.vars.outputs.url }}"}'

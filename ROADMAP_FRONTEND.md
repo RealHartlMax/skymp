@@ -8,24 +8,24 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | --- | --- | --- |
 | **DONE:** | **Fully implemented and tested.** | |
 | *Localization (i18n)* | ✅ Done | i18next + react-i18next integrated; English, Russian, German locales; automated key consistency tests |
-| *TypeScript Configuration* | ✅ Done | TypeScript-based frontend build is active; current baseline in skymp5-front is TypeScript 4.x |
+| *TypeScript Configuration* | ✅ Done | TypeScript-based frontend build is active; current baseline in skymp5-front is TypeScript 5.9.x |
 | *Component Typing* | ✅ Done | SkillsMenu fully typed; Button interfaces fixed; proper React/JSX types |
 | *Locale Testing* | ✅ Done | Automated locale key parity validation between en/ru/de |
 | *Admin Dashboard UI* | ✅ Done | Overlay dashboard with polling status + player list, close action, kick action wired to backend |
 | *Launcher Server List* | ✅ Done | Server browser UI with search/sort, details panel, direct connect, connect event dispatch |
 | *Unit Tests Setup* | ✅ Done | Dependency-free Node + ts-node unit test runner integrated into npm test pipeline |
 | **IN PROGRESS:** | **Currently being worked on.** | |
+| *Admin Dashboard Features* | 🔄 In Progress | Tabs (overview/players/console/logs), player search, ban action, console command sender, and filtered activity log are implemented; persistence and moderation extensions still pending |
+| *Dev Server Setup* | 🔄 In Progress | Webpack DevServer binds to all interfaces, proxies `/api`, supports browser/LAN usage, and documents dev-only overlay entry points via `?devUi=1` |
+| *Launcher Features* | 🔄 In Progress | Favorites, tag filters, auto-connect last server, API endpoint override, source status, cached/demo offline fallback, direct connect validation, and launcher theme toggle are implemented |
+| *E2E Testing* | 🔄 In Progress | Playwright flow script now covers launcher server selection and admin metrics with mocked APIs and passes against the webpack dev server in browser-only `?devUi=1` mode |
+| *API Integration Tests* | ✅ Done | `scripts/test-api-integration.js` validates server list endpoint normalization and API error/payload handling |
+| *Performance Monitoring* | 🔄 In Progress | Frontend performance/error buffering posts to `/api/frontend/metrics`; admin metrics tab exposes summaries and recent entries; browser-only dev mode suppresses noisy posts unless an explicit metrics endpoint is configured |
 | **TODO:** | **Planned features.** | |
-| *Dev Server Setup* | 📋 Planned | Webpack DevServer with HMR, dev proxy to backend, hot reload documentation |
-| *Admin Dashboard Features* | 📋 Planned | Player management (kick/ban), server stats, log viewer, configuration UI, real-time updates |
-| *Launcher Features* | 📋 Planned | Server filters, favorites, auto-connect, server status indicators, player progression display |
-| *E2E Testing* | 📋 Planned | Playwright tests for login, server selection, admin workflows |
-| *API Integration Tests* | 📋 Planned | Mock server for testing admin endpoints (/api/admin/*) |
-| *Performance Monitoring* | 📋 Planned | Error tracking, performance metrics, user analytics |
-| *Mobile Responsiveness* | 📋 Planned | Adapt dashboard/launcher for tablet/mobile devices |
-| *Accessibility (a11y)* | 📋 Planned | WCAG 2.1 compliance, screen reader support, keyboard navigation |
-| *Dark Mode* | 📋 Planned | Theme toggle, system preference detection |
-| *Offline Mode* | 📋 Planned | Cache server data, work offline, sync on reconnect |
+| *Mobile Responsiveness* | 🔄 In Progress | First responsive pass started for launcher/admin overlays: compact spacing, stacked action rows, tab overflow handling, and small-screen table/action tuning |
+| *Accessibility (a11y)* | 🔄 In Progress | First a11y pass started for launcher/admin overlays: dialog semantics, tab roles, table captions/scope, explicit button types, Escape close handling, and focus-visible states |
+| *Dark Mode* | 🔄 In Progress | Launcher-level theme toggle and system preference detection are implemented; app-wide theme rollout still pending |
+| *Offline Mode* | 🔄 In Progress | Server list falls back to cached or demo data when API is unreachable; broader offline sync is still pending |
 
 ## Testing Infrastructure
 
@@ -34,14 +34,14 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | **DONE:** | **Fully implemented and tested.** | |
 | *Locale Consistency Tests* | ✅ Done | Node.js script validates key structure across locale files |
 | *Unit Test Framework* | ✅ Done | Node.js + ts-node based unit test setup in `scripts/test-unit.js` |
-| *First Unit Tests* | ✅ Done | Utility tests for server list, i18n language detection, and FrameButton click/class behavior |
+| *First Unit Tests* | ✅ Done | Utility tests for server list/admin helpers, i18n language detection, and FrameButton click/class behavior |
 | **IN PROGRESS:** | **Currently being worked on.** | |
-| *Component Tests* | 🔄 Planning | Add React Testing Library tests for core components after resolving npm dependency install blocker |
+| *Component Tests* | 🔄 In Progress | Added dependency-free SSR checks for SkyrimButton, SkyrimInput, FrameButton, ImageButton, SkyrimHint, SkyrimSlider, and SkyrimFrame; continue until full critical component coverage |
 | **TODO:** | **Planned features.** | |
 | *Integration Tests* | 📋 Planned | Test component composition, context providers, state management |
 | *Snapshot Tests* | 📋 Planned | Detect unintended UI changes |
 | *Coverage Reporting* | 📋 Planned | Minimum 70% coverage; CI integration |
-| *E2E Tests (Playwright)* | 📋 Planned | Login flow, server selection, admin workflows |
+| *E2E Tests (Playwright)* | 🔄 In Progress | Mock-driven launcher selection and admin metrics coverage exist in `scripts/test-e2e-smoke.js`; the installed Playwright smoke flow now passes against the live webpack dev server |
 | *Visual Regression Tests* | 📋 Planned | Detect UI regressions across different screen sizes |
 | *Accessibility Tests* | 📋 Planned | axe-core integration for a11y compliance |
 
@@ -58,7 +58,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | *Documentation* | 🔄 In Progress | Updated CONTRIBUTING.md with frontend setup and dev guidelines |
 | **TODO:** | **Planned features.** | |
 | *CI/CD Pipeline* | 📋 Planned | GitHub Actions: TypeScript check, tests, build, deploy artifacts |
-| *Installer Pipeline Integration* | 🔄 In Progress | Main branch pushes trigger installer repository dispatch; installer binary is built in external/private installer repo |
+| *Installer Pipeline Integration* | ✅ Done | Main branch pushes trigger installer repository dispatch; installer binary is built in external/private installer repo |
 | *Dev Server Documentation* | 📋 Planned | HMR setup, dev proxy configuration, troubleshooting |
 | *Build Optimization* | 📋 Planned | Code splitting, lazy loading, bundle analysis |
 | *Docker Support* | 📋 Planned | Dockerfile for frontend build and dev containers |
@@ -72,23 +72,25 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Component | Status | Details |
 | --- | --- | --- |
 | **DONE:** | **Fully implemented and tested.** | |
-| *Backend Routes* | ✅ Done | `/admin`, `/api/admin/status`, `/api/admin/players`, kick endpoint; language support |
-| *Dashboard Layout* | ✅ Done | Main overlay frame with sections for stats and player management |
+| *Backend Routes* | ✅ Done | `/admin`, `/api/admin/status`, `/api/admin/players`, kick/ban/unban, console command endpoint, and logs endpoint; language support |
+| *Dashboard Layout* | ✅ Done | Main overlay with stats cards, tab navigation, and dedicated panels for overview/players/console/logs |
 | *Server Stats Panel* | ✅ Done | Online players, max players, uptime, tick counters, API status |
 | *Player List View* | ✅ Done | Live player table with id/name/level/location and selection state |
 | *Player Management* | ✅ Done (Kick) | Kick action integrated (`POST /api/admin/players/:id/kick`) |
 | **IN PROGRESS:** | **Currently being worked on.** | |
-| *Advanced Admin Panels* | 🔄 Planning | Console, deep configuration editor, richer telemetry and moderation tools |
+| *Advanced Admin Panels* | 🔄 In Progress | Console, deep configuration editor, richer telemetry and moderation tools; frontend metrics tab is now included |
+| *Player Management Extensions* | 🔄 In Progress | Ban/unban actions are wired (`POST/DELETE /api/admin/players/:id/ban`); send-message flow still pending |
+| *Console Panel* | 🔄 In Progress | Command input, result/error feedback, and client-side command history are implemented via `/api/admin/console`; richer persistence and audit features are still pending |
+| *Event Log* | 🔄 In Progress | Type filter, page size, time-window filter, and older/recent pagination are implemented via `/api/admin/logs`; richer audit fields pending |
+| *User Permissions* | 🔄 In Progress | Role capability model (`admin/moderator/viewer`) is exposed via `/api/admin/capabilities`, enforced server-side on sensitive admin endpoints, and displayed in dashboard UI; full RBAC policy editor/audit model is still pending |
+| *Search & Filter* | ✅ Done (Basic) | Player search by id/name/ip and log type filters are implemented |
 | **TODO:** | **Planned features.** | |
-| *Player Management Extensions* | 📋 Planned | Ban/unban and send-message dialogs |
-| *Console Panel* | 📋 Planned | Live command execution, log viewer, syntax highlighting |
 | *Configuration UI* | 📋 Planned | Server settings editor, save/reload functionality |
 | *Network Graph* | 📋 Planned | Real-time ping visualization, bandwidth monitoring |
-| *Event Log* | 📋 Planned | Login/logout history, actions, errors with filtering |
-| *User Permissions* | 📋 Planned | Role-based access control (admin, moderator, viewer) |
+| *User Permissions* | 📋 Planned (Extended) | Full role-based access control (admin, moderator, viewer), policy editor, and audit integration |
 | *Settings Panel* | 📋 Planned | Language/timezone, notification preferences, theme |
 | *WebSocket Updates* | 📋 Planned | Real-time dashboard updates via WebSocket |
-| *Search & Filter* | 📋 Planned | Quick player search, log filtering, stat queries |
+| *Search & Filter* | 📋 Planned (Extended) | Advanced stat queries, saved filters, and cross-panel quick search |
 
 ## Launcher Application
 
@@ -99,12 +101,12 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | *Server Details* | ✅ Done | Description and selected server detail panel |
 | *Direct Connect* | ✅ Done | Connect by IP + port with client-side validation |
 | *Status Indicators* | ✅ Done | Online/offline dot, full-server player highlighting, ping quality colors |
+| *Favorites System* | ✅ Done | Mark/unmark servers with persisted local favorites filter |
+| *Server Filters* | ✅ Done (Basic) | Search, full-server toggle, favorites toggle, and tag filters are implemented |
+| *Auto-Connect* | ✅ Done (Basic) | Last server memory and optional auto-connect on launcher open are implemented |
+| *Account Settings* | ✅ Done (Launcher Preferences) | Launcher stores theme, API endpoint, favorites, cache, and last-server preferences locally |
 | **TODO:** | **Planned features.** | |
-| *Favorites System* | 📋 Planned | Mark/unmark servers, quick access |
-| *Server Filters* | 📋 Planned | By region, player count, version, tags |
-| *Auto-Connect* | 📋 Planned | Last server memory, auto-join on launch |
 | *Player Stats Display* | 📋 Planned | Character progression, playtime, achievements |
-| *Account Settings* | 📋 Planned | Credentials, characters, preferences |
 | *Notifications* | 📋 Planned | Server updates, friend invites, patch notes |
 | *Update Checker* | 📋 Planned | Auto-update launcher, version mismatch warnings |
 
@@ -113,7 +115,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Issue | Priority | Description |
 | --- | --- | --- |
 | npm peer dependency warnings | Low | Some deprecation warnings during install; consider updating packages |
-| TypeScript 6 compatibility | Done | All deprecation warnings silenced with `ignoreDeprecations: "6.0"` |
+| TypeScript 6 compatibility | Done | Current TypeScript 5.9 baseline runs with `ignoreDeprecations: "5.0"`; no active frontend blocker remains here |
 | Bundle size optimization | Medium | Implement code splitting and lazy loading for better performance |
 | Missing error boundaries | High | Add React Error Boundaries for graceful error handling |
 | Inconsistent loading states | Medium | Standardize spinner/skeleton loaders across all async views |
@@ -129,7 +131,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 
 ### Technology Stack
 - **React 18** - UI framework with functional components and hooks
-- **TypeScript 4.x** - Type safety and developer experience
+- **TypeScript 5.9.x** - Type safety and developer experience
 - **Webpack** - Module bundler with HMR support
 - **i18next** - Internationalization library
 - **React-i18next** - React integration for i18n
@@ -169,7 +171,7 @@ skymp5-front/
 
 ### Development
 - webpack@^5.0.0
-- typescript@^4.6.3
+- typescript@^5.9.3
 - eslint@^8.0.0
 
 See `skymp5-front/package.json` for complete dependency list.

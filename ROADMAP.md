@@ -9,6 +9,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | PR builds (Windows/VR/Emscripten) | Active | Reusable action in .github/actions/pr_base/action.yml is used by PR workflows. |
 | Deploy notifications | Active | Deploy workflows post status to Discord using DEPLOY_STATUS_WEBHOOK secret. |
 | Installer trigger | Active | Pushes to main trigger a repository_dispatch to installer repo via .github/workflows/trigger-installer.yml. |
+| Installer trigger (manual run) | Active | The installer trigger workflow also supports `workflow_dispatch` for manual execution from GitHub Actions UI. |
 | Installer repository target | Configurable | The target repository is read from repository variable INSTALLER_REPOSITORY (format owner/repo). |
 | Installer build artifact format | External | The installer itself is produced in the installer repository workflow, not in this repository. |
 

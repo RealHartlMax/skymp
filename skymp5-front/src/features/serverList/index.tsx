@@ -1,7 +1,22 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FrameButton } from '../../components/FrameButton/FrameButton';
-import { pingClass, pingLabel, isValidPort } from './utils';
+import { collectServerTags, getVisibleServers, isValidHostOrIp, isValidPort, pingClass, pingLabel, SortKey } from './utils';
+import { fetchServerList } from './api';
+import {
+  getAutoConnectLast,
+  getCachedServers,
+  getFavoriteServerIds,
+  getLastServerRef,
+  getLauncherApiEndpoint,
+  getLauncherDarkMode,
+  setAutoConnectLast,
+  setCachedServers,
+  setFavoriteServerIds,
+  setLastServerRef,
+  setLauncherApiEndpoint,
+  setLauncherDarkMode,
+} from './preferences';
 import './styles.scss';
 
 interface ServerEntry {
@@ -19,7 +34,63 @@ interface ServerEntry {
   passwordProtected?: boolean;
 }
 
-type SortKey = 'name' | 'players' | 'ping';
+type ServerSource = 'api' | 'cache' | 'demo';
+
+const demoServers: ServerEntry[] = [
+  {
+    id: 'demo-1',
+    name: 'SkyMP Main Server',
+    ip: '127.0.0.1',
+    port: 7777,
+    players: 42,
+    maxPlayers: 100,
+    ping: 24,
+    version: '1.0.0',
+    description: 'Official SkyMP server. PvE, crafting, economy.',
+    tags: ['pve', 'crafting', 'economy', 'eu'],
+    online: true,
+    passwordProtected: false
+  },
+  {
+    id: 'demo-2',
+    name: 'SkyMP PvP Arena',
+    ip: '127.0.0.1',
+    port: 7778,
+    players: 15,
+    maxPlayers: 50,
+    ping: 68,
+    version: '1.0.0',
+    description: 'Competitive PvP server with ranking system.',
+    tags: ['pvp', 'competitive', 'na'],
+    online: true,
+    passwordProtected: false
+  },
+  {
+    id: 'demo-3',
+    name: 'Roleplay Skyrim',
+    ip: '127.0.0.1',
+    port: 7779,
+    players: 8,
+    maxPlayers: 30,
+    ping: 145,
+    version: '1.0.0',
+    description: 'Immersive roleplay experience.',
+    tags: ['rp', 'immersive', 'eu'],
+    online: true,
+    passwordProtected: true
+  }
+];
+
+const resolveInitialTheme = (): boolean => {
+  const stored = getLauncherDarkMode();
+  if (stored !== null) return stored;
+
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  return true;
+};
 
 const ServerList = () => {
   const { t } = useTranslation();
@@ -31,71 +102,132 @@ const ServerList = () => {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('players');
   const [showFull, setShowFull] = useState(false);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [tagFilter, setTagFilter] = useState('');
   const [directIp, setDirectIp] = useState('');
   const [directPort, setDirectPort] = useState('');
+  const [favoriteIds, setFavoriteIdsState] = useState<string[]>(getFavoriteServerIds());
+  const [autoConnectLast, setAutoConnectLastState] = useState(getAutoConnectLast());
+  const [apiEndpointInput, setApiEndpointInput] = useState(getLauncherApiEndpoint());
+  const [apiEndpoint, setApiEndpoint] = useState(getLauncherApiEndpoint());
+  const [serverSource, setServerSource] = useState<ServerSource>('demo');
+  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [isDarkMode, setIsDarkMode] = useState(resolveInitialTheme());
+  const [didAutoConnect, setDidAutoConnect] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+  const availableTags = useMemo(() => collectServerTags(servers), [servers]);
+
+  useEffect(() => {
+    document.body.classList.toggle('skymp-theme-light', !isDarkMode);
+    document.body.classList.toggle('skymp-theme-dark', isDarkMode);
+    setLauncherDarkMode(isDarkMode);
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  const toggleFavorite = useCallback((serverId: string) => {
+    setFavoriteIdsState((prev) => {
+      const next = prev.includes(serverId)
+        ? prev.filter((id) => id !== serverId)
+        : [...prev, serverId];
+      setFavoriteServerIds(next);
+      return next;
+    });
+  }, []);
+
+  const connect = useCallback((server: ServerEntry) => {
+    setLastServerRef({ id: server.id, ip: server.ip, port: server.port });
+    window.dispatchEvent(
+      new CustomEvent('serverList:connect', {
+        detail: { ip: server.ip, port: server.port }
+      })
+    );
+    setVisible(false);
+  }, []);
+
+  const connectDirect = useCallback(() => {
+    const host = directIp.trim();
+    const port = parseInt(directPort.trim(), 10);
+    if (!isValidHostOrIp(host) || !isValidPort(port)) {
+      setError(t('serverList.invalidAddress'));
+      return;
+    }
+
+    setLastServerRef({ ip: host, port });
+    window.dispatchEvent(
+      new CustomEvent('serverList:connect', { detail: { ip: host, port } })
+    );
+    setVisible(false);
+  }, [directIp, directPort, t]);
 
   const fetchServers = useCallback(async () => {
     setLoading(true);
     setError('');
+
     try {
-      const res = await fetch('/api/servers');
-      if (!res.ok) throw new Error('api');
-      const data: ServerEntry[] = await res.json();
+      const data = await fetchServerList(apiEndpoint);
       setServers(data);
+      setCachedServers(data);
+      setServerSource('api');
+
+      if (!selected && data.length > 0) {
+        setSelected(data[0]);
+      }
     } catch {
-      // Fallback: demo data when no API available
-      setServers([
-        {
-          id: 'demo-1',
-          name: 'SkyMP Main Server',
-          ip: '127.0.0.1',
-          port: 7777,
-          players: 42,
-          maxPlayers: 100,
-          ping: 24,
-          version: '1.0.0',
-          description: 'Official SkyMP server. PvE, crafting, economy.',
-          tags: ['pve', 'crafting', 'economy'],
-          online: true,
-          passwordProtected: false
-        },
-        {
-          id: 'demo-2',
-          name: 'SkyMP PvP Arena',
-          ip: '127.0.0.1',
-          port: 7778,
-          players: 15,
-          maxPlayers: 50,
-          ping: 68,
-          version: '1.0.0',
-          description: 'Competitive PvP server with ranking system.',
-          tags: ['pvp', 'competitive'],
-          online: true,
-          passwordProtected: false
-        },
-        {
-          id: 'demo-3',
-          name: 'Roleplay Skyrim',
-          ip: '127.0.0.1',
-          port: 7779,
-          players: 8,
-          maxPlayers: 30,
-          ping: 145,
-          version: '1.0.0',
-          description: 'Immersive roleplay experience.',
-          tags: ['rp', 'immersive'],
-          online: true,
-          passwordProtected: true
-        }
-      ]);
+      const cached = getCachedServers();
+      if (cached.length > 0) {
+        setServers(cached);
+        setServerSource('cache');
+        setError(t('serverList.offlineCacheUsed'));
+        if (!selected) setSelected(cached[0]);
+      } else {
+        setServers(demoServers);
+        setServerSource('demo');
+        setError(t('serverList.offlineDemoUsed'));
+        if (!selected) setSelected(demoServers[0]);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiEndpoint, selected, t]);
+
+  const runAutoConnectIfNeeded = useCallback((serverList: ServerEntry[]) => {
+    if (!autoConnectLast || didAutoConnect) return;
+
+    const last = getLastServerRef();
+    if (!last) return;
+
+    const match = serverList.find((item) => (
+      (last.id && item.id === last.id)
+      || (item.ip === last.ip && item.port === last.port)
+    ));
+
+    if (match) {
+      setDidAutoConnect(true);
+      connect(match);
+    }
+  }, [autoConnectLast, connect, didAutoConnect]);
+
+  useEffect(() => {
+    if (servers.length > 0 && visible) {
+      runAutoConnectIfNeeded(servers);
+    }
+  }, [servers, visible, runAutoConnectIfNeeded]);
 
   const show = useCallback(async () => {
     setVisible(true);
+    setDidAutoConnect(false);
     await fetchServers();
     setTimeout(() => searchRef.current?.focus(), 100);
   }, [fetchServers]);
@@ -109,27 +241,18 @@ const ServerList = () => {
     setError('');
   }, []);
 
-  const connect = useCallback((server: ServerEntry) => {
-    window.dispatchEvent(
-      new CustomEvent('serverList:connect', {
-        detail: { ip: server.ip, port: server.port }
-      })
-    );
-    hide();
-  }, [hide]);
-
-  const connectDirect = () => {
-    const ip = directIp.trim();
-    const port = parseInt(directPort.trim(), 10);
-    if (!ip || !isValidPort(port)) {
-      setError(t('serverList.invalidAddress'));
+  const applyApiEndpoint = useCallback(() => {
+    const normalized = apiEndpointInput.trim();
+    if (!normalized) {
+      setError(t('serverList.invalidApiEndpoint'));
       return;
     }
-    window.dispatchEvent(
-      new CustomEvent('serverList:connect', { detail: { ip, port } })
-    );
-    hide();
-  };
+
+    setLauncherApiEndpoint(normalized);
+    setApiEndpoint(normalized);
+    setError('');
+    void fetchServers();
+  }, [apiEndpointInput, fetchServers, t]);
 
   useEffect(() => {
     const onShow = () => void show();
@@ -142,46 +265,89 @@ const ServerList = () => {
     };
   }, [show, hide]);
 
-  const filtered = servers
-    .filter((s) => {
-      if (!showFull && s.players >= s.maxPlayers) return false;
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return s.name.toLowerCase().includes(q) || s.ip.includes(q);
-    })
-    .sort((a, b) => {
-      if (sortKey === 'players') return b.players - a.players;
-      if (sortKey === 'ping') {
-        if (a.ping === null) return 1;
-        if (b.ping === null) return -1;
-        return a.ping - b.ping;
+  useEffect(() => {
+    if (!visible) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        hide();
       }
-      return a.name.localeCompare(b.name);
-    });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hide, visible]);
+
+  const filtered = getVisibleServers(servers, search, sortKey, showFull, {
+    favoriteIds: favoriteSet,
+    onlyFavorites,
+    requiredTag: tagFilter,
+  });
 
   if (!visible) return <></>;
 
   return (
-    <div className="server-overlay">
-      <div className="server-list">
-
-        {/* Header */}
+    <div className="server-overlay" role="dialog" aria-modal="true" aria-label={t('serverList.title')}>
+      <div className={`server-list ${isDarkMode ? 'server-list--dark' : 'server-list--light'}`}>
         <div className="server-list__header">
           <div className="server-list__header-text">
             <h1 className="server-list__title">{t('serverList.title')}</h1>
             <p className="server-list__subtitle">{t('serverList.subtitle')}</p>
           </div>
-          <FrameButton
-            name="closeServerList"
-            text={t('serverList.exit')}
-            variant="DEFAULT"
-            width={120}
-            height={44}
-            onClick={hide}
-          />
+          <div className="server-list__header-actions">
+            <button
+              type="button"
+              className="server-list__theme-btn"
+              onClick={() => setIsDarkMode((prev) => !prev)}
+              aria-label={t('serverList.toggleTheme')}
+            >
+              {isDarkMode ? t('serverList.themeLight') : t('serverList.themeDark')}
+            </button>
+            <FrameButton
+              name="closeServerList"
+              text={t('serverList.exit')}
+              variant="DEFAULT"
+              width={120}
+              height={44}
+              onClick={hide}
+            />
+          </div>
         </div>
 
-        {/* Controls */}
+        <div className="server-list__status-row" aria-live="polite" role="status">
+          <span className={`server-list__status-pill server-list__status-pill--${isOnline ? 'online' : 'offline'}`}>
+            {isOnline ? t('serverList.onlineStatus') : t('serverList.offlineStatus')}
+          </span>
+          <span className="server-list__status-pill">{t(`serverList.source_${serverSource}`)}</span>
+          <label className="server-list__auto-connect">
+            <input
+              type="checkbox"
+              checked={autoConnectLast}
+              onChange={(e) => {
+                const value = e.target.checked;
+                setAutoConnectLastState(value);
+                setAutoConnectLast(value);
+              }}
+            />
+            {t('serverList.autoConnectLast')}
+          </label>
+        </div>
+
+        <div className="server-list__api-row">
+          <input
+            className="server-list__api-input"
+            type="text"
+            value={apiEndpointInput}
+            onChange={(e) => setApiEndpointInput(e.target.value)}
+            placeholder={t('serverList.apiEndpointPlaceholder')}
+            aria-label={t('serverList.apiEndpoint')}
+          />
+          <button type="button" className="server-list__api-apply" onClick={applyApiEndpoint}>
+            {t('serverList.applyApiEndpoint')}
+          </button>
+        </div>
+
         <div className="server-list__controls">
           <input
             ref={searchRef}
@@ -190,19 +356,23 @@ const ServerList = () => {
             placeholder={t('serverList.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label={t('serverList.searchPlaceholder')}
           />
           <div className="server-list__sort">
             <span className="server-list__sort-label">{t('serverList.sortBy')}:</span>
             {(['players', 'ping', 'name'] as SortKey[]).map((key) => (
               <button
                 key={key}
+                type="button"
                 className={`server-list__sort-btn ${sortKey === key ? 'server-list__sort-btn--active' : ''}`}
                 onClick={() => setSortKey(key)}
+                aria-pressed={sortKey === key}
               >
                 {t(`serverList.sort_${key}`)}
               </button>
             ))}
           </div>
+
           <label className="server-list__filter-full">
             <input
               type="checkbox"
@@ -211,74 +381,115 @@ const ServerList = () => {
             />
             {t('serverList.showFull')}
           </label>
+
+          <label className="server-list__filter-full">
+            <input
+              type="checkbox"
+              checked={onlyFavorites}
+              onChange={(e) => setOnlyFavorites(e.target.checked)}
+            />
+            {t('serverList.onlyFavorites')}
+          </label>
+
+          <select
+            className="server-list__tag-filter"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            aria-label={t('serverList.filterByTag')}
+          >
+            <option value="">{t('serverList.allTags')}</option>
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
         </div>
 
-        {/* Server table */}
         <div className="server-list__main">
           <div className="server-list__table-wrap">
-            {loading && (
-              <div className="server-list__loading">{t('serverList.loading')}</div>
-            )}
-            {!loading && filtered.length === 0 && (
-              <div className="server-list__empty">{t('serverList.noServers')}</div>
-            )}
+            {loading && <div className="server-list__loading">{t('serverList.loading')}</div>}
+            {!loading && filtered.length === 0 && <div className="server-list__empty">{t('serverList.noServers')}</div>}
             {!loading && filtered.length > 0 && (
               <table className="server-list__table">
+                <caption className="server-list__sr-only">{t('serverList.title')}</caption>
                 <thead>
                   <tr>
-                    <th>{t('serverList.colName')}</th>
-                    <th>{t('serverList.colPlayers')}</th>
-                    <th>{t('serverList.colPing')}</th>
-                    <th>{t('serverList.colVersion')}</th>
-                    <th></th>
+                    <th scope="col">{t('serverList.colName')}</th>
+                    <th scope="col">{t('serverList.colPlayers')}</th>
+                    <th scope="col">{t('serverList.colPing')}</th>
+                    <th scope="col">{t('serverList.colVersion')}</th>
+                    <th scope="col">{t('serverList.connect')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((server) => (
-                    <tr
-                      key={server.id}
-                      className={`server-list__row ${selected?.id === server.id ? 'server-list__row--selected' : ''}`}
-                      onClick={() => setSelected(server)}
-                      onDoubleClick={() => connect(server)}
-                    >
-                      <td className="server-list__col-name">
-                        <span className={`server-list__dot ${server.online ? 'server-list__dot--online' : 'server-list__dot--offline'}`} />
-                        {server.passwordProtected && (
-                          <span className="server-list__lock" title={t('serverList.passwordProtected')}>🔒</span>
-                        )}
-                        <span className="server-list__name">{server.name}</span>
-                        {server.tags && server.tags.map((tag) => (
-                          <span key={tag} className="server-list__tag">{tag}</span>
-                        ))}
-                      </td>
-                      <td className="server-list__col-players">
-                        <span className={server.players >= server.maxPlayers ? 'server-list__players--full' : ''}>
-                          {server.players}
-                        </span>
-                        <span className="server-list__players-max">/{server.maxPlayers}</span>
-                      </td>
-                      <td>
-                        <span className={`server-list__ping ${pingClass(server.ping)}`}>
-                          {pingLabel(server.ping)}
-                        </span>
-                      </td>
-                      <td className="server-list__col-version">{server.version}</td>
-                      <td>
-                        <button
-                          className="server-list__connect-btn"
-                          onClick={(e) => { e.stopPropagation(); connect(server); }}
-                        >
-                          {t('serverList.connect')}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((server) => {
+                    const isFavorite = favoriteSet.has(server.id);
+                    return (
+                      <tr
+                        key={server.id}
+                        className={`server-list__row ${selected?.id === server.id ? 'server-list__row--selected' : ''}`}
+                        onClick={() => setSelected(server)}
+                        onDoubleClick={() => connect(server)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') connect(server);
+                          if (e.key.toLowerCase() === 'f') toggleFavorite(server.id);
+                        }}
+                        tabIndex={0}
+                        aria-selected={selected?.id === server.id}
+                        aria-label={`${server.name} ${server.players}/${server.maxPlayers}`}
+                      >
+                        <td className="server-list__col-name">
+                          <span className={`server-list__dot ${server.online ? 'server-list__dot--online' : 'server-list__dot--offline'}`} />
+                          {server.passwordProtected && (
+                            <span className="server-list__lock" title={t('serverList.passwordProtected')}>🔒</span>
+                          )}
+                          <span className="server-list__name">{server.name}</span>
+                          {server.tags && server.tags.map((tag) => (
+                            <span key={tag} className="server-list__tag">{tag}</span>
+                          ))}
+                        </td>
+                        <td className="server-list__col-players">
+                          <span className={server.players >= server.maxPlayers ? 'server-list__players--full' : ''}>
+                            {server.players}
+                          </span>
+                          <span className="server-list__players-max">/{server.maxPlayers}</span>
+                        </td>
+                        <td>
+                          <span className={`server-list__ping ${pingClass(server.ping)}`}>
+                            {pingLabel(server.ping)}
+                          </span>
+                        </td>
+                        <td className="server-list__col-version">{server.version}</td>
+                        <td className="server-list__actions-cell">
+                          <button
+                            type="button"
+                            className={`server-list__favorite-btn ${isFavorite ? 'server-list__favorite-btn--active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(server.id);
+                            }}
+                            aria-label={isFavorite ? t('serverList.removeFavorite') : t('serverList.addFavorite')}
+                          >
+                            {isFavorite ? '★' : '☆'}
+                          </button>
+                          <button
+                            type="button"
+                            className="server-list__connect-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              connect(server);
+                            }}
+                          >
+                            {t('serverList.connect')}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
           </div>
 
-          {/* Details panel */}
           {selected && (
             <div className="server-list__detail">
               <h3 className="server-list__detail-name">{selected.name}</h3>
@@ -311,7 +522,6 @@ const ServerList = () => {
           )}
         </div>
 
-        {/* Direct connect */}
         <div className="server-list__direct">
           <span className="server-list__direct-label">{t('serverList.directConnect')}:</span>
           <input
@@ -320,6 +530,7 @@ const ServerList = () => {
             placeholder={t('serverList.directIpPlaceholder')}
             value={directIp}
             onChange={(e) => setDirectIp(e.target.value)}
+            aria-label={t('serverList.directIpPlaceholder')}
           />
           <input
             className="server-list__direct-input server-list__direct-input--port"
@@ -329,13 +540,14 @@ const ServerList = () => {
             onChange={(e) => setDirectPort(e.target.value)}
             min={1}
             max={65535}
+            aria-label={t('serverList.directPortPlaceholder')}
           />
-          <button className="server-list__direct-btn" onClick={connectDirect}>
+          <button type="button" className="server-list__direct-btn" onClick={connectDirect}>
             {t('serverList.connect')}
           </button>
         </div>
 
-        {error && <div className="server-list__error">{error}</div>}
+        {error && <div className="server-list__error" role="alert">{error}</div>}
       </div>
     </div>
   );

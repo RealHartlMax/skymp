@@ -8,6 +8,7 @@ import { store } from './redux/store';
 import { Provider } from 'react-redux';
 
 import { Widgets } from './utils/Widgets';
+import { initPerformanceMonitoring } from './utils/performanceMonitoring';
 
 import './main.scss';
 
@@ -19,6 +20,8 @@ if (!window.skyrimPlatform) {
 if (!window.skyrimPlatform.widgets) {
   window.skyrimPlatform.widgets = new Widgets([]);
 }
+
+initPerformanceMonitoring();
 
 ReactDOM.render(
   <React.StrictMode>

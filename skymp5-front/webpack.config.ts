@@ -7,6 +7,10 @@ const distPath = path.isAbsolute(config.outputPath)
   ? config.outputPath
   : path.resolve(__dirname, config.outputPath);
 
+const devServerPort = Number(process.env.SKYMP_FRONT_PORT || config.devServerPort || 1234);
+const devServerHost = process.env.SKYMP_FRONT_HOST || config.devServerHost || '0.0.0.0';
+const devProxyTarget = process.env.SKYMP_FRONT_API_TARGET || config.devProxyTarget || 'http://127.0.0.1:7777';
+
 module.exports = {
   entry: path.resolve(__dirname, "src/index.js"),
   output: {
@@ -15,8 +19,24 @@ module.exports = {
   },
   mode: "development",
   devServer: {
-    port: 1234,
+    host: devServerHost,
+    port: devServerPort,
     hot: true,
+    allowedHosts: 'all',
+    historyApiFallback: true,
+    client: {
+      overlay: true,
+    },
+    static: {
+      directory: path.resolve(__dirname, 'public'),
+    },
+    proxy: {
+      '/api': {
+        target: devProxyTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   plugins: [
     new HtmlWebpackPlugin({

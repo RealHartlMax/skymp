@@ -31,6 +31,18 @@ $admin-line: #2c4552;
   flex-direction: column;
   gap: 24px;
 
+  &__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+    white-space: nowrap;
+  }
+
   &__header {
     display: flex;
     align-items: flex-start;
@@ -64,6 +76,32 @@ $admin-line: #2c4552;
     align-items: center;
     gap: 16px;
     flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  &__role {
+    border: 1px solid $admin-line;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: $admin-muted;
+
+    &--admin {
+      border-color: rgba($admin-accent, 0.6);
+      color: $admin-accent;
+    }
+
+    &--moderator {
+      border-color: rgba(#e07b40, 0.6);
+      color: #e07b40;
+    }
+
+    &--viewer {
+      border-color: rgba($admin-muted, 0.5);
+      color: $admin-muted;
+    }
   }
 
   &__updated {
@@ -209,6 +247,11 @@ $admin-line: #2c4552;
     &:active {
       transform: scale(0.97);
     }
+
+    &:focus-visible {
+      outline: 2px solid $admin-warn;
+      outline-offset: 2px;
+    }
   }
 
   &__status-msg {
@@ -216,5 +259,789 @@ $admin-line: #2c4552;
     color: $admin-muted;
     padding: 8px 0;
     border-top: 1px solid $admin-line;
+  }
+}
+
+.admin-dashboard {
+  // ---- Tab navigation ----
+    &__tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid $admin-line;
+      margin-bottom: 16px;
+    }
+
+    &__tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      color: $admin-muted;
+      font-size: 14px;
+      font-family: inherit;
+      padding: 8px 18px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+
+      &:hover {
+        color: $admin-text;
+      }
+
+      &--active {
+        color: $admin-accent;
+        border-bottom-color: $admin-accent;
+        font-weight: 600;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    // ---- Panels ----
+    &__panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    // ---- Overview ----
+    &__overview-info {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+
+    &__capabilities {
+      border: 1px solid $admin-line;
+      border-radius: 10px;
+      background: $admin-card;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    &__capabilities-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    &__capability-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid rgba($admin-line, 0.6);
+      border-radius: 7px;
+      padding: 6px 10px;
+      background: rgba($admin-bg, 0.24);
+    }
+
+    &__capability-label {
+      font-size: 13px;
+      color: $admin-text;
+    }
+
+    &__capability-state {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+
+      &.is-enabled {
+        color: $admin-accent;
+      }
+
+      &.is-disabled {
+        color: $admin-warn;
+      }
+    }
+
+    &__info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      gap: 12px;
+    }
+
+    &__info-key {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: $admin-muted;
+    }
+
+    &__info-val {
+      font-weight: 600;
+      color: $admin-text;
+    }
+
+    // ---- Player search ----
+    &__search-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    &__search-input {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-text;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      flex: 1;
+      transition: border-color 0.15s;
+
+      &::placeholder {
+        color: $admin-muted;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: $admin-accent;
+      }
+    }
+
+    // ---- Ban button ----
+    &__actions-cell {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    &__ban-btn {
+      background: rgba(#e07b40, 0.1);
+      border: 1px solid rgba(#e07b40, 0.35);
+      color: #e07b40;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+
+      &:hover {
+        background: rgba(#e07b40, 0.25);
+        border-color: #e07b40;
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      &:focus-visible {
+        outline: 2px solid #e07b40;
+        outline-offset: 2px;
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    }
+
+    &__no-match {
+      color: $admin-muted;
+      font-size: 14px;
+      padding: 16px 0;
+      margin: 0;
+    }
+
+    // ---- Ban list ----
+    &__bans-section {
+      border: 1px solid $admin-line;
+      border-radius: 10px;
+      background: $admin-card;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    &__section-subtitle {
+      margin: 0;
+      color: $admin-muted;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+
+    &__bans-empty {
+      margin: 0;
+      color: $admin-muted;
+      font-size: 13px;
+    }
+
+    &__bans-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    &__ban-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid rgba($admin-line, 0.7);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba($admin-bg, 0.25);
+    }
+
+    &__ban-user {
+      font-family: monospace;
+      font-size: 13px;
+      color: $admin-text;
+    }
+
+    &__unban-btn {
+      background: rgba($admin-accent, 0.1);
+      border: 1px solid rgba($admin-accent, 0.35);
+      color: $admin-accent;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+
+      &:hover {
+        background: rgba($admin-accent, 0.24);
+        border-color: $admin-accent;
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    // ---- Console ----
+    &__console-out {
+      background: #060e13;
+      border: 1px solid $admin-line;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: monospace;
+      font-size: 13px;
+      height: 260px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    &__console-line {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+
+      &--input { color: $admin-muted; }
+      &--ok    { color: $admin-accent; }
+      &--err   { color: $admin-warn; }
+    }
+
+    &__console-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    &__console-input {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-text;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: monospace;
+      flex: 1;
+      transition: border-color 0.15s;
+
+      &::placeholder { color: $admin-muted; }
+      &:focus { outline: none; border-color: $admin-accent; }
+      &:disabled { opacity: 0.5; }
+    }
+
+    &__console-send-btn {
+      background: rgba($admin-accent, 0.12);
+      border: 1px solid rgba($admin-accent, 0.4);
+      color: $admin-accent;
+      border-radius: 8px;
+      padding: 8px 20px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+
+      &:hover { background: rgba($admin-accent, 0.25); border-color: $admin-accent; }
+      &:active { transform: scale(0.97); }
+      &:disabled { opacity: 0.4; cursor: default; }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    &__console-note {
+      font-size: 11px;
+      color: $admin-muted;
+      margin: 0;
+      opacity: 0.7;
+
+      &--warn {
+        color: $admin-warn;
+      }
+    }
+
+    &__console-history {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border: 1px solid rgba($admin-line, 0.7);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba($admin-bg, 0.24);
+    }
+
+    &__console-history-label {
+      color: $admin-muted;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+
+    &__console-history-list {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    &__console-history-empty {
+      color: $admin-muted;
+      font-size: 12px;
+    }
+
+    &__console-history-item,
+    &__console-clear-btn {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-text;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: monospace;
+      transition: border-color 0.15s, color 0.15s;
+
+      &:hover {
+        border-color: $admin-accent;
+        color: $admin-accent;
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    &__console-clear-btn {
+      align-self: flex-start;
+      font-family: inherit;
+    }
+
+    // ---- Logs ----
+    &__log-tools {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 2px;
+    }
+
+    &__log-tool {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: $admin-muted;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    &__log-select {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-text;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: inherit;
+
+      &:focus {
+        outline: none;
+        border-color: $admin-accent;
+      }
+    }
+
+    &__log-filters {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    &__log-pagination {
+      display: flex;
+      gap: 8px;
+      margin-top: -2px;
+    }
+
+    &__log-page-btn {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-muted;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+
+      &:hover {
+        border-color: $admin-accent;
+        color: $admin-accent;
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    &__log-filter {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      border-radius: 6px;
+      color: $admin-muted;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: color 0.15s, border-color 0.15s;
+
+      &:hover { color: $admin-text; border-color: $admin-text; }
+
+      &--active {
+        border-color: $admin-accent;
+        color: $admin-accent;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
+    &__log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    &__log-entry {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      border-radius: 8px;
+      padding: 8px 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 13px;
+    }
+
+    &__log-ts {
+      color: $admin-muted;
+      font-size: 11px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+
+    &__log-type {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+
+      &--kick    { background: rgba($admin-warn, 0.15); color: $admin-warn; }
+      &--ban     { background: rgba(#e07b40, 0.15); color: #e07b40; }
+      &--console { background: rgba($admin-accent, 0.12); color: $admin-accent; }
+    }
+
+    &__log-msg {
+      color: $admin-text;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+
+    &__metrics-toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    &__metrics-input {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      color: $admin-text;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      flex: 1 1 240px;
+
+      &::placeholder {
+        color: $admin-muted;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: $admin-accent;
+      }
+    }
+
+    &__metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+
+      @media (max-width: 900px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      @media (max-width: 560px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    &__metric-card {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    &__metric-label {
+      color: $admin-muted;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    &__metric-value {
+      color: $admin-text;
+      font-size: 24px;
+      font-weight: 700;
+
+      &--warn {
+        color: $admin-warn;
+      }
+
+      &--small {
+        font-size: 16px;
+      }
+    }
+
+    &__metrics-groups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+
+      @media (max-width: 700px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    &__metric-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    &__metric-chip {
+      background: rgba($admin-accent, 0.1);
+      border: 1px solid rgba($admin-accent, 0.35);
+      color: $admin-accent;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    &__metrics-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    &__metrics-entry {
+      background: $admin-card;
+      border: 1px solid $admin-line;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    &__metrics-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    &__metrics-name {
+      color: $admin-text;
+      font-weight: 600;
+    }
+
+    &__metrics-source {
+      color: $admin-accent;
+      font-size: 12px;
+      border: 1px solid rgba($admin-accent, 0.35);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    &__metrics-value {
+      color: $admin-text;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    &__metrics-meta {
+      color: $admin-muted;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      word-break: break-word;
+    }
+}
+
+@media (max-width: 900px) {
+  .admin-dashboard {
+    padding: 20px 16px;
+    gap: 16px;
+
+    &__tabs {
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-bottom: 4px;
+    }
+
+    &__tab {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+    }
+
+    &__console-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    &__console-send-btn {
+      width: 100%;
+    }
+
+    &__metrics-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-overlay {
+    padding: 12px 8px;
+  }
+
+  .admin-dashboard {
+    border-radius: 10px;
+    padding: 14px 10px;
+
+    &__title {
+      font-size: 20px;
+    }
+
+    &__subtitle,
+    &__updated {
+      font-size: 12px;
+    }
+
+    &__header-meta {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    &__table {
+      font-size: 13px;
+
+      th,
+      td {
+        padding: 8px 10px;
+      }
+    }
+
+    &__actions-cell {
+      width: 100%;
+    }
+
+    &__kick-btn,
+    &__ban-btn,
+    &__unban-btn {
+      min-height: 32px;
+    }
   }
 }
