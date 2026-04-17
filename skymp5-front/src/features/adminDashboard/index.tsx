@@ -31,8 +31,14 @@ interface AdminPlayer {
 
 interface LogEntry {
   ts: number;
-  type: 'kick' | 'ban' | 'console';
+  type: 'kick' | 'ban' | 'mute' | 'console';
   message: string;
+}
+
+interface MutedUserEntry {
+  userId: number;
+  expiresAt: number;
+  remainingSec: number;
 }
 
 interface FrontendMetricEntry {
@@ -59,6 +65,9 @@ interface AdminCapabilities {
   canUnban: boolean;
   canConsole: boolean;
   canViewLogs: boolean;
+  canMessage: boolean;
+  canMute: boolean;
+  canUnmute: boolean;
 }
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
@@ -67,6 +76,9 @@ const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canUnban: true,
   canConsole: true,
   canViewLogs: true,
+  canMessage: true,
+  canMute: true,
+  canUnmute: true,
 };
 
 const EMPTY_FRONTEND_METRICS_SUMMARY: FrontendMetricsSummary = {
@@ -79,6 +91,19 @@ const EMPTY_FRONTEND_METRICS_SUMMARY: FrontendMetricsSummary = {
 };
 
 const REFRESH_INTERVAL_MS = 5000;
+const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
+
+interface PersistedAdminDashboardState {
+  activeTab?: Tab;
+  playerSearch?: string;
+  logTypeFilter?: '' | 'kick' | 'ban' | 'console';
+  logLimit?: number;
+  logSinceMinutes?: '' | '15' | '60' | '1440';
+  metricLimit?: number;
+  metricSourceFilter?: string;
+  metricNameFilter?: string;
+  consoleHistory?: string[];
+}
 
 const asRole = (value: unknown): AdminRole => {
   if (value === 'admin' || value === 'moderator' || value === 'viewer') return value;
@@ -92,6 +117,7 @@ const AdminDashboard = () => {
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [players, setPlayers] = useState<AdminPlayer[]>([]);
   const [bannedUserIds, setBannedUserIds] = useState<number[]>([]);
+  const [mutedUsers, setMutedUsers] = useState<MutedUserEntry[]>([]);
   const [adminRole, setAdminRole] = useState<AdminRole>('viewer');
   const [adminUser, setAdminUser] = useState('');
   const [capabilities, setCapabilities] = useState<AdminCapabilities>(DEFAULT_CAPABILITIES);
@@ -105,7 +131,7 @@ const AdminDashboard = () => {
   const [consoleHistoryIndex, setConsoleHistoryIndex] = useState<number | null>(null);
   const [consoleSending, setConsoleSending] = useState(false);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
-  const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'console'>('');
+  const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'mute' | 'console'>('');
   const [logLimit, setLogLimit] = useState(100);
   const [logSinceMinutes, setLogSinceMinutes] = useState<'' | '15' | '60' | '1440'>('');
   const [logBeforeTs, setLogBeforeTs] = useState<number | null>(null);
@@ -115,8 +141,62 @@ const AdminDashboard = () => {
   const [metricLimit, setMetricLimit] = useState(50);
   const [metricSourceFilter, setMetricSourceFilter] = useState('');
   const [metricNameFilter, setMetricNameFilter] = useState('');
+  const [sendMsgTargetId, setSendMsgTargetId] = useState<number | null>(null);
+  const [sendMsgTargetName, setSendMsgTargetName] = useState('');
+  const [sendMsgText, setSendMsgText] = useState('');
+  const [sendMsgSending, setSendMsgSending] = useState(false);
+  const [muteDurationMinutes, setMuteDurationMinutes] = useState(10);
+  const [moderationReason, setModerationReason] = useState('');
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ADMIN_DASHBOARD_STATE_KEY);
+      if (!raw) return;
+      const persisted = JSON.parse(raw) as PersistedAdminDashboardState;
+
+      if (persisted.activeTab && ['overview', 'players', 'console', 'logs', 'metrics'].includes(persisted.activeTab)) {
+        setActiveTab(persisted.activeTab);
+      }
+      if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
+      if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'console') {
+        setLogTypeFilter(persisted.logTypeFilter);
+      }
+      if (persisted.logLimit && [25, 50, 100, 200].includes(persisted.logLimit)) setLogLimit(persisted.logLimit);
+      if (persisted.logSinceMinutes === '' || persisted.logSinceMinutes === '15' || persisted.logSinceMinutes === '60' || persisted.logSinceMinutes === '1440') {
+        setLogSinceMinutes(persisted.logSinceMinutes);
+      }
+      if (persisted.metricLimit && [25, 50, 100, 200].includes(persisted.metricLimit)) setMetricLimit(persisted.metricLimit);
+      if (typeof persisted.metricSourceFilter === 'string') setMetricSourceFilter(persisted.metricSourceFilter);
+      if (typeof persisted.metricNameFilter === 'string') setMetricNameFilter(persisted.metricNameFilter);
+      if (Array.isArray(persisted.consoleHistory)) {
+        setConsoleHistory(persisted.consoleHistory.filter((entry) => typeof entry === 'string').slice(0, 30));
+      }
+    } catch {
+      // ignore persisted state parsing issues
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stateToPersist: PersistedAdminDashboardState = {
+        activeTab,
+        playerSearch,
+        logTypeFilter,
+        logLimit,
+        logSinceMinutes,
+        metricLimit,
+        metricSourceFilter,
+        metricNameFilter,
+        consoleHistory,
+      };
+      window.localStorage.setItem(ADMIN_DASHBOARD_STATE_KEY, JSON.stringify(stateToPersist));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [activeTab, consoleHistory, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
 
   const setForbiddenAwareStatus = useCallback((res: Response, successText: string) => {
     if (res.ok) {
@@ -168,6 +248,9 @@ const AdminDashboard = () => {
         canUnban: typeof payload?.canUnban === 'boolean' ? payload.canUnban : DEFAULT_CAPABILITIES.canUnban,
         canConsole: typeof payload?.canConsole === 'boolean' ? payload.canConsole : DEFAULT_CAPABILITIES.canConsole,
         canViewLogs: typeof payload?.canViewLogs === 'boolean' ? payload.canViewLogs : DEFAULT_CAPABILITIES.canViewLogs,
+        canMessage: typeof payload?.canMessage === 'boolean' ? payload.canMessage : DEFAULT_CAPABILITIES.canMessage,
+        canMute: typeof payload?.canMute === 'boolean' ? payload.canMute : DEFAULT_CAPABILITIES.canMute,
+        canUnmute: typeof payload?.canUnmute === 'boolean' ? payload.canUnmute : DEFAULT_CAPABILITIES.canUnmute,
       });
     } catch {
       // silently ignore
@@ -180,6 +263,18 @@ const AdminDashboard = () => {
       if (!res.ok) return;
       const bans = await res.json();
       setBannedUserIds(Array.isArray(bans) ? bans : []);
+    } catch {
+      // silently ignore
+    }
+  }, []);
+
+  const fetchMutes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/mutes');
+      if (!res.ok) return;
+      const mutes = await res.json();
+      const parsed = Array.isArray(mutes) ? mutes as MutedUserEntry[] : [];
+      setMutedUsers(parsed);
     } catch {
       // silently ignore
     }
@@ -282,6 +377,58 @@ const AdminDashboard = () => {
     }
   };
 
+  const sendMessageToPlayer = async () => {
+    if (sendMsgTargetId === null || !capabilities.canMessage) return;
+    const text = sendMsgText.trim();
+    const reason = moderationReason.trim();
+    if (!text) return;
+    setSendMsgSending(true);
+    try {
+      const res = await fetch(`/api/admin/players/${sendMsgTargetId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { message: text, reason } : { message: text }),
+      });
+      setForbiddenAwareStatus(res, t('adminDashboard.messageSent'));
+      if (res.ok) {
+        setSendMsgTargetId(null);
+        setSendMsgText('');
+        setModerationReason('');
+      }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setSendMsgSending(false);
+    }
+  };
+
+  const mutePlayer = async (userId: number) => {
+    if (!capabilities.canMute) return;
+    const reason = moderationReason.trim();
+    try {
+      const res = await fetch(`/api/admin/players/${userId}/mute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { durationMinutes: muteDurationMinutes, reason } : { durationMinutes: muteDurationMinutes }),
+      });
+      setForbiddenAwareStatus(res, `${t('adminDashboard.muted')}: ${userId}`);
+      if (res.ok) await fetchMutes();
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    }
+  };
+
+  const unmutePlayer = async (userId: number) => {
+    if (!window.confirm(`${t('adminDashboard.unmuteConfirm')} userId=${userId}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/players/${userId}/mute`, { method: 'DELETE' });
+      setForbiddenAwareStatus(res, `${t('adminDashboard.unmuted')}: ${userId}`);
+      if (res.ok) await fetchMutes();
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    }
+  };
+
   const sendConsoleCommand = async () => {
     if (!capabilities.canConsole) return;
 
@@ -373,8 +520,8 @@ const AdminDashboard = () => {
     setStatus(null);
     setPlayers([]);
     setBannedUserIds([]);
+    setMutedUsers([]);
     setStatusMsg('');
-    setActiveTab('overview');
     setConsoleLines([]);
     setConsoleHistoryIndex(null);
     setLogEntries([]);
@@ -382,6 +529,9 @@ const AdminDashboard = () => {
     setLogHasMore(false);
     setMetricEntries([]);
     setMetricSummary(EMPTY_FRONTEND_METRICS_SUMMARY);
+    setSendMsgTargetId(null);
+    setSendMsgText('');
+    setModerationReason('');
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -430,15 +580,42 @@ const AdminDashboard = () => {
   }, [logTypeFilter, logLimit, logSinceMinutes]);
 
   useEffect(() => {
-    if (activeTab === 'players' && (capabilities.canBan || capabilities.canUnban)) {
+    if (activeTab === 'players' && (capabilities.canBan || capabilities.canUnban || capabilities.canMute || capabilities.canUnmute)) {
       void fetchBans();
+      void fetchMutes();
     }
-  }, [activeTab, capabilities.canBan, capabilities.canUnban, fetchBans]);
+  }, [activeTab, capabilities.canBan, capabilities.canMute, capabilities.canUnban, capabilities.canUnmute, fetchBans, fetchMutes]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'players' || !(capabilities.canMute || capabilities.canUnmute)) return;
+    const id = setInterval(() => {
+      void fetchMutes();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [activeTab, capabilities.canMute, capabilities.canUnmute, fetchMutes, visible]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'players' || mutedUsers.length === 0) return;
+    const id = setInterval(() => {
+      setNowTs(Date.now());
+    }, 1000);
+    return () => clearInterval(id);
+  }, [activeTab, mutedUsers.length, visible]);
 
   const metricSourceOptions = useMemo(() => metricSummary.sources.map((item) => item.name), [metricSummary.sources]);
 
   const filteredPlayers = filterAdminPlayers(players, playerSearch);
   const oldestLogTs = logEntries.length > 0 ? logEntries[logEntries.length - 1].ts : null;
+  const activeMutedUsers = useMemo(
+    () => mutedUsers
+      .filter((entry) => entry.expiresAt > nowTs)
+      .sort((left, right) => left.expiresAt - right.expiresAt),
+    [mutedUsers, nowTs],
+  );
+  const activeMuteByUserId = useMemo(
+    () => new Map(activeMutedUsers.map((entry) => [entry.userId, entry] as const)),
+    [activeMutedUsers],
+  );
 
   const openOlderLogs = () => {
     if (!oldestLogTs) return;
@@ -447,6 +624,26 @@ const AdminDashboard = () => {
 
   const openRecentLogs = () => {
     setLogBeforeTs(null);
+  };
+
+  const resetDashboardPreferences = () => {
+    setActiveTab('overview');
+    setPlayerSearch('');
+    setLogTypeFilter('');
+    setLogLimit(100);
+    setLogSinceMinutes('');
+    setLogBeforeTs(null);
+    setMetricLimit(50);
+    setMetricSourceFilter('');
+    setMetricNameFilter('');
+    setConsoleHistory([]);
+    setConsoleHistoryIndex(null);
+    setStatusMsg(t('adminDashboard.preferencesReset'));
+    try {
+      window.localStorage.removeItem(ADMIN_DASHBOARD_STATE_KEY);
+    } catch {
+      // ignore storage remove failures
+    }
   };
 
   const tabs: Array<{ key: Tab; label: string }> = [
@@ -463,6 +660,9 @@ const AdminDashboard = () => {
     { key: 'canUnban', label: t('adminDashboard.capability_unban') },
     { key: 'canConsole', label: t('adminDashboard.capability_console') },
     { key: 'canViewLogs', label: t('adminDashboard.capability_logs') },
+    { key: 'canMessage', label: t('adminDashboard.capability_message') },
+    { key: 'canMute', label: t('adminDashboard.capability_mute') },
+    { key: 'canUnmute', label: t('adminDashboard.capability_unmute') },
   ];
 
   if (!visible) return <></>;
@@ -517,6 +717,7 @@ const AdminDashboard = () => {
                   key={key}
                   type="button"
                   id={`admin-tab-${key}`}
+                  data-testid={`admin-tab-${key}`}
                   role="tab"
                   aria-selected={activeTab === key}
                   aria-controls={`admin-panel-${key}`}
@@ -526,6 +727,13 @@ const AdminDashboard = () => {
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                className="admin-dashboard__prefs-reset-btn"
+                onClick={resetDashboardPreferences}
+              >
+                {t('adminDashboard.resetView')}
+              </button>
             </div>
 
             {activeTab === 'overview' && status && (
@@ -566,7 +774,7 @@ const AdminDashboard = () => {
             )}
 
             {activeTab === 'players' && (
-              <div className="admin-dashboard__panel" id="admin-panel-players" role="tabpanel" aria-labelledby="admin-tab-players">
+              <div className="admin-dashboard__panel" id="admin-panel-players" data-testid="admin-panel-players" role="tabpanel" aria-labelledby="admin-tab-players">
                 <div className="admin-dashboard__search-row">
                   <input
                     className="admin-dashboard__search-input"
@@ -576,6 +784,29 @@ const AdminDashboard = () => {
                     value={playerSearch}
                     onChange={(e) => setPlayerSearch(e.target.value)}
                   />
+                  <input
+                    className="admin-dashboard__search-input admin-dashboard__search-input--reason"
+                    data-testid="admin-reason-input"
+                    type="text"
+                    placeholder={t('adminDashboard.reasonPlaceholder')}
+                    aria-label={t('adminDashboard.reasonLabel')}
+                    value={moderationReason}
+                    onChange={(e) => setModerationReason(e.target.value)}
+                  />
+                  <label className="admin-dashboard__mute-duration">
+                    <span>{t('adminDashboard.muteDuration')}</span>
+                    <select
+                      className="admin-dashboard__log-select"
+                      data-testid="admin-mute-duration-select"
+                      value={muteDurationMinutes}
+                      onChange={(e) => setMuteDurationMinutes(Number(e.target.value))}
+                      aria-label={t('adminDashboard.muteDuration')}
+                    >
+                      {[5, 10, 15, 30, 60, 180, 720].map((value) => (
+                        <option key={value} value={value}>{value}m</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 {filteredPlayers.length === 0 ? (
@@ -583,7 +814,7 @@ const AdminDashboard = () => {
                     {players.length === 0 ? t('adminDashboard.noPlayers') : t('adminDashboard.noMatch')}
                   </p>
                 ) : (
-                  <div className="admin-dashboard__table-wrapper">
+                  <div className="admin-dashboard__table-wrapper" data-testid="admin-players-table">
                     <table className="admin-dashboard__table">
                       <caption className="admin-dashboard__sr-only">{t('adminDashboard.tabPlayers')}</caption>
                       <thead>
@@ -597,11 +828,21 @@ const AdminDashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredPlayers.map((player) => (
-                          <tr key={player.userId}>
+                        {filteredPlayers.map((player) => {
+                          const muteEntry = activeMuteByUserId.get(player.userId);
+                          const remainingSec = muteEntry ? Math.max(0, Math.floor((muteEntry.expiresAt - nowTs) / 1000)) : 0;
+                          return (
+                          <tr key={player.userId} data-testid={`admin-player-row-${player.userId}`}>
                             <td>{player.userId}</td>
                             <td>{player.actorId || '-'}</td>
-                            <td>{player.actorName || '-'}</td>
+                            <td>
+                              <span>{player.actorName || '-'}</span>
+                              {muteEntry && (
+                                <span className="admin-dashboard__muted-badge" data-testid={`admin-muted-badge-${player.userId}`} title={t('adminDashboard.muted')}>
+                                  {t('adminDashboard.muted')}: {formatAdminUptime(remainingSec)}
+                                </span>
+                              )}
+                            </td>
                             <td>{player.ip}</td>
                             <td className="admin-dashboard__pos">{formatAdminPos(player.pos)}</td>
                             <td className="admin-dashboard__actions-cell">
@@ -623,9 +864,34 @@ const AdminDashboard = () => {
                               >
                                 {t('adminDashboard.ban')}
                               </button>
+                              <button
+                                type="button"
+                                className="admin-dashboard__mute-btn"
+                                data-testid={`admin-mute-btn-${player.userId}`}
+                                onClick={() => mutePlayer(player.userId)}
+                                disabled={!capabilities.canMute}
+                                title={!capabilities.canMute ? t('adminDashboard.noPermission') : undefined}
+                              >
+                                {t('adminDashboard.mute')}
+                              </button>
+                                <button
+                                  type="button"
+                                  className="admin-dashboard__msg-btn"
+                                  data-testid={`admin-msg-btn-${player.userId}`}
+                                  onClick={() => {
+                                    setSendMsgTargetId(player.userId);
+                                    setSendMsgTargetName(player.actorName || String(player.userId));
+                                    setSendMsgText('');
+                                    setStatusMsg('');
+                                  }}
+                                  disabled={!capabilities.canMessage}
+                                  title={!capabilities.canMessage ? t('adminDashboard.noPermission') : undefined}
+                                >
+                                  {t('adminDashboard.messageBtn')}
+                                </button>
                             </td>
                           </tr>
-                        ))}
+                        )})}
                       </tbody>
                     </table>
                   </div>
@@ -657,10 +923,80 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
-                {statusMsg && <div className="admin-dashboard__status-msg" role="status" aria-live="polite">{statusMsg}</div>}
+                {(capabilities.canMute || capabilities.canUnmute) && (
+                  <div className="admin-dashboard__bans-section" data-testid="admin-muted-users-section">
+                    <h3 className="admin-dashboard__section-subtitle">{t('adminDashboard.mutedUsers')}</h3>
+                    {activeMutedUsers.length === 0 ? (
+                      <p className="admin-dashboard__bans-empty">{t('adminDashboard.noMutes')}</p>
+                    ) : (
+                      <div className="admin-dashboard__bans-list">
+                        {activeMutedUsers.map((entry) => (
+                          <div key={entry.userId} className="admin-dashboard__ban-row" data-testid={`admin-muted-row-${entry.userId}`}>
+                            <span className="admin-dashboard__ban-user">
+                              userId: {entry.userId} • {t('adminDashboard.muteRemaining')}: {formatAdminUptime(Math.max(0, Math.floor((entry.expiresAt - nowTs) / 1000)))}
+                            </span>
+                            <button
+                              type="button"
+                              className="admin-dashboard__unban-btn"
+                              data-testid={`admin-unmute-btn-${entry.userId}`}
+                              onClick={() => unmutePlayer(entry.userId)}
+                              disabled={!capabilities.canUnmute}
+                              title={!capabilities.canUnmute ? t('adminDashboard.noPermission') : undefined}
+                            >
+                              {t('adminDashboard.unmute')}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {statusMsg && <div className="admin-dashboard__status-msg" data-testid="admin-status-msg" role="status" aria-live="polite">{statusMsg}</div>}
               </div>
             )}
 
+            {activeTab === 'players' && sendMsgTargetId !== null && (
+              <div className="admin-dashboard__msg-form" data-testid="admin-message-form">
+                <h3 className="admin-dashboard__section-subtitle">
+                  {t('adminDashboard.sendMessageTitle')}: {sendMsgTargetName}
+                </h3>
+                <div className="admin-dashboard__msg-row">
+                  <input
+                    className="admin-dashboard__msg-input"
+                    data-testid="admin-message-input"
+                    type="text"
+                    placeholder={t('adminDashboard.messagePlaceholder')}
+                    aria-label={t('adminDashboard.messagePlaceholder')}
+                    value={sendMsgText}
+                    onChange={(e) => setSendMsgText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void sendMessageToPlayer();
+                      if (e.key === 'Escape') { setSendMsgTargetId(null); setSendMsgText(''); }
+                    }}
+                    disabled={sendMsgSending}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="admin-dashboard__msg-send-btn"
+                    data-testid="admin-message-send-btn"
+                    onClick={() => void sendMessageToPlayer()}
+                    disabled={sendMsgSending || !sendMsgText.trim()}
+                  >
+                    {t('adminDashboard.messageSend')}
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-dashboard__msg-cancel-btn"
+                    data-testid="admin-message-cancel-btn"
+                    onClick={() => { setSendMsgTargetId(null); setSendMsgText(''); }}
+                  >
+                    {t('adminDashboard.messageCancel')}
+                  </button>
+                </div>
+              </div>
+            )}
             {activeTab === 'console' && (
               <div className="admin-dashboard__panel" id="admin-panel-console" role="tabpanel" aria-labelledby="admin-tab-console">
                 <div className="admin-dashboard__console-out" role="log" aria-live="polite" aria-relevant="additions text">
@@ -695,6 +1031,14 @@ const AdminDashboard = () => {
 
                 <div className="admin-dashboard__console-history">
                   <span className="admin-dashboard__console-history-label">{t('adminDashboard.consoleHistory')}</span>
+                  <button
+                    type="button"
+                    className="admin-dashboard__console-clear-btn"
+                    onClick={() => setConsoleLines([])}
+                    disabled={consoleLines.length === 0}
+                  >
+                    {t('adminDashboard.consoleClearOutput')}
+                  </button>
                   <div className="admin-dashboard__console-history-list">
                     {consoleHistory.length === 0 ? (
                       <span className="admin-dashboard__console-history-empty">{t('adminDashboard.consoleHistoryEmpty')}</span>
@@ -774,7 +1118,7 @@ const AdminDashboard = () => {
                     </div>
 
                     <div className="admin-dashboard__log-filters">
-                      {(['', 'kick', 'ban', 'console'] as const).map((type) => (
+                      {(['', 'kick', 'ban', 'mute', 'console'] as const).map((type) => (
                         <button
                           key={type}
                           type="button"

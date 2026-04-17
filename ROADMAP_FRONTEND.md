@@ -15,9 +15,9 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | *Launcher Server List* | ✅ Done | Server browser UI with search/sort, details panel, direct connect, connect event dispatch |
 | *Unit Tests Setup* | ✅ Done | Dependency-free Node + ts-node unit test runner integrated into npm test pipeline |
 | **IN PROGRESS:** | **Currently being worked on.** | |
-| *Admin Dashboard Features* | 🔄 In Progress | Tabs (overview/players/console/logs), player search, ban action, console command sender, and filtered activity log are implemented; persistence and moderation extensions still pending |
-| *Dev Server Setup* | 🔄 In Progress | Webpack DevServer binds to all interfaces, proxies `/api`, supports browser/LAN usage, and documents dev-only overlay entry points via `?devUi=1` |
-| *Launcher Features* | 🔄 In Progress | Favorites, tag filters, auto-connect last server, API endpoint override, source status, cached/demo offline fallback, direct connect validation, and launcher theme toggle are implemented |
+| *Admin Dashboard Features* | 🔄 In Progress | Tabs (overview/players/console/logs/metrics), player search, ban/unban, mute/unmute with countdown badges, send-message-to-player flow, console command sender, clear console output, filtered activity log, and ban/mute file persistence are implemented; richer moderation workflows (kick+reason, timed ban) still pending |
+| *Dev Server Setup* | 🔄 In Progress | Webpack DevServer binds to all interfaces, proxies `/api`, supports browser/LAN usage, documents dev-only overlay entry points via `?devUi=1`, and now shows an in-browser dev mode indicator banner |
+| *Launcher Features* | 🔄 In Progress | Favorites, tag filters, auto-connect last server, API endpoint override, source status, cached/demo offline fallback, direct connect validation, launcher theme toggle, and selected-server version mismatch warning are implemented |
 | *E2E Testing* | 🔄 In Progress | Playwright flow script now covers launcher server selection and admin metrics with mocked APIs and passes against the webpack dev server in browser-only `?devUi=1` mode |
 | *API Integration Tests* | ✅ Done | `scripts/test-api-integration.js` validates server list endpoint normalization and API error/payload handling |
 | *Performance Monitoring* | 🔄 In Progress | Frontend performance/error buffering posts to `/api/frontend/metrics`; admin metrics tab exposes summaries and recent entries; browser-only dev mode suppresses noisy posts unless an explicit metrics endpoint is configured |
@@ -41,7 +41,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | *Integration Tests* | 📋 Planned | Test component composition, context providers, state management |
 | *Snapshot Tests* | 📋 Planned | Detect unintended UI changes |
 | *Coverage Reporting* | 📋 Planned | Minimum 70% coverage; CI integration |
-| *E2E Tests (Playwright)* | 🔄 In Progress | Mock-driven launcher selection and admin metrics coverage exist in `scripts/test-e2e-smoke.js`; the installed Playwright smoke flow now passes against the live webpack dev server |
+| *E2E Tests (Playwright)* | 🔄 In Progress | Mock-driven launcher selection, admin metrics API checks, and admin moderation API flow coverage (mute/unmute + message with optional reason) exist in `scripts/test-e2e-smoke.js`; the smoke flow also validates AdminDashboard test hooks and message-form open/cancel lifecycle, and passes against the live webpack dev server |
 | *Visual Regression Tests* | 📋 Planned | Detect UI regressions across different screen sizes |
 | *Accessibility Tests* | 📋 Planned | axe-core integration for a11y compliance |
 
@@ -72,15 +72,15 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Component | Status | Details |
 | --- | --- | --- |
 | **DONE:** | **Fully implemented and tested.** | |
-| *Backend Routes* | ✅ Done | `/admin`, `/api/admin/status`, `/api/admin/players`, kick/ban/unban, console command endpoint, and logs endpoint; language support |
+| *Backend Routes* | ✅ Done | `/admin`, `/api/admin/status`, `/api/admin/players`, kick/ban/unban, `POST/DELETE /api/admin/players/:id/mute`, `GET /api/admin/mutes`, `POST /api/admin/players/:id/message`, console command endpoint, and logs endpoint; file-persisted ban/mute lists, language support |
 | *Dashboard Layout* | ✅ Done | Main overlay with stats cards, tab navigation, and dedicated panels for overview/players/console/logs |
 | *Server Stats Panel* | ✅ Done | Online players, max players, uptime, tick counters, API status |
 | *Player List View* | ✅ Done | Live player table with id/name/level/location and selection state |
 | *Player Management* | ✅ Done (Kick) | Kick action integrated (`POST /api/admin/players/:id/kick`) |
 | **IN PROGRESS:** | **Currently being worked on.** | |
 | *Advanced Admin Panels* | 🔄 In Progress | Console, deep configuration editor, richer telemetry and moderation tools; frontend metrics tab is now included |
-| *Player Management Extensions* | 🔄 In Progress | Ban/unban actions are wired (`POST/DELETE /api/admin/players/:id/ban`); send-message flow still pending |
-| *Console Panel* | 🔄 In Progress | Command input, result/error feedback, and client-side command history are implemented via `/api/admin/console`; richer persistence and audit features are still pending |
+| *Player Management Extensions* | ✅ Done | Ban/unban, mute/unmute with duration (`POST/DELETE /api/admin/players/:id/mute`), muted-player countdown badges in the table, send-message-to-player (`POST /api/admin/players/:id/message`), optional moderation reason for audit logs, and file-persisted ban/mute lists (`data/admin-bans.json` + `data/admin-mutes.json`) are all implemented; richer moderation workflows (kick+reason, timed ban) remain planned |
+| *Console Panel* | 🔄 In Progress | Command input, result/error feedback, clear-output action, reset-to-defaults action, and client-side command history are implemented via `/api/admin/console`; dashboard tab/filter/search/history preferences now persist locally, while richer audit features are still pending |
 | *Event Log* | 🔄 In Progress | Type filter, page size, time-window filter, and older/recent pagination are implemented via `/api/admin/logs`; richer audit fields pending |
 | *User Permissions* | 🔄 In Progress | Role capability model (`admin/moderator/viewer`) is exposed via `/api/admin/capabilities`, enforced server-side on sensitive admin endpoints, and displayed in dashboard UI; full RBAC policy editor/audit model is still pending |
 | *Search & Filter* | ✅ Done (Basic) | Player search by id/name/ip and log type filters are implemented |
@@ -108,7 +108,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | **TODO:** | **Planned features.** | |
 | *Player Stats Display* | 📋 Planned | Character progression, playtime, achievements |
 | *Notifications* | 📋 Planned | Server updates, friend invites, patch notes |
-| *Update Checker* | 📋 Planned | Auto-update launcher, version mismatch warnings |
+| *Update Checker* | 🔄 In Progress | Version mismatch warning is shown in launcher server details; full auto-update and release-channel flow still pending |
 
 ## Known Issues & Improvements
 

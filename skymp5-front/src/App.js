@@ -126,6 +126,27 @@ class App extends React.Component {
     if (this.state.isLoggined) {
       return (
         <div className={`App ${!window.hasOwnProperty('skyrimPlatform') ? 'bg' : ''}`}>
+          {this.state.isDevUiMode && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 8,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 1200,
+                background: 'rgba(14, 32, 40, 0.94)',
+                border: '1px solid rgba(84, 200, 152, 0.55)',
+                color: '#d8fff0',
+                padding: '8px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontFamily: 'Segoe UI, Tahoma, sans-serif',
+                letterSpacing: '0.03em'
+              }}
+            >
+              Dev Mode | ?devOverlay=serverList | ?devOverlay=admin | ?devOverlay=serverList,admin
+            </div>
+          )}
           {!this.state.isDevUiMode && <AnimList />}
           {!this.state.isDevUiMode && <Chat />}
           {!this.state.isDevUiMode && <SkillsMenu />}

@@ -19,6 +19,8 @@ import {
 } from './preferences';
 import './styles.scss';
 
+const CLIENT_VERSION = '1.0.0';
+
 interface ServerEntry {
   id: string;
   name: string;
@@ -115,6 +117,8 @@ const ServerList = () => {
   const [isDarkMode, setIsDarkMode] = useState(resolveInitialTheme());
   const [didAutoConnect, setDidAutoConnect] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [updateBannerVersion, setUpdateBannerVersion] = useState<string | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
   const availableTags = useMemo(() => collectServerTags(servers), [servers]);
@@ -228,6 +232,9 @@ const ServerList = () => {
   const show = useCallback(async () => {
     setVisible(true);
     setDidAutoConnect(false);
+    setUpdateBannerVersion(null);
+    setUpdateDismissed(false);
+    void checkForUpdate();
     await fetchServers();
     setTimeout(() => searchRef.current?.focus(), 100);
   }, [fetchServers]);
@@ -240,6 +247,25 @@ const ServerList = () => {
     setDirectPort('');
     setError('');
   }, []);
+
+  const checkForUpdate = useCallback(async () => {
+    try {
+      const res = await fetch('/api/update/latest');
+      if (!res.ok) return;
+      const data = await res.json() as { version?: string };
+      if (data?.version && data.version !== CLIENT_VERSION) {
+        setUpdateBannerVersion(data.version);
+      }
+    } catch {
+      // ignore — graceful degradation
+    }
+  }, []);
+
+  const versionMismatch =
+    selected !== null &&
+    selected.version &&
+    selected.version !== CLIENT_VERSION &&
+    selected.version !== '0.0.0';
 
   const applyApiEndpoint = useCallback(() => {
     const normalized = apiEndpointInput.trim();
@@ -510,6 +536,11 @@ const ServerList = () => {
               {selected.description && (
                 <p className="server-list__detail-desc">{selected.description}</p>
               )}
+              {versionMismatch && (
+                <div className="server-list__version-warn" role="alert">
+                  ⚠ {t('serverList.versionMismatch')}
+                </div>
+              )}
               <FrameButton
                 name="connectSelected"
                 text={t('serverList.connect')}
@@ -549,6 +580,18 @@ const ServerList = () => {
 
         {error && <div className="server-list__error" role="alert">{error}</div>}
       </div>
+      {!updateDismissed && updateBannerVersion && (
+        <div className="server-list__update-banner" role="status">
+          <span>{t('serverList.updateAvailable', { version: updateBannerVersion })}</span>
+          <button
+            type="button"
+            className="server-list__update-dismiss"
+            onClick={() => setUpdateDismissed(true)}
+          >
+            {t('serverList.updateDismiss')}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

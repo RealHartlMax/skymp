@@ -271,6 +271,31 @@ $admin-line: #2c4552;
       margin-bottom: 16px;
     }
 
+    &__prefs-reset-btn {
+      margin-left: auto;
+      align-self: center;
+      background: rgba($admin-line, 0.2);
+      border: 1px solid $admin-line;
+      color: $admin-muted;
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+
+      &:hover {
+        color: $admin-text;
+        border-color: $admin-accent;
+        background: rgba($admin-accent, 0.1);
+      }
+
+      &:focus-visible {
+        outline: 2px solid $admin-accent;
+        outline-offset: 2px;
+      }
+    }
+
     &__tab {
       background: none;
       border: none;
@@ -390,6 +415,15 @@ $admin-line: #2c4552;
       gap: 8px;
     }
 
+    &__mute-duration {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: $admin-muted;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
     &__search-input {
       background: $admin-card;
       border: 1px solid $admin-line;
@@ -409,6 +443,25 @@ $admin-line: #2c4552;
         outline: none;
         border-color: $admin-accent;
       }
+
+      &--reason {
+        flex: 0 0 240px;
+      }
+    }
+
+    &__muted-badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid rgba(#c9a34c, 0.45);
+      background: rgba(#c9a34c, 0.16);
+      color: #e3cc93;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+      white-space: nowrap;
     }
 
     // ---- Ban button ----
@@ -454,11 +507,117 @@ $admin-line: #2c4552;
       }
     }
 
+    &__mute-btn {
+      background: rgba(#c9a34c, 0.1);
+      border: 1px solid rgba(#c9a34c, 0.35);
+      color: #d9bf78;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+
+      &:hover {
+        background: rgba(#c9a34c, 0.24);
+        border-color: #d9bf78;
+      }
+
+      &:active {
+        transform: scale(0.97);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      &:focus-visible {
+        outline: 2px solid #d9bf78;
+        outline-offset: 2px;
+      }
+    }
+
     &__no-match {
       color: $admin-muted;
       font-size: 14px;
       padding: 16px 0;
       margin: 0;
+    }
+
+    &__msg-btn {
+      background: rgba($admin-accent, 0.1);
+      border: 1px solid rgba($admin-accent, 0.35);
+      color: $admin-accent;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+
+      &:hover { background: rgba($admin-accent, 0.22); border-color: $admin-accent; }
+      &:active { transform: scale(0.97); }
+      &:disabled { opacity: 0.45; cursor: default; }
+      &:focus-visible { outline: 2px solid $admin-accent; outline-offset: 2px; }
+    }
+
+    &__msg-form {
+      border: 1px solid $admin-accent;
+      border-radius: 10px;
+      background: rgba($admin-accent, 0.06);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    &__msg-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    &__msg-input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid $admin-line;
+      border-radius: 6px;
+      color: $admin-text;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 7px 12px;
+
+      &:focus { outline: 2px solid $admin-accent; border-color: $admin-accent; }
+      &::placeholder { color: $admin-muted; }
+    }
+
+    &__msg-send-btn {
+      background: $admin-accent;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      padding: 7px 16px;
+      cursor: pointer;
+      font-family: inherit;
+
+      &:disabled { opacity: 0.5; cursor: default; }
+      &:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    }
+
+    &__msg-cancel-btn {
+      background: transparent;
+      border: 1px solid $admin-line;
+      border-radius: 6px;
+      color: $admin-muted;
+      font-size: 13px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-family: inherit;
+
+      &:hover { border-color: $admin-muted; }
+      &:focus-visible { outline: 2px solid $admin-muted; outline-offset: 2px; }
     }
 
     // ---- Ban list ----

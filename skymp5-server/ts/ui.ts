@@ -5,6 +5,8 @@ const Router = require("koa-router");
 const auth = require("koa-basic-auth");
 import * as koaBody from "koa-body";
 import * as http from "http";
+import * as fs from "fs";
+import * as path from "path";
 import { Settings } from "./settings";
 import Axios from "axios";
 import { AddressInfo } from "net";
@@ -18,7 +20,7 @@ const processStartedAt = Date.now();
 // ---------------------------------------------------------------------------
 // Admin event log (in-memory, capped at MAX_ADMIN_LOG entries)
 // ---------------------------------------------------------------------------
-interface AdminLogEntry { ts: number; type: 'kick' | 'ban' | 'console'; message: string; }
+interface AdminLogEntry { ts: number; type: 'kick' | 'ban' | 'mute' | 'console'; message: string; }
 const adminLog: AdminLogEntry[] = [];
 const MAX_ADMIN_LOG = 500;
 
@@ -40,6 +42,9 @@ interface AdminCapabilities {
   canUnban: boolean;
   canConsole: boolean;
   canViewLogs: boolean;
+  canMessage: boolean;
+  canMute: boolean;
+  canUnmute: boolean;
 }
 
 type AdminRole = 'admin' | 'moderator' | 'viewer';
@@ -51,6 +56,9 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canUnban: true,
     canConsole: true,
     canViewLogs: true,
+    canMessage: true,
+    canMute: true,
+    canUnmute: true,
   },
   moderator: {
     canKick: true,
@@ -58,6 +66,9 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canUnban: true,
     canConsole: false,
     canViewLogs: true,
+    canMessage: true,
+    canMute: true,
+    canUnmute: true,
   },
   viewer: {
     canKick: false,
@@ -65,6 +76,9 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canUnban: false,
     canConsole: false,
     canViewLogs: true,
+    canMessage: false,
+    canMute: false,
+    canUnmute: false,
   },
 };
 
@@ -121,8 +135,71 @@ const summarizeFrontendMetrics = (entries: FrontendMetricEntry[]) => {
   };
 };
 
-// In-memory ban list (resets on server restart; file persistence is a future TODO)
 const bannedUserIds = new Set<number>();
+const mutedUsers = new Map<number, number>(); // userId -> expiresAt (ms timestamp)
+
+// ---------------------------------------------------------------------------
+// Persistence helpers – ban/mute lists survive server restarts
+// ---------------------------------------------------------------------------
+const saveBans = (dataDir: string): void => {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dataDir, 'admin-bans.json'),
+      JSON.stringify(Array.from(bannedUserIds)),
+      'utf8',
+    );
+  } catch (e) {
+    console.error('Failed to persist ban list:', e);
+  }
+};
+
+const saveMutes = (dataDir: string): void => {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    cleanupExpiredMutes();
+    fs.writeFileSync(
+      path.join(dataDir, 'admin-mutes.json'),
+      JSON.stringify(Array.from(mutedUsers.entries())),
+      'utf8',
+    );
+  } catch (e) {
+    console.error('Failed to persist mute list:', e);
+  }
+};
+
+const loadModerationState = (dataDir: string): void => {
+  try {
+    const bansPath = path.join(dataDir, 'admin-bans.json');
+    if (fs.existsSync(bansPath)) {
+      const ids = JSON.parse(fs.readFileSync(bansPath, 'utf8')) as number[];
+      ids.forEach((id) => bannedUserIds.add(id));
+      console.log(`Loaded ${bannedUserIds.size} banned userId(s) from ${bansPath}`);
+    }
+  } catch (e) {
+    console.error('Failed to load ban list:', e);
+  }
+  try {
+    const mutesPath = path.join(dataDir, 'admin-mutes.json');
+    if (fs.existsSync(mutesPath)) {
+      const entries = JSON.parse(fs.readFileSync(mutesPath, 'utf8')) as [number, number][];
+      const now = Date.now();
+      entries.forEach(([userId, expiresAt]) => {
+        if (expiresAt > now) mutedUsers.set(userId, expiresAt);
+      });
+      console.log(`Loaded ${mutedUsers.size} active muted userId(s) from ${mutesPath}`);
+    }
+  } catch (e) {
+    console.error('Failed to load mute list:', e);
+  }
+};
+
+const cleanupExpiredMutes = (): void => {
+  const now = Date.now();
+  mutedUsers.forEach((expiresAt, userId) => {
+    if (expiresAt <= now) mutedUsers.delete(userId);
+  });
+};
 
 const metricsAuthParse = (settings: Settings): void => {
   const authConfig = settings.allSettings?.metricsAuth as { user?: string; password?: string } | undefined;
@@ -180,6 +257,9 @@ const mergeAdminCapabilities = (
     canUnban: typeof overrides.canUnban === 'boolean' ? overrides.canUnban : base.canUnban,
     canConsole: typeof overrides.canConsole === 'boolean' ? overrides.canConsole : base.canConsole,
     canViewLogs: typeof overrides.canViewLogs === 'boolean' ? overrides.canViewLogs : base.canViewLogs,
+    canMessage: typeof overrides.canMessage === 'boolean' ? overrides.canMessage : base.canMessage,
+    canMute: typeof overrides.canMute === 'boolean' ? overrides.canMute : base.canMute,
+    canUnmute: typeof overrides.canUnmute === 'boolean' ? overrides.canUnmute : base.canUnmute,
   };
 };
 
@@ -448,6 +528,9 @@ const renderAdminDashboard = () => `<!doctype html>
 </html>`;
 
 const createApp = (settings: Settings, getOriginPort: () => number) => {
+  const dataDir: string = settings.dataDir ?? './data';
+  loadModerationState(dataDir);
+
   const app = new Koa();
   app.use(koaBody.default({ multipart: true }));
 
@@ -581,6 +664,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
       bannedUserIds.add(userId);
+      saveBans(dataDir);
       safeCall(() => gScampServer.kick(userId), undefined);
       addAdminLog('ban', `Banned userId=${userId}`);
       ctx.body = { ok: true, userId, banned: true };
@@ -595,13 +679,83 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
       const wasBanned = bannedUserIds.delete(userId);
+      saveBans(dataDir);
       addAdminLog('ban', `Unbanned userId=${userId}`);
       ctx.body = { ok: true, userId, wasBanned };
+    });
+
+    router.post('/api/admin/players/:userId/message', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canMessage')) return;
+      const userId = Number(ctx.params.userId);
+      const message = String(ctx.request.body?.message ?? '').trim();
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      if (!Number.isFinite(userId) || !message) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid payload' };
+        return;
+      }
+
+      safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+      safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog('console', `Message to userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`);
+      ctx.body = { ok: true, userId };
+    });
+
+    router.post('/api/admin/players/:userId/mute', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canMute')) return;
+      const userId = Number(ctx.params.userId);
+      const durationRaw = Number(ctx.request.body?.durationMinutes);
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      const durationMinutes = Number.isFinite(durationRaw)
+        ? Math.max(1, Math.min(24 * 60, Math.floor(durationRaw)))
+        : 10;
+
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+
+      const expiresAt = Date.now() + durationMinutes * 60 * 1000;
+      mutedUsers.set(userId, expiresAt);
+      saveMutes(dataDir);
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog('mute', `Muted userId=${userId} for ${durationMinutes}m${reasonSuffix}`);
+      ctx.body = { ok: true, userId, muted: true, expiresAt, durationMinutes };
+    });
+
+    router.delete('/api/admin/players/:userId/mute', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canUnmute')) return;
+      const userId = Number(ctx.params.userId);
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+
+      const wasMuted = mutedUsers.delete(userId);
+      saveMutes(dataDir);
+      addAdminLog('mute', `Unmuted userId=${userId}`);
+      ctx.body = { ok: true, userId, wasMuted };
     });
 
     router.get('/api/admin/bans', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canUnban')) return;
       ctx.body = Array.from(bannedUserIds);
+    });
+
+    router.get('/api/admin/mutes', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canUnmute')) return;
+      cleanupExpiredMutes();
+
+      const now = Date.now();
+      ctx.body = Array.from(mutedUsers.entries()).map(([userId, expiresAt]) => ({
+        userId,
+        expiresAt,
+        remainingSec: Math.max(0, Math.floor((expiresAt - now) / 1000)),
+      }));
     });
 
     router.post('/api/admin/console', (ctx: any) => {
