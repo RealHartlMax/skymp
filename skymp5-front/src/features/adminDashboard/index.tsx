@@ -6,6 +6,7 @@ import './styles.scss';
 
 type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics';
 type AdminRole = 'admin' | 'moderator' | 'viewer';
+type ServerLogLevel = 'info' | 'error';
 
 interface AdminStatus {
   name: string;
@@ -31,8 +32,9 @@ interface AdminPlayer {
 
 interface LogEntry {
   ts: number;
-  type: 'kick' | 'ban' | 'mute' | 'console';
+  type: 'kick' | 'ban' | 'mute' | 'console' | 'server';
   message: string;
+  level?: ServerLogLevel;
 }
 
 interface MutedUserEntry {
@@ -140,7 +142,8 @@ const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
 interface PersistedAdminDashboardState {
   activeTab?: Tab;
   playerSearch?: string;
-  logTypeFilter?: '' | 'kick' | 'ban' | 'mute' | 'console';
+  logTypeFilter?: '' | 'kick' | 'ban' | 'mute' | 'console' | 'server';
+  logLevelFilter?: '' | ServerLogLevel;
   logLimit?: number;
   logSinceMinutes?: '' | '15' | '60' | '1440';
   metricLimit?: number;
@@ -175,8 +178,10 @@ const AdminDashboard = () => {
   const [consoleHistory, setConsoleHistory] = useState<string[]>([]);
   const [consoleHistoryIndex, setConsoleHistoryIndex] = useState<number | null>(null);
   const [consoleSending, setConsoleSending] = useState(false);
+  const [serverConsoleEntries, setServerConsoleEntries] = useState<LogEntry[]>([]);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
-  const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'mute' | 'console'>('');
+  const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'mute' | 'console' | 'server'>('');
+  const [logLevelFilter, setLogLevelFilter] = useState<'' | ServerLogLevel>('');
   const [logLimit, setLogLimit] = useState(100);
   const [logSinceMinutes, setLogSinceMinutes] = useState<'' | '15' | '60' | '1440'>('');
   const [logBeforeTs, setLogBeforeTs] = useState<number | null>(null);
@@ -208,8 +213,11 @@ const AdminDashboard = () => {
         setActiveTab(persisted.activeTab);
       }
       if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
-      if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'mute' || persisted.logTypeFilter === 'console') {
+      if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'mute' || persisted.logTypeFilter === 'console' || persisted.logTypeFilter === 'server') {
         setLogTypeFilter(persisted.logTypeFilter);
+      }
+      if (persisted.logLevelFilter === '' || persisted.logLevelFilter === 'info' || persisted.logLevelFilter === 'error') {
+        setLogLevelFilter(persisted.logLevelFilter);
       }
       if (persisted.logLimit && [25, 50, 100, 200].includes(persisted.logLimit)) setLogLimit(persisted.logLimit);
       if (persisted.logSinceMinutes === '' || persisted.logSinceMinutes === '15' || persisted.logSinceMinutes === '60' || persisted.logSinceMinutes === '1440') {
@@ -232,6 +240,7 @@ const AdminDashboard = () => {
         activeTab,
         playerSearch,
         logTypeFilter,
+        logLevelFilter,
         logLimit,
         logSinceMinutes,
         metricLimit,
@@ -243,7 +252,7 @@ const AdminDashboard = () => {
     } catch {
       // ignore storage write failures
     }
-  }, [activeTab, consoleHistory, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
+  }, [activeTab, consoleHistory, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
 
   const setForbiddenAwareStatus = useCallback((res: Response, successText: string) => {
     if (res.ok) {
@@ -337,6 +346,7 @@ const AdminDashboard = () => {
 
       const params = new URLSearchParams();
       if (logTypeFilter) params.set('type', logTypeFilter);
+  if (logLevelFilter) params.set('level', logLevelFilter);
       params.set('limit', String(logLimit));
       if (logSinceMinutes) params.set('sinceMinutes', logSinceMinutes);
       if (logBeforeTs !== null) params.set('beforeTs', String(logBeforeTs));
@@ -357,7 +367,30 @@ const AdminDashboard = () => {
     } catch {
       // silently ignore
     }
-  }, [capabilities.canViewLogs, logBeforeTs, logLimit, logSinceMinutes, logTypeFilter]);
+  }, [capabilities.canViewLogs, logBeforeTs, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter]);
+
+  const fetchServerConsole = useCallback(async () => {
+    try {
+      if (!capabilities.canViewLogs) {
+        setServerConsoleEntries([]);
+        return;
+      }
+
+      const res = await fetch('/api/admin/logs?type=server&limit=200');
+      if (!res.ok) {
+        if (res.status === 403) {
+          setServerConsoleEntries([]);
+        }
+        return;
+      }
+
+      const entries = await res.json();
+      const parsed = Array.isArray(entries) ? entries as LogEntry[] : [];
+      setServerConsoleEntries(parsed.slice().reverse());
+    } catch {
+      // silently ignore
+    }
+  }, [capabilities.canViewLogs]);
 
   const fetchFrontendMetrics = useCallback(async () => {
     try {
@@ -548,6 +581,7 @@ const AdminDashboard = () => {
           ? `${t('adminDashboard.consoleResult')}: ${resultText}`
           : t('adminDashboard.consoleSent');
         setConsoleLines((prev) => [...prev, { text: msg, kind: 'ok' }]);
+        void fetchServerConsole();
       } else if (res.status === 403) {
         setConsoleLines((prev) => [...prev, { text: t('adminDashboard.noPermission'), kind: 'err' }]);
       } else {
@@ -611,6 +645,7 @@ const AdminDashboard = () => {
     setStatusMsg('');
     setConsoleLines([]);
     setConsoleHistoryIndex(null);
+    setServerConsoleEntries([]);
     setLogEntries([]);
     setLogBeforeTs(null);
     setLogHasMore(false);
@@ -657,17 +692,34 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (consoleEndRef.current) consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
-  }, [consoleLines]);
+  }, [consoleLines, serverConsoleEntries]);
 
   useEffect(() => {
+    if (activeTab === 'console') void fetchServerConsole();
     if (activeTab === 'logs') void fetchLogs();
     if (activeTab === 'metrics') void fetchFrontendMetrics();
     if (activeTab === 'metrics') void fetchClientRuntimeEvents();
-  }, [activeTab, fetchClientRuntimeEvents, fetchFrontendMetrics, fetchLogs]);
+  }, [activeTab, fetchClientRuntimeEvents, fetchFrontendMetrics, fetchLogs, fetchServerConsole]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'console') return;
+    const id = setInterval(() => {
+      void fetchServerConsole();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchServerConsole, visible]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'logs') return;
+    const id = setInterval(() => {
+      void fetchLogs();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchLogs, visible]);
 
   useEffect(() => {
     setLogBeforeTs(null);
-  }, [logTypeFilter, logLimit, logSinceMinutes]);
+  }, [logLevelFilter, logTypeFilter, logLimit, logSinceMinutes]);
 
   useEffect(() => {
     if (activeTab === 'players' && (capabilities.canBan || capabilities.canUnban || capabilities.canMute || capabilities.canUnmute)) {
@@ -735,6 +787,7 @@ const AdminDashboard = () => {
     setActiveTab('overview');
     setPlayerSearch('');
     setLogTypeFilter('');
+    setLogLevelFilter('');
     setLogLimit(100);
     setLogSinceMinutes('');
     setLogBeforeTs(null);
@@ -1137,6 +1190,21 @@ const AdminDashboard = () => {
             {activeTab === 'console' && (
               <div className="admin-dashboard__panel" id="admin-panel-console" role="tabpanel" aria-labelledby="admin-tab-console">
                 <div className="admin-dashboard__console-out" role="log" aria-live="polite" aria-relevant="additions text">
+                  {serverConsoleEntries.length === 0 && consoleLines.length === 0 && (
+                    <div className="admin-dashboard__console-line admin-dashboard__console-line--input">
+                      {t('adminDashboard.noLogs')}
+                    </div>
+                  )}
+                  {serverConsoleEntries.map((entry, i) => (
+                    <div key={`server-${entry.ts}-${i}`} className={`admin-dashboard__console-line admin-dashboard__console-line--${entry.level === 'error' ? 'err' : 'ok'}`}>
+                      [{formatAdminTime(entry.ts)}] {entry.level ?? 'info'}: {entry.message}
+                    </div>
+                  ))}
+                  {consoleLines.length > 0 && (
+                    <div className="admin-dashboard__console-line admin-dashboard__console-line--input">
+                      {t('adminDashboard.consoleCommandOutput')}
+                    </div>
+                  )}
                   {consoleLines.map((line, i) => (
                     <div key={i} className={`admin-dashboard__console-line admin-dashboard__console-line--${line.kind}`}>
                       {line.text}
@@ -1252,10 +1320,24 @@ const AdminDashboard = () => {
                           <option value="1440">{t('adminDashboard.logWindow24h')}</option>
                         </select>
                       </label>
+
+                      <label className="admin-dashboard__log-tool">
+                        <span>{t('adminDashboard.logLevel')}</span>
+                        <select
+                          className="admin-dashboard__log-select"
+                          value={logLevelFilter}
+                          aria-label={t('adminDashboard.logLevel')}
+                          onChange={(e) => setLogLevelFilter(e.target.value as '' | ServerLogLevel)}
+                        >
+                          <option value="">{t('adminDashboard.logLevelAll')}</option>
+                          <option value="info">{t('adminDashboard.logLevel_info')}</option>
+                          <option value="error">{t('adminDashboard.logLevel_error')}</option>
+                        </select>
+                      </label>
                     </div>
 
                     <div className="admin-dashboard__log-filters">
-                      {(['', 'kick', 'ban', 'mute', 'console'] as const).map((type) => (
+                      {(['', 'server', 'kick', 'ban', 'mute', 'console'] as const).map((type) => (
                         <button
                           key={type}
                           type="button"
@@ -1287,6 +1369,11 @@ const AdminDashboard = () => {
                             <span className={`admin-dashboard__log-type admin-dashboard__log-type--${entry.type}`}>
                               {entry.type}
                             </span>
+                            {entry.level && (
+                              <span className={`admin-dashboard__log-type admin-dashboard__log-type--${entry.level === 'error' ? 'ban' : 'console'}`}>
+                                {entry.level}
+                              </span>
+                            )}
                             <span className="admin-dashboard__log-msg">{entry.message}</span>
                           </div>
                         ))}

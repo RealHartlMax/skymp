@@ -987,7 +987,9 @@ $admin-line: #2c4552;
 
       &--kick    { background: rgba($admin-warn, 0.15); color: $admin-warn; }
       &--ban     { background: rgba(#e07b40, 0.15); color: #e07b40; }
+      &--mute    { background: rgba(#d2b86a, 0.15); color: #d2b86a; }
       &--console { background: rgba($admin-accent, 0.12); color: $admin-accent; }
+      &--server  { background: rgba(#7da2ff, 0.12); color: #7da2ff; }
     }
 
     &__log-msg {

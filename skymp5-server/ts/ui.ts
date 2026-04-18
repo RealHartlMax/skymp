@@ -21,8 +21,16 @@ const processStartedAt = Date.now();
 // Admin event log (in-memory, capped at MAX_ADMIN_LOG entries)
 // ---------------------------------------------------------------------------
 interface AdminLogEntry { ts: number; type: 'kick' | 'ban' | 'mute' | 'console'; message: string; }
+type ServerLogLevel = 'info' | 'error';
+interface ServerLogEntry { ts: number; type: 'server'; level: ServerLogLevel; message: string; }
 const adminLog: AdminLogEntry[] = [];
 const MAX_ADMIN_LOG = 500;
+const serverLog: ServerLogEntry[] = [];
+const MAX_SERVER_LOG = 2000;
+const serverLogBuffers: Record<ServerLogLevel, string> = {
+  info: '',
+  error: '',
+};
 
 interface FrontendMetricEntry {
   name: string;
@@ -137,6 +145,38 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
 const addAdminLog = (type: AdminLogEntry['type'], message: string): void => {
   adminLog.push({ ts: Date.now(), type, message });
   if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
+};
+
+const addServerLog = (level: ServerLogLevel, message: string): void => {
+  const cleaned = String(message || '')
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .trim();
+
+  if (!cleaned) return;
+
+  serverLog.push({
+    ts: Date.now(),
+    type: 'server',
+    level,
+    message: cleaned.slice(0, 4000),
+  });
+
+  if (serverLog.length > MAX_SERVER_LOG) {
+    serverLog.splice(0, serverLog.length - MAX_SERVER_LOG);
+  }
+};
+
+const pushServerLogChunkInternal = (level: ServerLogLevel, chunk: string): void => {
+  const normalizedChunk = String(chunk || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  const parts = `${serverLogBuffers[level]}${normalizedChunk}`.split('\n');
+  serverLogBuffers[level] = parts.pop() ?? '';
+
+  parts.forEach((part) => {
+    addServerLog(level, part);
+  });
 };
 
 const addFrontendMetrics = (entries: FrontendMetricEntry[]): void => {
@@ -2170,8 +2210,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const typeFilter = ctx.query?.type as string | undefined;
       const limitRaw = Number(ctx.query?.limit);
       const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), MAX_ADMIN_LOG)
+        ? Math.min(Math.floor(limitRaw), Math.max(MAX_ADMIN_LOG, MAX_SERVER_LOG))
         : 100;
+
+      const levelRaw = String(ctx.query?.level ?? '').trim().toLowerCase();
+      const levelFilter: ServerLogLevel | null = (
+        levelRaw === 'info' || levelRaw === 'error'
+      ) ? levelRaw : null;
 
       const beforeTsRaw = Number(ctx.query?.beforeTs);
       const beforeTs = Number.isFinite(beforeTsRaw) ? beforeTsRaw : null;
@@ -2183,20 +2228,28 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const sinceTs = sinceMinutes === null ? null : Date.now() - sinceMinutes * 60 * 1000;
 
+      const combinedEntries = [...adminLog, ...serverLog];
+
       const entriesByType = typeFilter
-        ? adminLog.filter((e) => e.type === typeFilter)
-        : adminLog;
+        ? combinedEntries.filter((e) => e.type === typeFilter)
+        : combinedEntries;
+
+      const entriesByLevel = levelFilter === null
+        ? entriesByType
+        : entriesByType.filter((entry) => 'level' in entry && entry.level === levelFilter);
 
       const entriesBySince = sinceTs === null
-        ? entriesByType
-        : entriesByType.filter((e) => e.ts >= sinceTs);
+        ? entriesByLevel
+        : entriesByLevel.filter((e) => e.ts >= sinceTs);
 
       const entriesByCursor = beforeTs === null
         ? entriesBySince
         : entriesBySince.filter((e) => e.ts < beforeTs);
 
-      const sliceFrom = Math.max(entriesByCursor.length - limit, 0);
-      ctx.body = entriesByCursor.slice(sliceFrom).reverse();
+      ctx.body = entriesByCursor
+        .slice()
+        .sort((left, right) => right.ts - left.ts)
+        .slice(0, limit);
     });
 
     router.get('/api/admin/frontend-metrics', (ctx: any) => {
@@ -2310,6 +2363,10 @@ export const pushClientRuntimeEvents = (entries: Array<{
   if (safeEntries.length > 0) {
     addClientRuntimeEvents(safeEntries);
   }
+};
+
+export const pushServerLogChunk = (level: ServerLogLevel, chunk: string): void => {
+  pushServerLogChunkInternal(level, chunk);
 };
 
 export const main = (settings: Settings): void => {

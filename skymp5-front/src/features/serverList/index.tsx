@@ -161,6 +161,25 @@ const ServerList = () => {
     return Math.max(0, allNotes.length - 3);
   }, [updateInfo]);
 
+  const checkForUpdate = useCallback(async () => {
+    try {
+      const data = await fetchLatestUpdate(apiEndpoint, releaseChannel, CLIENT_VERSION);
+      if (data && data.version !== CLIENT_VERSION) {
+        const channel = isReleaseChannel(data.channel) ? data.channel : releaseChannel;
+        const ignoredVersion = getLauncherIgnoredUpdateVersion(channel);
+        if (ignoredVersion && ignoredVersion === data.version) {
+          setUpdateInfo(null);
+          return;
+        }
+        setUpdateInfo(data);
+      } else {
+        setUpdateInfo(null);
+      }
+    } catch {
+      // ignore — graceful degradation
+    }
+  }, [apiEndpoint, releaseChannel]);
+
   const ignoreUpdateVersion = useCallback(() => {
     if (!updateInfo) return;
     setLauncherIgnoredUpdateVersion(updateChannel, updateInfo.version);
@@ -278,25 +297,6 @@ const ServerList = () => {
       runAutoConnectIfNeeded(servers);
     }
   }, [servers, visible, runAutoConnectIfNeeded]);
-
-  const checkForUpdate = useCallback(async () => {
-    try {
-      const data = await fetchLatestUpdate(apiEndpoint, releaseChannel, CLIENT_VERSION);
-      if (data && data.version !== CLIENT_VERSION) {
-        const channel = isReleaseChannel(data.channel) ? data.channel : releaseChannel;
-        const ignoredVersion = getLauncherIgnoredUpdateVersion(channel);
-        if (ignoredVersion && ignoredVersion === data.version) {
-          setUpdateInfo(null);
-          return;
-        }
-        setUpdateInfo(data);
-      } else {
-        setUpdateInfo(null);
-      }
-    } catch {
-      // ignore — graceful degradation
-    }
-  }, [apiEndpoint, releaseChannel]);
 
   const show = useCallback(async () => {
     setVisible(true);

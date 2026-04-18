@@ -104,6 +104,7 @@ const setupStreams = (scampNative: any) => {
       // @ts-ignore
       const str = chunk.toString(encoding);
       if (str.trim().length > 0) {
+        ui.pushServerLogChunk(this.logLevel === 'error' ? 'error' : 'info', str);
         scampNative.writeLogs(this.logLevel, str);
       }
       callback();

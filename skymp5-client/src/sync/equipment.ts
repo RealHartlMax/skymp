@@ -5,10 +5,9 @@ import {
   ObjectReference,
   Spell,
   Ui,
-  setInventory,
 } from 'skyrimPlatform';
 
-import { Entry, Inventory, getInventory } from './inventory';
+import { Entry, Inventory, applyInventory, getInventory } from './inventory';
 
 export const enum SpellType {
   Left,
@@ -115,7 +114,7 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
 
   const newInventory = removeUnnecessaryExtra(filterWorn(eq.inv), ac.getFormID() === 0x14);
 
-  setInventory(ac.getFormID(), newInventory);
+  applyInventory(ac, newInventory, false);
 
   syncSpellEquipment(ac, eq.leftSpell, SpellType.Left);
   syncSpellEquipment(ac, eq.rightSpell, SpellType.Right);
