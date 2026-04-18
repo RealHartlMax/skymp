@@ -37,7 +37,8 @@ const {
 const {
   filterAdminPlayers,
   formatAdminPos,
-  formatAdminUptime
+  formatAdminUptime,
+  formatAdminTime
 } = require('../src/features/adminDashboard/utils.ts');
 const {
   detectLanguage,
@@ -166,12 +167,29 @@ run('detectLanguage resolves supported and fallback locales', () => {
   assert.equal(detectLanguage('en-US'), 'en');
   assert.equal(detectLanguage('ru-RU'), 'ru');
   assert.equal(detectLanguage('de-DE'), 'de');
-  assert.equal(detectLanguage('fr-FR'), 'de');
-  assert.equal(detectLanguage(undefined), 'de');
+  assert.equal(detectLanguage('es-ES'), 'es');
+  assert.equal(detectLanguage('fr-FR'), 'en');
+  assert.equal(detectLanguage(undefined), 'en');
 });
 
-run('detectRuntimeLanguage falls back when navigator is unavailable', () => {
-  assert.equal(detectRuntimeLanguage(), 'de');
+run('detectRuntimeLanguage falls back to English when navigator is unavailable', () => {
+  const originalNavigator = global.navigator;
+
+  Object.defineProperty(global, 'navigator', {
+    value: undefined,
+    configurable: true,
+    writable: true,
+  });
+
+  try {
+    assert.equal(detectRuntimeLanguage(), 'en');
+  } finally {
+    Object.defineProperty(global, 'navigator', {
+      value: originalNavigator,
+      configurable: true,
+      writable: true,
+    });
+  }
 });
 
 run('FrameButton helpers map disabled and clickable state', () => {
@@ -221,6 +239,8 @@ run('formatAdminUptime formats seconds, minutes and hours', () => {
   assert.equal(formatAdminUptime(42), '42s');
   assert.equal(formatAdminUptime(65), '1m 5s');
   assert.equal(formatAdminUptime(3665), '1h 1m');
+  assert.equal(formatAdminUptime(0), '0s');
+  assert.equal(formatAdminUptime(3600), '1h 0m');
 });
 
 run('formatAdminPos formats object/array/empty values', () => {
@@ -240,6 +260,14 @@ run('filterAdminPlayers matches by userId, actorName and ip', () => {
   assert.deepEqual(filterAdminPlayers(players, 'vilk').map((p) => p.userId), [33]);
   assert.deepEqual(filterAdminPlayers(players, '192.168').map((p) => p.userId), [77]);
   assert.deepEqual(filterAdminPlayers(players, '').map((p) => p.userId), [12, 33, 77]);
+});
+
+run('formatAdminTime returns a non-empty time string for a known timestamp', () => {
+  // fixed UTC timestamp: 2024-01-15T12:34:56.000Z
+  const ts = 1705319696000;
+  const result = formatAdminTime(ts);
+  assert.equal(typeof result, 'string');
+  assert.equal(result.length > 0, true);
 });
 
 run('SkyrimButton renders text and disabled opacity', () => {

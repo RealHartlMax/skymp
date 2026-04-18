@@ -12,5 +12,6 @@
     "outDir": "../build/dist/server/dist_back",
     "skipLibCheck": true
   },
-  "include": ["ts"]
+  "include": ["ts"],
+  "exclude": ["ts/examples"]
 }

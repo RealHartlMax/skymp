@@ -59,6 +59,30 @@ interface ClientRuntimeEventEntry {
   details?: string;
 }
 
+type RevivalEventType = 'downed' | 'revived' | 'respawn_disabled' | 'respawn_enabled' | 'auto_revived';
+
+interface RevivalEventEntry {
+  ts: number;
+  type: RevivalEventType;
+  userId: number;
+  actorName?: string;
+  details?: string;
+}
+
+interface DownedPlayerEntry {
+  userId: number;
+  actorName: string;
+  downedAt: number;
+  canRespawn: boolean;
+}
+
+interface TrackedRespawnState {
+  actorName: string;
+  isDead: boolean;
+  canRespawn: boolean;
+  downedAt: number | null;
+}
+
 interface AdminResourceEntry {
   key: string;
   name: string;
@@ -94,6 +118,9 @@ const frontendMetrics: FrontendMetricEntry[] = [];
 const MAX_FRONTEND_METRICS = 1000;
 const clientRuntimeEvents: ClientRuntimeEventEntry[] = [];
 const MAX_CLIENT_RUNTIME_EVENTS = 2000;
+const revivalEvents: RevivalEventEntry[] = [];
+const MAX_REVIVAL_EVENTS = 1000;
+const trackedRespawnStates = new Map<number, TrackedRespawnState>();
 
 interface AdminCapabilities {
   canKick: boolean;
@@ -104,6 +131,7 @@ interface AdminCapabilities {
   canMessage: boolean;
   canMute: boolean;
   canUnmute: boolean;
+  canManageRespawn: boolean;
 }
 
 type AdminRole = 'admin' | 'moderator' | 'viewer';
@@ -118,6 +146,7 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMessage: true,
     canMute: true,
     canUnmute: true,
+    canManageRespawn: true,
   },
   moderator: {
     canKick: true,
@@ -128,6 +157,7 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMessage: true,
     canMute: true,
     canUnmute: true,
+    canManageRespawn: true,
   },
   viewer: {
     canKick: false,
@@ -138,6 +168,7 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMessage: false,
     canMute: false,
     canUnmute: false,
+    canManageRespawn: false,
   },
 };
 
@@ -190,6 +221,98 @@ const addClientRuntimeEvents = (entries: ClientRuntimeEventEntry[]): void => {
   if (clientRuntimeEvents.length > MAX_CLIENT_RUNTIME_EVENTS) {
     clientRuntimeEvents.splice(0, clientRuntimeEvents.length - MAX_CLIENT_RUNTIME_EVENTS);
   }
+};
+
+const addRevivalEvent = (entry: RevivalEventEntry): void => {
+  revivalEvents.push(entry);
+  if (revivalEvents.length > MAX_REVIVAL_EVENTS) {
+    revivalEvents.splice(0, revivalEvents.length - MAX_REVIVAL_EVENTS);
+  }
+};
+
+const getActorBooleanProperty = (actorId: number, propertyName: string, fallback: boolean): boolean => {
+  if (!actorId) return fallback;
+  const value = safeCall(() => (gScampServer as any)?.get?.(actorId, propertyName), fallback);
+  return typeof value === 'boolean' ? value : fallback;
+};
+
+const setActorProperty = (actorId: number, propertyName: string, value: unknown): void => {
+  safeCall(() => (gScampServer as any)?.set?.(actorId, propertyName, value), undefined);
+};
+
+const syncRespawnState = (): DownedPlayerEntry[] => {
+  const now = Date.now();
+  const onlineUserIds = getOnlinePlayerIds();
+  const stillOnline = new Set<number>();
+  const downedPlayers: DownedPlayerEntry[] = [];
+
+  onlineUserIds.forEach((userId) => {
+    stillOnline.add(userId);
+    const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
+    if (!actorId) {
+      trackedRespawnStates.delete(userId);
+      return;
+    }
+
+    const actorName = safeCall(() => gScampServer.getActorName(actorId), '') || `userId=${userId}`;
+    const isDead = getActorBooleanProperty(actorId, 'isDead', false);
+    const canRespawn = getActorBooleanProperty(actorId, 'canRespawn', true);
+    const previous = trackedRespawnStates.get(userId);
+
+    let downedAt = previous?.downedAt ?? null;
+    if (isDead && (!previous || !previous.isDead)) {
+      downedAt = now;
+      addRevivalEvent({
+        ts: now,
+        type: 'downed',
+        userId,
+        actorName,
+        details: canRespawn ? 'Auto-respawn currently enabled' : 'Auto-respawn disabled',
+      });
+    }
+
+    if (previous?.isDead && previous.canRespawn !== canRespawn) {
+      addRevivalEvent({
+        ts: now,
+        type: canRespawn ? 'respawn_enabled' : 'respawn_disabled',
+        userId,
+        actorName,
+      });
+    }
+
+    if (previous?.isDead && !isDead) {
+      addRevivalEvent({
+        ts: now,
+        type: 'auto_revived',
+        userId,
+        actorName,
+        details: 'Player returned to alive state outside the admin revive action',
+      });
+      downedAt = null;
+    }
+
+    trackedRespawnStates.set(userId, {
+      actorName,
+      isDead,
+      canRespawn,
+      downedAt,
+    });
+
+    if (isDead) {
+      downedPlayers.push({
+        userId,
+        actorName,
+        downedAt: downedAt ?? now,
+        canRespawn,
+      });
+    }
+  });
+
+  Array.from(trackedRespawnStates.keys()).forEach((userId) => {
+    if (!stillOnline.has(userId)) trackedRespawnStates.delete(userId);
+  });
+
+  return downedPlayers.sort((left, right) => left.downedAt - right.downedAt);
 };
 
 const summarizeFrontendMetrics = (entries: FrontendMetricEntry[]) => {
@@ -402,13 +525,17 @@ const RESOURCE_MOD_EXTENSIONS = new Set(['.esm']);
 const MAX_RESOURCE_SCAN_DEPTH = 5;
 const MAX_RESOURCE_SCAN_ENTRIES = 1500;
 const DEFAULT_LOCALE_ROUTING: LocaleRoutingSettings = {
-  defaultLanguage: 'de',
+  defaultLanguage: 'en',
   countryCodeToLanguage: {
     DE: 'de',
     AT: 'de',
     CH: 'de',
     US: 'en',
     GB: 'en',
+    ES: 'es',
+    MX: 'es',
+    AR: 'es',
+    CO: 'es',
     RU: 'ru',
     BY: 'ru',
     UA: 'ru',
@@ -699,6 +826,7 @@ const mergeAdminCapabilities = (
     canMessage: typeof overrides.canMessage === 'boolean' ? overrides.canMessage : base.canMessage,
     canMute: typeof overrides.canMute === 'boolean' ? overrides.canMute : base.canMute,
     canUnmute: typeof overrides.canUnmute === 'boolean' ? overrides.canUnmute : base.canUnmute,
+    canManageRespawn: typeof overrides.canManageRespawn === 'boolean' ? overrides.canManageRespawn : base.canManageRespawn,
   };
 };
 
@@ -1217,6 +1345,42 @@ const renderAdminDashboard = () => `<!doctype html>
         accessApplied: 'Access/Discord in JSON-Editor uebernommen',
         cfgLoaded: 'Config geladen', cfgSaved: 'Config gespeichert. Server-Neustart noetig fuer Laufzeit-Aenderungen.', cfgInvalidJson: 'Ungueltiges JSON',
         noPlayersSide: 'Keine Spieler online'
+      },
+      es: {
+        title: 'SkyMP Admin', subtitle: 'Panel de control del servidor en vivo',
+        online: 'En linea', maxPlayers: 'Jugadores maximos', port: 'Puerto', uptime: 'Tiempo activo',
+        tabPlayers: 'Jugadores', tabConsole: 'Consola en vivo', tabLogs: 'Log del servidor', tabResources: 'Recursos', tabCfg: 'Editor CFG',
+        leftPanelTitle: 'PANEL DEL SERVIDOR', user: 'ID de usuario', actor: 'ID de actor', name: 'Nombre', ip: 'IP', pos: 'Posicion', actions: 'Acciones',
+        kick: 'Expulsar', ban: 'Banear', noPlayers: 'No hay jugadores en linea', updated: 'Actualizado',
+        kicked: 'Expulsado', banned: 'Baneado', searchPlaceholder: 'Filtrar jugadores por id, nombre o ip...',
+        resourceSearchPlaceholder: 'Filtrar mods y scripts...',
+        rightSearchPlaceholder: 'Filtrar lista lateral...', consoleSend: 'Ejecutar', consoleHint: '> Introduce comando JavaScript',
+        sent: 'Comando enviado', apiError: 'Error de API', noLogs: 'No hay entradas de log',
+        fAll: 'Todo', fKick: 'Kick', fBan: 'Ban', fConsole: 'Consola',
+        resourcesPlaceholder: 'Recursos relevantes de Skyrim disponibles en esta instancia del servidor (.esm y .pex).',
+        resourceName: 'Recurso', resourceKind: 'Tipo', resourcePath: 'Ruta', resourceSize: 'Tamano', resourceUpdated: 'Actualizado',
+        resourceTypeMod: 'Mod', resourceTypeScript: 'Script',
+        resourcesLoaded: 'Recursos cargados',
+        cfgPlaceholder: 'Usa localeRouting.defaultLanguage y localeRouting.countryCodeToLanguage para controlar el idioma por codigo de pais (por ejemplo ES -> es, US -> en).',
+        cfgLoad: 'Cargar', cfgFormat: 'Formatear JSON', cfgSave: 'Guardar',
+        cfgApplyAccess: 'Aplicar acceso/Discord', cfgSaveAccess: 'Guardar acceso/Discord',
+        accessTitle: 'Quien puede entrar (estilo txAdmin)',
+        joinModeLabel: 'Modo de acceso', joinRejectLabel: 'Mensaje de rechazo',
+        joinLicensesLabel: 'Licencias aprobadas (coma)',
+        joinDiscordIdsLabel: 'IDs de Discord aprobados (coma)',
+        joinDiscordRolesLabel: 'IDs de roles de Discord requeridos (coma)',
+        discordTitle: 'Ajustes del bot de Discord',
+        discordEnabledLabel: 'Activado', discordTokenLabel: 'Token del bot',
+        discordGuildLabel: 'ID del servidor', discordWarningsLabel: 'ID del canal de avisos',
+        cfgValidationPrefix: 'Validacion fallida',
+        cfgValidationNeedWhitelist: 'Se requiere al menos una licencia aprobada para el modo approvedLicense',
+        cfgValidationInvalidDiscordIds: 'Los IDs de Discord aprobados deben ser snowflakes numericos',
+        cfgValidationInvalidDiscordRoles: 'Los IDs de roles de Discord deben ser snowflakes numericos',
+        cfgValidationNeedDiscordSetup: 'El token del bot y el ID del servidor son obligatorios para este modo de acceso',
+        cfgValidationNeedDiscordRoles: 'Se requiere al menos un ID de rol de Discord para el modo discordRoles',
+        accessApplied: 'Acceso/Discord aplicado al editor JSON',
+        cfgLoaded: 'Configuracion cargada', cfgSaved: 'Configuracion guardada. Reinicia el servidor para aplicar los cambios.', cfgInvalidJson: 'JSON invalido',
+        noPlayersSide: 'No hay jugadores en linea'
       }
     };
 
@@ -1980,6 +2144,41 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       ctx.body = { ok: true, userId };
     });
 
+    router.post('/api/admin/players/kick-all', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canKick')) return;
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      const userIds = getOnlinePlayerIds();
+
+      userIds.forEach((userId) => {
+        safeCall(() => gScampServer.kick(userId), undefined);
+      });
+
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog('kick', `Kicked all players count=${userIds.length}${reasonSuffix}`);
+      ctx.body = { ok: true, count: userIds.length, userIds };
+    });
+
+    router.post('/api/admin/announcement', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canMessage')) return;
+      const message = String(ctx.request.body?.message ?? '').trim();
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      if (!message) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'message is required' };
+        return;
+      }
+
+      const userIds = getOnlinePlayerIds();
+      userIds.forEach((userId) => {
+        safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+        safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+      });
+
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog('console', `Announcement to ${userIds.length} players: ${message.slice(0, 120)}${reasonSuffix}`);
+      ctx.body = { ok: true, count: userIds.length, userIds };
+    });
+
     router.post('/api/admin/players/:userId/mute', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canMute')) return;
       const userId = Number(ctx.params.userId);
@@ -2304,6 +2503,68 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         entries: filtered.slice(sliceFrom).reverse(),
       };
     });
+
+    router.get('/api/admin/respawn-status', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canManageRespawn')) return;
+      ctx.body = syncRespawnState();
+    });
+
+    router.post('/api/admin/revive', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canManageRespawn')) return;
+
+      const userId = Number(ctx.request.body?.userId);
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+
+      const safeUserId = Math.floor(userId);
+      const actorId = safeCall(() => gScampServer.getUserActor(safeUserId), 0);
+      if (!actorId) {
+        ctx.status = 404;
+        ctx.body = { ok: false, error: 'actor not found' };
+        return;
+      }
+
+      const actorName = safeCall(() => gScampServer.getActorName(actorId), '') || `userId=${safeUserId}`;
+
+      setActorProperty(actorId, 'isDead', false);
+      setActorProperty(actorId, 'canRespawn', true);
+      trackedRespawnStates.set(safeUserId, {
+        actorName,
+        isDead: false,
+        canRespawn: true,
+        downedAt: null,
+      });
+
+      addRevivalEvent({
+        ts: Date.now(),
+        type: 'revived',
+        userId: safeUserId,
+        actorName,
+        details: reason || 'Manual revival from admin dashboard',
+      });
+      addAdminLog('console', `Revived userId=${safeUserId}${reason ? ` reason=${reason.slice(0, 80)}` : ''}`);
+
+      ctx.body = { ok: true, userId: safeUserId, actorId };
+    });
+
+    router.get('/api/admin/events', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+
+      syncRespawnState();
+      const typeFilter = String(ctx.query?.type ?? '').trim().toLowerCase() as '' | RevivalEventType;
+      const limitRaw = Number(ctx.query?.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0
+        ? Math.min(Math.floor(limitRaw), 200)
+        : 100;
+
+      const filtered = revivalEvents.filter((entry) => !typeFilter || entry.type === typeFilter);
+      const sliceFrom = Math.max(filtered.length - limit, 0);
+      ctx.body = filtered.slice(sliceFrom).reverse();
+    });
   }
   router.use('/metrics', (ctx: any, next: any) => {
     console.log(`Metrics requested by ${ctx.request.ip}`);
@@ -2374,7 +2635,10 @@ export const main = (settings: Settings): void => {
   const devServerPort = 1234;
 
   const uiListenHost = settings.allSettings.uiListenHost as (string | undefined);
-  const uiPort = settings.port === 7777 ? 3000 : settings.port + 1;
+  const configuredUiPort = Number(settings.allSettings.uiPort);
+  const uiPort = Number.isFinite(configuredUiPort) && configuredUiPort > 0
+    ? Math.floor(configuredUiPort)
+    : settings.port;
 
   Axios({
     method: "get",

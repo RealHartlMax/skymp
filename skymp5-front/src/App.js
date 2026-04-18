@@ -12,7 +12,7 @@ import ServerList from './features/serverList';
 const shouldForceLoggedInView = () => {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get('devUi') === '1' || window.localStorage.getItem('skymp.dev.loggedIn') === '1';
+    return params.get('devUi') === '1' || params.get('admin') === '1' || window.localStorage.getItem('skymp.dev.loggedIn') === '1';
   } catch {
     return false;
   }
@@ -33,7 +33,16 @@ const getDevOverlayTargets = () => {
 const isBrowserDevUiMode = () => {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get('devUi') === '1';
+    return params.get('devUi') === '1' || params.get('admin') === '1';
+  } catch {
+    return false;
+  }
+};
+
+const isAdminRouteRequested = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('admin') === '1' || window.location.hash === '#admin';
   } catch {
     return false;
   }
@@ -102,6 +111,7 @@ class App extends React.Component {
       healthPaused: getStoredHealthPaused(),
       devNowTs: Date.now(),
       nextHealthDueAt: null,
+      isAdminDashboardVisible: false,
       widgets: this.props.elem || null
     };
   }
@@ -217,6 +227,14 @@ class App extends React.Component {
 
     window.skyrimPlatform.widgets.addListener(this.handleWidgetUpdate.bind(this));
 
+    this.onAdminDashboardVisibility = (event) => {
+      const isVisible = !!(event && event.detail && event.detail.visible);
+      if (this.isMountedFlag) {
+        this.setState({ isAdminDashboardVisible: isVisible });
+      }
+    };
+    window.addEventListener('adminDashboardVisibility', this.onAdminDashboardVisibility);
+
     if (shouldForceLoggedInView()) {
       window.localStorage.setItem('skymp.dev.loggedIn', '1');
       const overlayTargets = getDevOverlayTargets();
@@ -267,6 +285,9 @@ class App extends React.Component {
     window.removeEventListener('blur', this.onWindowFocus.bind(this));
     window.addEventListener('mousemove', this.onMoveWindow);
     window.skyrimPlatform.widgets.removeListener(this.handleWidgetUpdate.bind(this));
+    if (this.onAdminDashboardVisibility) {
+      window.removeEventListener('adminDashboardVisibility', this.onAdminDashboardVisibility);
+    }
   }
 
   onWindowFocus(e) {
@@ -308,11 +329,12 @@ class App extends React.Component {
     const repeatedFailuresLabel = this.state.apiConsecutiveErrors >= 3
       ? `Warning: ${this.state.apiConsecutiveErrors} consecutive failures`
       : '';
+    const shouldHideDevBanner = this.state.isAdminDashboardVisible || isAdminRouteRequested();
 
     if (this.state.isLoggined) {
       return (
         <div className={`App ${!window.hasOwnProperty('skyrimPlatform') ? 'bg' : ''}`}>
-          {this.state.isDevUiMode && (
+          {this.state.isDevUiMode && !shouldHideDevBanner && (
             <div
               style={{
                 position: 'fixed',

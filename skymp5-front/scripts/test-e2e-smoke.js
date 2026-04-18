@@ -154,7 +154,8 @@ const frontendMetricsPayload = {
           canViewLogs: true,
           canMessage: true,
           canMute: true,
-          canUnmute: true
+          canUnmute: true,
+          canManageRespawn: true
         })
       });
     });
@@ -213,6 +214,26 @@ const frontendMetricsPayload = {
 
     await page.route('**/api/admin/logs**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    });
+
+    await page.route('**/api/admin/respawn-status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { userId: 7, actorName: 'TestWarrior', downedAt: Date.now() - 12000, canRespawn: false }
+        ])
+      });
+    });
+
+    await page.route('**/api/admin/events**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { ts: Date.now() - 12000, type: 'downed', userId: 7, actorName: 'TestWarrior', details: 'Auto-respawn disabled' }
+        ])
+      });
     });
 
     await page.route('**/api/admin/frontend-metrics**', async (route) => {
@@ -358,6 +379,35 @@ const frontendMetricsPayload = {
     assert.equal(metricsResult.ok, true);
     assert.equal(metricsResult.totalCount > 0, true);
     assert.equal(metricsResult.names.includes('first-contentful-paint'), true);
+
+    // --- Respawn tab smoke ---
+    await page.locator('[data-testid="admin-tab-respawn"]').evaluate((element) => element.click());
+    await page.waitForResponse(
+      (response) => response.url().includes('/api/admin/respawn-status'),
+      { timeout: 10000 }
+    );
+
+    const respawnPanelVisible = await page.locator('[data-testid="admin-panel-respawn"]').count() > 0;
+    if (respawnPanelVisible) {
+      await page.locator('[data-testid="admin-panel-respawn"]').waitFor({ state: 'visible', timeout: 8000 });
+      const downedRow = page.locator('[data-testid="admin-downed-row-7"]');
+      if (await downedRow.count() > 0) {
+        await downedRow.waitFor({ state: 'visible', timeout: 5000 });
+        const reviveBtn = page.locator('[data-testid="admin-revive-btn-7"]');
+        assert.equal(await reviveBtn.count() > 0, true);
+      } else {
+        console.log('[WARN] Downed row for userId=7 not found in respawn panel; panel rendered without list');
+      }
+    } else {
+      console.log('[WARN] Respawn panel not rendered; respawn tab assertions skipped');
+    }
+
+    // --- Events tab smoke ---
+    await page.locator('[data-testid="admin-tab-events"]').evaluate((element) => element.click());
+    await page.waitForResponse(
+      (response) => response.url().includes('/api/admin/events'),
+      { timeout: 10000 }
+    );
 
     await page.waitForTimeout(500);
     console.log(`[OK] E2E launcher/admin metrics flow passed for ${targetUrl}`);

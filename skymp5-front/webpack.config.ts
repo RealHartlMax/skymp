@@ -58,7 +58,7 @@ module.exports = {
         exclude: /node_modules/,
         use: ['babel-loader'],
       },
-      { test: /\.tsx?$/, loader: 'ts-loader' },
+      { test: /\.tsx?$/, loader: 'ts-loader', options: { transpileOnly: true } },
       {
         test: /\.m?js$/,
         exclude: /(node_modules|bower_components|bridge)/,

@@ -2,9 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { FrameButton } from '../../components/FrameButton/FrameButton';
 import { filterAdminPlayers, formatAdminPos, formatAdminTime, formatAdminUptime } from './utils';
+import { RespawnPanel, DownedPlayerEntry } from './RespawnPanel';
+import { EventsPanel, RevivalEventEntry } from './EventsPanel';
+import { ITEM_CATALOG, ITEM_CATEGORIES, ItemCategory } from './itemCatalog';
+import { detectLanguage, persistRuntimeLanguage } from '../../utils/i18nLanguage';
 import './styles.scss';
 
-type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics';
+type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics' | 'respawn' | 'events' | 'cfg';
+type TopSection = 'players' | 'history' | 'playerDrops' | 'whitelist' | 'admins' | 'settings' | 'system';
 type AdminRole = 'admin' | 'moderator' | 'viewer';
 type ServerLogLevel = 'info' | 'error';
 
@@ -105,7 +110,71 @@ interface AdminCapabilities {
   canMessage: boolean;
   canMute: boolean;
   canUnmute: boolean;
+  canManageRespawn: boolean;
 }
+
+interface JoinAccessForm {
+  mode: 'none' | 'approvedLicense' | 'discordMember' | 'discordRoles';
+  rejectionMessage: string;
+  approvedLicenses: string;
+  approvedDiscordIds: string;
+  discordRoleIds: string;
+}
+
+interface DiscordBotForm {
+  enabled: boolean;
+  token: string;
+  guildId: string;
+  warningsChannelId: string;
+}
+
+interface StarterInventoryRow {
+  baseId: number;
+  count: number;
+  worn?: boolean;
+  wornLeft?: boolean;
+}
+
+interface StartSpawnForm {
+  x: number;
+  y: number;
+  z: number;
+  worldOrCell: string;
+  angleZ: number;
+}
+
+interface SpawnPreset extends StartSpawnForm {
+  key: string;
+  labelKey: string;
+}
+
+interface WorldOrCellOption {
+  value: string;
+  labelKey: string;
+}
+
+interface NpcDefaultSettingsForm {
+  spawnInInterior: boolean;
+  spawnInExterior: boolean;
+  allowHumanoid: boolean;
+  allowCreature: boolean;
+}
+
+interface CfgFormState {
+  serverName: string;
+  port: number;
+  maxPlayers: number;
+  offlineMode: boolean;
+  defaultLanguage: string;
+  startSpawn: StartSpawnForm;
+  npcEnabled: boolean;
+  npcDefaultSettings: NpcDefaultSettingsForm;
+  joinAccess: JoinAccessForm;
+  discordBot: DiscordBotForm;
+  starterInventory: StarterInventoryRow[];
+}
+
+type CfgEditorTab = 'general' | 'access' | 'inventory' | 'json';
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canKick: true,
@@ -116,6 +185,7 @@ const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canMessage: true,
   canMute: true,
   canUnmute: true,
+  canManageRespawn: true,
 };
 
 const EMPTY_FRONTEND_METRICS_SUMMARY: FrontendMetricsSummary = {
@@ -149,8 +219,138 @@ interface PersistedAdminDashboardState {
   metricLimit?: number;
   metricSourceFilter?: string;
   metricNameFilter?: string;
+  eventTypeFilter?: '' | RevivalEventEntry['type'];
+  eventLimit?: number;
   consoleHistory?: string[];
+  cfgEditorText?: string;
 }
+
+const DEFAULT_CFG_FORM: CfgFormState = {
+  serverName: '',
+  port: 7777,
+  maxPlayers: 100,
+  offlineMode: false,
+  defaultLanguage: 'en',
+  startSpawn: {
+    x: 133857,
+    y: -61130,
+    z: 14662,
+    worldOrCell: '0x3c',
+    angleZ: 72,
+  },
+  npcEnabled: false,
+  npcDefaultSettings: {
+    spawnInInterior: true,
+    spawnInExterior: true,
+    allowHumanoid: true,
+    allowCreature: true,
+  },
+  joinAccess: {
+    mode: 'none',
+    rejectionMessage: 'Access denied. Please contact server staff for whitelist approval.',
+    approvedLicenses: '',
+    approvedDiscordIds: '',
+    discordRoleIds: '',
+  },
+  discordBot: {
+    enabled: false,
+    token: '',
+    guildId: '',
+    warningsChannelId: '',
+  },
+  starterInventory: [],
+};
+
+const parseCommaList = (value: string): string[] => value
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0);
+
+const parseItemCodeToBaseId = (code: string): number | null => {
+  const normalized = String(code || '').trim().replace(/^0x/i, '').toUpperCase();
+  if (!normalized) return null;
+  if (!/^[0-9A-F]+$/.test(normalized)) return null;
+  const parsed = parseInt(normalized, 16);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeWorldOrCell = (value: string): string => String(value || '').trim().toLowerCase();
+
+const SPAWN_PRESETS: SpawnPreset[] = [
+  {
+    key: 'tamriel',
+    labelKey: 'cfgSpawnPreset_tamriel',
+    x: 133857,
+    y: -61130,
+    z: 14662,
+    worldOrCell: '0x3c',
+    angleZ: 72,
+  },
+  {
+    key: 'whiterun',
+    labelKey: 'cfgSpawnPreset_whiterun',
+    x: 22659,
+    y: -8697,
+    z: -3594,
+    worldOrCell: '0x1a26f',
+    angleZ: 268,
+  },
+  {
+    key: 'riften',
+    labelKey: 'cfgSpawnPreset_riften',
+    x: 172414.4688,
+    y: -99692.1719,
+    z: 11136.5918,
+    worldOrCell: '0x16bb4',
+    angleZ: 177.6169,
+  },
+  {
+    key: 'markarth',
+    labelKey: 'cfgSpawnPreset_markarth',
+    x: -174156.5781,
+    y: 7128.9624,
+    z: -3105.9287,
+    worldOrCell: '0x16d71',
+    angleZ: 166.6154,
+  },
+  {
+    key: 'windhelm',
+    labelKey: 'cfgSpawnPreset_windhelm',
+    x: 134123.7813,
+    y: 36661.9023,
+    z: -12252.2842,
+    worldOrCell: '0xd45f0',
+    angleZ: -83.5598,
+  },
+];
+
+const WORLD_OR_CELL_HINTS: Record<string, string> = {
+  '0x3c': 'cfgWorldOrCellHint_tamriel',
+  '0x1a26f': 'cfgWorldOrCellHint_whiterun',
+  '0x16bb4': 'cfgWorldOrCellHint_riften',
+  '0x16d71': 'cfgWorldOrCellHint_markarth',
+  '0xd45f0': 'cfgWorldOrCellHint_windhelm',
+};
+
+const WORLD_OR_CELL_OPTIONS: WorldOrCellOption[] = [
+  { value: '0x3c', labelKey: 'cfgWorldOrCellOption_tamriel' },
+  { value: '0x1a26f', labelKey: 'cfgWorldOrCellOption_whiterun' },
+  { value: '0x16bb4', labelKey: 'cfgWorldOrCellOption_riften' },
+  { value: '0x16d71', labelKey: 'cfgWorldOrCellOption_markarth' },
+  { value: '0xd45f0', labelKey: 'cfgWorldOrCellOption_windhelm' },
+];
+
+const matchesSpawnPreset = (spawn: StartSpawnForm, preset: SpawnPreset): boolean => {
+  const closeEnough = (left: number, right: number) => Math.abs(left - right) < 0.01;
+
+  return normalizeWorldOrCell(spawn.worldOrCell) === normalizeWorldOrCell(preset.worldOrCell)
+    && closeEnough(spawn.x, preset.x)
+    && closeEnough(spawn.y, preset.y)
+    && closeEnough(spawn.z, preset.z)
+    && closeEnough(spawn.angleZ, preset.angleZ);
+};
+
+const toCodeHex = (baseId: number): string => baseId.toString(16).toUpperCase().padStart(8, '0');
 
 const asRole = (value: unknown): AdminRole => {
   if (value === 'admin' || value === 'moderator' || value === 'viewer') return value;
@@ -158,9 +358,10 @@ const asRole = (value: unknown): AdminRole => {
 };
 
 const AdminDashboard = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTopSection, setActiveTopSection] = useState<TopSection>('settings');
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [players, setPlayers] = useState<AdminPlayer[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUserEntry[]>([]);
@@ -178,6 +379,18 @@ const AdminDashboard = () => {
   const [consoleHistory, setConsoleHistory] = useState<string[]>([]);
   const [consoleHistoryIndex, setConsoleHistoryIndex] = useState<number | null>(null);
   const [consoleSending, setConsoleSending] = useState(false);
+  const [cfgEditorText, setCfgEditorText] = useState('');
+  const [cfgEditorStatus, setCfgEditorStatus] = useState('');
+  const [cfgEditorLoading, setCfgEditorLoading] = useState(false);
+  const [cfgEditorSaving, setCfgEditorSaving] = useState(false);
+  const [cfgEditorTab, setCfgEditorTab] = useState<CfgEditorTab>('general');
+  const [cfgForm, setCfgForm] = useState<CfgFormState>(DEFAULT_CFG_FORM);
+  const [inventoryCategory, setInventoryCategory] = useState<ItemCategory>('weapons');
+  const [inventoryItemCode, setInventoryItemCode] = useState('000139B5');
+  const [inventoryCustomCode, setInventoryCustomCode] = useState('');
+  const [inventoryCount, setInventoryCount] = useState(1);
+  const [inventoryWorn, setInventoryWorn] = useState(false);
+  const [inventoryWornLeft, setInventoryWornLeft] = useState(false);
   const [serverConsoleEntries, setServerConsoleEntries] = useState<LogEntry[]>([]);
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'mute' | 'console' | 'server'>('');
@@ -193,10 +406,15 @@ const AdminDashboard = () => {
   const [metricNameFilter, setMetricNameFilter] = useState('');
   const [clientRuntimeEntries, setClientRuntimeEntries] = useState<ClientRuntimeEventEntry[]>([]);
   const [clientRuntimeSummary, setClientRuntimeSummary] = useState<ClientRuntimeEventsSummary>(EMPTY_CLIENT_RUNTIME_SUMMARY);
+  const [downedPlayers, setDownedPlayers] = useState<DownedPlayerEntry[]>([]);
+  const [revivalEvents, setRevivalEvents] = useState<RevivalEventEntry[]>([]);
+  const [eventTypeFilter, setEventTypeFilter] = useState<'' | RevivalEventEntry['type']>('');
+  const [eventLimit, setEventLimit] = useState(100);
   const [sendMsgTargetId, setSendMsgTargetId] = useState<number | null>(null);
   const [sendMsgTargetName, setSendMsgTargetName] = useState('');
   const [sendMsgText, setSendMsgText] = useState('');
   const [sendMsgSending, setSendMsgSending] = useState(false);
+  const [sidebarActionSending, setSidebarActionSending] = useState<'kick-all' | 'announcement' | null>(null);
   const [muteDurationMinutes, setMuteDurationMinutes] = useState(10);
   const [moderationReason, setModerationReason] = useState('');
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -209,7 +427,7 @@ const AdminDashboard = () => {
       if (!raw) return;
       const persisted = JSON.parse(raw) as PersistedAdminDashboardState;
 
-      if (persisted.activeTab && ['overview', 'players', 'console', 'logs', 'metrics'].includes(persisted.activeTab)) {
+      if (persisted.activeTab && ['overview', 'players', 'console', 'logs', 'metrics', 'respawn', 'events', 'cfg'].includes(persisted.activeTab)) {
         setActiveTab(persisted.activeTab);
       }
       if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
@@ -226,8 +444,15 @@ const AdminDashboard = () => {
       if (persisted.metricLimit && [25, 50, 100, 200].includes(persisted.metricLimit)) setMetricLimit(persisted.metricLimit);
       if (typeof persisted.metricSourceFilter === 'string') setMetricSourceFilter(persisted.metricSourceFilter);
       if (typeof persisted.metricNameFilter === 'string') setMetricNameFilter(persisted.metricNameFilter);
+      if (persisted.eventTypeFilter === '' || persisted.eventTypeFilter === 'downed' || persisted.eventTypeFilter === 'revived' || persisted.eventTypeFilter === 'respawn_disabled' || persisted.eventTypeFilter === 'respawn_enabled' || persisted.eventTypeFilter === 'auto_revived') {
+        setEventTypeFilter(persisted.eventTypeFilter);
+      }
+      if (persisted.eventLimit && [25, 50, 100, 200].includes(persisted.eventLimit)) setEventLimit(persisted.eventLimit);
       if (Array.isArray(persisted.consoleHistory)) {
         setConsoleHistory(persisted.consoleHistory.filter((entry) => typeof entry === 'string').slice(0, 30));
+      }
+      if (typeof persisted.cfgEditorText === 'string') {
+        setCfgEditorText(persisted.cfgEditorText);
       }
     } catch {
       // ignore persisted state parsing issues
@@ -246,13 +471,16 @@ const AdminDashboard = () => {
         metricLimit,
         metricSourceFilter,
         metricNameFilter,
+        eventTypeFilter,
+        eventLimit,
         consoleHistory,
+        cfgEditorText,
       };
       window.localStorage.setItem(ADMIN_DASHBOARD_STATE_KEY, JSON.stringify(stateToPersist));
     } catch {
       // ignore storage write failures
     }
-  }, [activeTab, consoleHistory, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
+  }, [activeTab, cfgEditorText, consoleHistory, eventLimit, eventTypeFilter, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
 
   const setForbiddenAwareStatus = useCallback((res: Response, successText: string) => {
     if (res.ok) {
@@ -307,6 +535,7 @@ const AdminDashboard = () => {
         canMessage: typeof payload?.canMessage === 'boolean' ? payload.canMessage : DEFAULT_CAPABILITIES.canMessage,
         canMute: typeof payload?.canMute === 'boolean' ? payload.canMute : DEFAULT_CAPABILITIES.canMute,
         canUnmute: typeof payload?.canUnmute === 'boolean' ? payload.canUnmute : DEFAULT_CAPABILITIES.canUnmute,
+        canManageRespawn: typeof payload?.canManageRespawn === 'boolean' ? payload.canManageRespawn : DEFAULT_CAPABILITIES.canManageRespawn,
       });
     } catch {
       // silently ignore
@@ -450,6 +679,407 @@ const AdminDashboard = () => {
     }
   }, [capabilities.canViewLogs, metricLimit]);
 
+  const fetchDownedPlayers = useCallback(async () => {
+    try {
+      if (!capabilities.canManageRespawn) {
+        setDownedPlayers([]);
+        return;
+      }
+
+      const res = await fetch('/api/admin/respawn-status');
+      if (!res.ok) {
+        if (res.status === 403) {
+          setDownedPlayers([]);
+        }
+        return;
+      }
+
+      const payload = await res.json();
+      setDownedPlayers(Array.isArray(payload) ? payload as DownedPlayerEntry[] : []);
+    } catch {
+      // silently ignore
+    }
+  }, [capabilities.canManageRespawn]);
+
+  const fetchRevivalEvents = useCallback(async () => {
+    try {
+      if (!capabilities.canViewLogs) {
+        setRevivalEvents([]);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (eventTypeFilter) params.set('type', eventTypeFilter);
+      params.set('limit', String(eventLimit));
+
+      const res = await fetch(`/api/admin/events?${params.toString()}`);
+      if (!res.ok) {
+        if (res.status === 403) {
+          setRevivalEvents([]);
+        }
+        return;
+      }
+
+      const payload = await res.json();
+      setRevivalEvents(Array.isArray(payload) ? payload as RevivalEventEntry[] : []);
+    } catch {
+      // silently ignore
+    }
+  }, [capabilities.canViewLogs, eventLimit, eventTypeFilter]);
+
+  const mapJsonToCfgForm = useCallback((jsonText: string): CfgFormState => {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    const joinAccessRaw = parsed.joinAccess && typeof parsed.joinAccess === 'object'
+      ? parsed.joinAccess as Record<string, unknown>
+      : {};
+    const discordBotRaw = parsed.discordBot && typeof parsed.discordBot === 'object'
+      ? parsed.discordBot as Record<string, unknown>
+      : {};
+    const startSpawnRaw = parsed.startSpawn && typeof parsed.startSpawn === 'object'
+      ? parsed.startSpawn as Record<string, unknown>
+      : {};
+    const startSpawnPos = Array.isArray(startSpawnRaw.pos) ? startSpawnRaw.pos as unknown[] : [];
+    const npcSettingsRaw = parsed.npcSettings && typeof parsed.npcSettings === 'object'
+      ? parsed.npcSettings as Record<string, unknown>
+      : {};
+    const npcDefaultSettingsRaw = npcSettingsRaw.default && typeof npcSettingsRaw.default === 'object'
+      ? npcSettingsRaw.default as Record<string, unknown>
+      : {};
+    const starterInventoryRaw = parsed.starterInventory && typeof parsed.starterInventory === 'object'
+      ? parsed.starterInventory as Record<string, unknown>
+      : {};
+
+    const entriesRaw = Array.isArray(starterInventoryRaw.entries) ? starterInventoryRaw.entries : [];
+    const starterInventory = entriesRaw
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const typed = entry as Record<string, unknown>;
+        const baseId = Number(typed.baseId);
+        const count = Number(typed.count);
+        if (!Number.isFinite(baseId) || !Number.isFinite(count)) return null;
+        return {
+          baseId: Math.max(0, Math.floor(baseId)),
+          count: Math.max(1, Math.floor(count)),
+          worn: Boolean(typed.worn),
+          wornLeft: Boolean(typed.wornLeft),
+        } as StarterInventoryRow;
+      })
+      .filter((row): row is StarterInventoryRow => row !== null);
+
+    return {
+      serverName: String(parsed.name || ''),
+      port: Number.isFinite(Number(parsed.port)) ? Math.max(1, Math.floor(Number(parsed.port))) : 7777,
+      maxPlayers: Number.isFinite(Number(parsed.maxPlayers)) ? Math.max(1, Math.floor(Number(parsed.maxPlayers))) : 100,
+      offlineMode: Boolean(parsed.offlineMode),
+      defaultLanguage: String((parsed.localeRouting as Record<string, unknown> | undefined)?.defaultLanguage || 'en'),
+      startSpawn: {
+        x: Number.isFinite(Number(startSpawnPos[0])) ? Number(startSpawnPos[0]) : DEFAULT_CFG_FORM.startSpawn.x,
+        y: Number.isFinite(Number(startSpawnPos[1])) ? Number(startSpawnPos[1]) : DEFAULT_CFG_FORM.startSpawn.y,
+        z: Number.isFinite(Number(startSpawnPos[2])) ? Number(startSpawnPos[2]) : DEFAULT_CFG_FORM.startSpawn.z,
+        worldOrCell: String(startSpawnRaw.worldOrCell || DEFAULT_CFG_FORM.startSpawn.worldOrCell),
+        angleZ: Number.isFinite(Number(startSpawnRaw.angleZ)) ? Number(startSpawnRaw.angleZ) : DEFAULT_CFG_FORM.startSpawn.angleZ,
+      },
+      npcEnabled: Boolean(parsed.npcEnabled),
+      npcDefaultSettings: {
+        spawnInInterior: npcDefaultSettingsRaw.spawnInInterior === undefined
+          ? DEFAULT_CFG_FORM.npcDefaultSettings.spawnInInterior
+          : Boolean(npcDefaultSettingsRaw.spawnInInterior),
+        spawnInExterior: npcDefaultSettingsRaw.spawnInExterior === undefined
+          ? DEFAULT_CFG_FORM.npcDefaultSettings.spawnInExterior
+          : Boolean(npcDefaultSettingsRaw.spawnInExterior),
+        allowHumanoid: npcDefaultSettingsRaw.allowHumanoid === undefined
+          ? DEFAULT_CFG_FORM.npcDefaultSettings.allowHumanoid
+          : Boolean(npcDefaultSettingsRaw.allowHumanoid),
+        allowCreature: npcDefaultSettingsRaw.allowCreature === undefined
+          ? DEFAULT_CFG_FORM.npcDefaultSettings.allowCreature
+          : Boolean(npcDefaultSettingsRaw.allowCreature),
+      },
+      joinAccess: {
+        mode: (['none', 'approvedLicense', 'discordMember', 'discordRoles'].includes(String(joinAccessRaw.mode))
+          ? String(joinAccessRaw.mode)
+          : 'none') as JoinAccessForm['mode'],
+        rejectionMessage: String(joinAccessRaw.rejectionMessage || DEFAULT_CFG_FORM.joinAccess.rejectionMessage),
+        approvedLicenses: Array.isArray(joinAccessRaw.approvedLicenses) ? joinAccessRaw.approvedLicenses.map((v) => String(v)).join(', ') : '',
+        approvedDiscordIds: Array.isArray(joinAccessRaw.approvedDiscordIds) ? joinAccessRaw.approvedDiscordIds.map((v) => String(v)).join(', ') : '',
+        discordRoleIds: Array.isArray(joinAccessRaw.discordRoleIds) ? joinAccessRaw.discordRoleIds.map((v) => String(v)).join(', ') : '',
+      },
+      discordBot: {
+        enabled: Boolean(discordBotRaw.enabled),
+        token: String(discordBotRaw.token || ''),
+        guildId: String(discordBotRaw.guildId || ''),
+        warningsChannelId: String(discordBotRaw.warningsChannelId || ''),
+      },
+      starterInventory,
+    };
+  }, []);
+
+  const mergeCfgFormIntoJson = useCallback((rawJsonText: string, form: CfgFormState): string => {
+    const parsed = JSON.parse(rawJsonText) as Record<string, unknown>;
+    parsed.name = form.serverName.trim() || parsed.name || DEFAULT_CFG_FORM.serverName;
+    parsed.port = Math.max(1, Math.floor(Number(form.port) || 7777));
+    parsed.maxPlayers = Math.max(1, Math.floor(Number(form.maxPlayers) || 100));
+    parsed.offlineMode = Boolean(form.offlineMode);
+
+    const localeRouting = parsed.localeRouting && typeof parsed.localeRouting === 'object'
+      ? parsed.localeRouting as Record<string, unknown>
+      : {};
+    localeRouting.defaultLanguage = form.defaultLanguage.trim() || 'en';
+    parsed.localeRouting = localeRouting;
+
+    const normalizedStartSpawn = {
+      pos: [
+        Number(form.startSpawn.x) || 0,
+        Number(form.startSpawn.y) || 0,
+        Number(form.startSpawn.z) || 0,
+      ],
+      worldOrCell: form.startSpawn.worldOrCell.trim() || DEFAULT_CFG_FORM.startSpawn.worldOrCell,
+      angleZ: Number(form.startSpawn.angleZ) || 0,
+    };
+
+    parsed.startSpawn = normalizedStartSpawn;
+    parsed.startPoints = [normalizedStartSpawn];
+
+    const npcSettings = parsed.npcSettings && typeof parsed.npcSettings === 'object'
+      ? parsed.npcSettings as Record<string, unknown>
+      : {};
+    const npcDefaultSettings = npcSettings.default && typeof npcSettings.default === 'object'
+      ? npcSettings.default as Record<string, unknown>
+      : {};
+    npcDefaultSettings.spawnInInterior = Boolean(form.npcDefaultSettings.spawnInInterior);
+    npcDefaultSettings.spawnInExterior = Boolean(form.npcDefaultSettings.spawnInExterior);
+    npcDefaultSettings.allowHumanoid = Boolean(form.npcDefaultSettings.allowHumanoid);
+    npcDefaultSettings.allowCreature = Boolean(form.npcDefaultSettings.allowCreature);
+    npcSettings.default = npcDefaultSettings;
+    parsed.npcEnabled = Boolean(form.npcEnabled);
+    parsed.npcSettings = npcSettings;
+
+    parsed.joinAccess = {
+      mode: form.joinAccess.mode,
+      rejectionMessage: form.joinAccess.rejectionMessage.trim() || DEFAULT_CFG_FORM.joinAccess.rejectionMessage,
+      approvedLicenses: parseCommaList(form.joinAccess.approvedLicenses),
+      approvedDiscordIds: parseCommaList(form.joinAccess.approvedDiscordIds),
+      discordRoleIds: parseCommaList(form.joinAccess.discordRoleIds),
+    };
+
+    parsed.discordBot = {
+      enabled: form.discordBot.enabled,
+      token: form.discordBot.token.trim(),
+      guildId: form.discordBot.guildId.trim(),
+      warningsChannelId: form.discordBot.warningsChannelId.trim(),
+    };
+
+    parsed.discordAuth = {
+      ...(parsed.discordAuth && typeof parsed.discordAuth === 'object' ? parsed.discordAuth as Record<string, unknown> : {}),
+      botToken: form.discordBot.token.trim(),
+      guildId: form.discordBot.guildId.trim(),
+      eventLogChannelId: form.discordBot.warningsChannelId.trim(),
+    };
+
+    parsed.starterInventory = {
+      entries: form.starterInventory.map((entry) => ({
+        baseId: Math.max(0, Math.floor(entry.baseId)),
+        count: Math.max(1, Math.floor(entry.count)),
+        ...(entry.worn ? { worn: true } : {}),
+        ...(entry.wornLeft ? { wornLeft: true } : {}),
+      })),
+    };
+
+    return JSON.stringify(parsed, null, 2);
+  }, []);
+
+  const addStarterInventoryEntry = useCallback(() => {
+    const code = inventoryCustomCode.trim() || inventoryItemCode;
+    const baseId = parseItemCodeToBaseId(code);
+    if (baseId === null) {
+      setCfgEditorStatus(t('adminDashboard.cfgInvalidItemCode'));
+      return;
+    }
+
+    setCfgForm((prev) => ({
+      ...prev,
+      starterInventory: [
+        ...prev.starterInventory,
+        {
+          baseId,
+          count: Math.max(1, Math.floor(Number(inventoryCount) || 1)),
+          worn: inventoryWorn,
+          wornLeft: inventoryWornLeft,
+        },
+      ],
+    }));
+    setInventoryCustomCode('');
+    setInventoryCount(1);
+    setInventoryWorn(false);
+    setInventoryWornLeft(false);
+  }, [inventoryCount, inventoryCustomCode, inventoryItemCode, inventoryWorn, inventoryWornLeft, t]);
+
+  const removeStarterInventoryEntry = useCallback((index: number) => {
+    setCfgForm((prev) => ({
+      ...prev,
+      starterInventory: prev.starterInventory.filter((_, currentIndex) => currentIndex !== index),
+    }));
+  }, []);
+
+  const loadCfgEditor = useCallback(async () => {
+    setCfgEditorLoading(true);
+    try {
+      const res = await fetch('/api/admin/cfg/server-settings');
+      if (!res.ok) {
+        if (res.status === 403) {
+          setCfgEditorStatus(t('adminDashboard.noPermission'));
+        } else {
+          setCfgEditorStatus(t('adminDashboard.apiError'));
+        }
+        return;
+      }
+      const payload = await res.json();
+      const text = typeof payload?.json === 'string' ? payload.json : JSON.stringify(payload ?? {}, null, 2);
+      setCfgEditorText(text);
+      try {
+        setCfgForm(mapJsonToCfgForm(text));
+      } catch {
+        setCfgForm(DEFAULT_CFG_FORM);
+      }
+      const pathText = typeof payload?.path === 'string' && payload.path.length > 0 ? `: ${payload.path}` : '';
+      setCfgEditorStatus(`${t('adminDashboard.cfgLoaded')}${pathText}`);
+    } catch {
+      setCfgEditorStatus(t('adminDashboard.apiError'));
+    } finally {
+      setCfgEditorLoading(false);
+    }
+  }, [mapJsonToCfgForm, t]);
+
+  const formatCfgEditor = useCallback(() => {
+    try {
+      const parsed = JSON.parse(cfgEditorText);
+      const formatted = JSON.stringify(parsed, null, 2);
+      setCfgEditorText(formatted);
+      setCfgForm(mapJsonToCfgForm(formatted));
+      setCfgEditorStatus(t('adminDashboard.cfgFormatted'));
+    } catch {
+      setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
+    }
+  }, [cfgEditorText, mapJsonToCfgForm, t]);
+
+  const applyAccessDiscordToCfgEditor = useCallback(() => {
+    try {
+      const parsed = JSON.parse(cfgEditorText);
+      const next = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+
+      const normalizeJoinMode = (value: unknown): 'none' | 'approvedLicense' | 'discordMember' | 'discordRoles' => {
+        const mode = String(value || '').trim();
+        if (mode === 'approvedLicense' || mode === 'discordMember' || mode === 'discordRoles') return mode;
+        return 'none';
+      };
+
+      const asStringArray = (value: unknown): string[] => {
+        if (!Array.isArray(value)) return [];
+        return value.map((item) => String(item || '').trim()).filter((item) => item.length > 0);
+      };
+
+      const joinAccessRaw = next.joinAccess && typeof next.joinAccess === 'object'
+        ? next.joinAccess as Record<string, unknown>
+        : {};
+      const discordBotRaw = next.discordBot && typeof next.discordBot === 'object'
+        ? next.discordBot as Record<string, unknown>
+        : {};
+      const discordAuthRaw = next.discordAuth && typeof next.discordAuth === 'object'
+        ? next.discordAuth as Record<string, unknown>
+        : {};
+
+      const joinAccess = {
+        mode: normalizeJoinMode(joinAccessRaw.mode),
+        rejectionMessage: String(joinAccessRaw.rejectionMessage || 'Access denied. Please contact server staff for whitelist approval.'),
+        approvedLicenses: asStringArray(joinAccessRaw.approvedLicenses),
+        approvedDiscordIds: asStringArray(joinAccessRaw.approvedDiscordIds),
+        discordRoleIds: asStringArray(joinAccessRaw.discordRoleIds),
+      };
+
+      const discordBot = {
+        enabled: Boolean(discordBotRaw.enabled),
+        token: String(discordBotRaw.token || discordAuthRaw.botToken || ''),
+        guildId: String(discordBotRaw.guildId || discordAuthRaw.guildId || ''),
+        warningsChannelId: String(discordBotRaw.warningsChannelId || discordAuthRaw.eventLogChannelId || ''),
+      };
+
+      next.joinAccess = joinAccess;
+      next.discordBot = discordBot;
+      next.discordAuth = {
+        ...discordAuthRaw,
+        botToken: discordBot.token,
+        guildId: discordBot.guildId,
+        eventLogChannelId: discordBot.warningsChannelId,
+      };
+
+      const normalized = JSON.stringify(next, null, 2);
+      setCfgEditorText(normalized);
+      setCfgForm(mapJsonToCfgForm(normalized));
+      setCfgEditorStatus(t('adminDashboard.accessApplied'));
+      return normalized;
+    } catch {
+      setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
+      return null;
+    }
+  }, [cfgEditorText, mapJsonToCfgForm, t]);
+
+  const saveCfgEditor = useCallback(async (preparedJson?: string) => {
+    let normalized: string;
+    try {
+      normalized = mergeCfgFormIntoJson(preparedJson ?? cfgEditorText, cfgForm);
+    } catch {
+      setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
+      return;
+    }
+
+    setCfgEditorSaving(true);
+    try {
+      const res = await fetch('/api/admin/cfg/server-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: normalized }),
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          setCfgEditorStatus(t('adminDashboard.noPermission'));
+        } else {
+          const text = await res.text().catch(() => '');
+          setCfgEditorStatus(`${t('adminDashboard.apiError')}${text ? `: ${text.slice(0, 120)}` : ''}`);
+        }
+        return;
+      }
+      const nextLanguage = detectLanguage(cfgForm.defaultLanguage);
+      setCfgEditorText(normalized);
+      setCfgForm(mapJsonToCfgForm(normalized));
+      persistRuntimeLanguage(nextLanguage);
+      if (i18n.resolvedLanguage !== nextLanguage) {
+        await i18n.changeLanguage(nextLanguage);
+      }
+      setCfgEditorStatus(i18n.getFixedT(nextLanguage)('adminDashboard.cfgSaved'));
+    } catch {
+      setCfgEditorStatus(t('adminDashboard.apiError'));
+    } finally {
+      setCfgEditorSaving(false);
+    }
+  }, [cfgEditorText, cfgForm, i18n, mapJsonToCfgForm, mergeCfgFormIntoJson, t]);
+
+  const revivePlayer = useCallback(async (userId: number) => {
+    const reason = moderationReason.trim();
+    try {
+      const res = await fetch('/api/admin/revive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { userId, reason } : { userId }),
+      });
+      setForbiddenAwareStatus(res, `${t('adminDashboard.revived')}: ${userId}`);
+      if (res.ok) {
+        await fetchDownedPlayers();
+        await fetchRevivalEvents();
+      }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    }
+  }, [fetchDownedPlayers, fetchRevivalEvents, moderationReason, setForbiddenAwareStatus, t]);
+
   const kickPlayer = async (userId: number) => {
     const reason = moderationReason.trim();
     try {
@@ -519,6 +1149,55 @@ const AdminDashboard = () => {
       setStatusMsg(t('adminDashboard.apiError'));
     } finally {
       setSendMsgSending(false);
+    }
+  };
+
+  const kickAllPlayers = async () => {
+    if (!capabilities.canKick || players.length === 0) return;
+    if (!window.confirm(`${t('adminDashboard.kickAllConfirm')} (${players.length})?`)) return;
+
+    const reason = moderationReason.trim();
+    setSidebarActionSending('kick-all');
+    try {
+      const res = await fetch('/api/admin/players/kick-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { reason } : {}),
+      });
+      setForbiddenAwareStatus(res, `${t('adminDashboard.kickAllPlayers')}: ${players.length}`);
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setSidebarActionSending(null);
+    }
+  };
+
+  const sendAnnouncement = async () => {
+    if (!capabilities.canMessage) return;
+    const message = window.prompt(t('adminDashboard.announcementPrompt'))?.trim() ?? '';
+    if (!message) return;
+
+    const reason = moderationReason.trim();
+    setSidebarActionSending('announcement');
+    try {
+      const body: Record<string, unknown> = { message };
+      if (reason) body.reason = reason;
+      const res = await fetch('/api/admin/announcement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      setForbiddenAwareStatus(res, t('adminDashboard.announcementSent'));
+      if (res.ok) {
+        setModerationReason('');
+      }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setSidebarActionSending(null);
     }
   };
 
@@ -653,6 +1332,8 @@ const AdminDashboard = () => {
     setMetricSummary(EMPTY_FRONTEND_METRICS_SUMMARY);
     setClientRuntimeEntries([]);
     setClientRuntimeSummary(EMPTY_CLIENT_RUNTIME_SUMMARY);
+    setDownedPlayers([]);
+    setRevivalEvents([]);
     setSendMsgTargetId(null);
     setSendMsgText('');
     setModerationReason('');
@@ -668,6 +1349,13 @@ const AdminDashboard = () => {
 
     window.addEventListener('showAdminDashboard', onShow);
     window.addEventListener('hideAdminDashboard', onHide);
+
+    // Dev/test shortcut: open admin directly via URL (?admin=1 or #admin)
+    const params = new URLSearchParams(window.location.search);
+    const shouldAutoOpen = params.get('admin') === '1' || window.location.hash === '#admin';
+    if (shouldAutoOpen) {
+      void show();
+    }
 
     return () => {
       window.removeEventListener('showAdminDashboard', onShow);
@@ -691,6 +1379,10 @@ const AdminDashboard = () => {
   }, [hide, visible]);
 
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent('adminDashboardVisibility', { detail: { visible } }));
+  }, [visible]);
+
+  useEffect(() => {
     if (consoleEndRef.current) consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [consoleLines, serverConsoleEntries]);
 
@@ -699,7 +1391,10 @@ const AdminDashboard = () => {
     if (activeTab === 'logs') void fetchLogs();
     if (activeTab === 'metrics') void fetchFrontendMetrics();
     if (activeTab === 'metrics') void fetchClientRuntimeEvents();
-  }, [activeTab, fetchClientRuntimeEvents, fetchFrontendMetrics, fetchLogs, fetchServerConsole]);
+    if (activeTab === 'respawn') void fetchDownedPlayers();
+    if (activeTab === 'events') void fetchRevivalEvents();
+    if (activeTab === 'cfg') void loadCfgEditor();
+  }, [activeTab, fetchClientRuntimeEvents, fetchDownedPlayers, fetchFrontendMetrics, fetchLogs, fetchRevivalEvents, fetchServerConsole, loadCfgEditor]);
 
   useEffect(() => {
     if (!visible || activeTab !== 'console') return;
@@ -716,6 +1411,23 @@ const AdminDashboard = () => {
     }, 2000);
     return () => clearInterval(id);
   }, [activeTab, fetchLogs, visible]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'respawn') return;
+    const id = setInterval(() => {
+      void fetchDownedPlayers();
+      setNowTs(Date.now());
+    }, 2000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchDownedPlayers, visible]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'events') return;
+    const id = setInterval(() => {
+      void fetchRevivalEvents();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchRevivalEvents, visible]);
 
   useEffect(() => {
     setLogBeforeTs(null);
@@ -746,6 +1458,33 @@ const AdminDashboard = () => {
   }, [activeTab, hasTimedBans, mutedUsers.length, visible]);
 
   const metricSourceOptions = useMemo(() => metricSummary.sources.map((item) => item.name), [metricSummary.sources]);
+  const filteredCatalogItems = useMemo(
+    () => ITEM_CATALOG.filter((item) => item.category === inventoryCategory),
+    [inventoryCategory],
+  );
+  const selectedSpawnPresetKey = useMemo(
+    () => SPAWN_PRESETS.find((preset) => matchesSpawnPreset(cfgForm.startSpawn, preset))?.key ?? '',
+    [cfgForm.startSpawn],
+  );
+  const selectedWorldOrCellValue = useMemo(() => {
+    const normalizedValue = normalizeWorldOrCell(cfgForm.startSpawn.worldOrCell);
+    return WORLD_OR_CELL_OPTIONS.some((option) => option.value === normalizedValue)
+      ? normalizedValue
+      : '__custom__';
+  }, [cfgForm.startSpawn.worldOrCell]);
+  const worldOrCellHintKey = useMemo(
+    () => WORLD_OR_CELL_HINTS[normalizeWorldOrCell(cfgForm.startSpawn.worldOrCell)] ?? 'cfgWorldOrCellHint_custom',
+    [cfgForm.startSpawn.worldOrCell],
+  );
+  const catalogNameByBaseId = useMemo(
+    () => new Map(ITEM_CATALOG.map((item) => [parseInt(item.codeHex, 16), item.name] as const)),
+    [],
+  );
+
+  useEffect(() => {
+    if (filteredCatalogItems.length === 0) return;
+    setInventoryItemCode(filteredCatalogItems[0].codeHex);
+  }, [filteredCatalogItems]);
 
   const filteredPlayers = filterAdminPlayers(players, playerSearch);
   const oldestLogTs = logEntries.length > 0 ? logEntries[logEntries.length - 1].ts : null;
@@ -796,6 +1535,8 @@ const AdminDashboard = () => {
     setMetricNameFilter('');
     setConsoleHistory([]);
     setConsoleHistoryIndex(null);
+    setCfgEditorStatus('');
+    setCfgEditorTab('general');
     setStatusMsg(t('adminDashboard.preferencesReset'));
     try {
       window.localStorage.removeItem(ADMIN_DASHBOARD_STATE_KEY);
@@ -810,6 +1551,29 @@ const AdminDashboard = () => {
     { key: 'console', label: t('adminDashboard.tabConsole') },
     { key: 'logs', label: t('adminDashboard.tabLogs') },
     { key: 'metrics', label: t('adminDashboard.tabMetrics') },
+    { key: 'cfg', label: t('adminDashboard.tabCfg') },
+    { key: 'respawn', label: t('adminDashboard.tabRespawn') },
+    { key: 'events', label: t('adminDashboard.tabEvents') },
+  ];
+
+  const defaultTabByTopSection: Record<TopSection, Tab> = {
+    players: 'players',
+    history: 'logs',
+    playerDrops: 'events',
+    whitelist: 'respawn',
+    admins: 'console',
+    settings: 'overview',
+    system: 'metrics',
+  };
+
+  const topNavItems: Array<{ key: TopSection; label: string }> = [
+    { key: 'players', label: t('adminDashboard.topTx_players') },
+    { key: 'history', label: t('adminDashboard.topTx_history') },
+    { key: 'playerDrops', label: t('adminDashboard.topTx_playerDrops') },
+    { key: 'whitelist', label: t('adminDashboard.topTx_whitelist') },
+    { key: 'admins', label: t('adminDashboard.topTx_admins') },
+    { key: 'settings', label: t('adminDashboard.topTx_settings') },
+    { key: 'system', label: t('adminDashboard.topTx_system') },
   ];
 
   const capabilityRows: Array<{ key: keyof AdminCapabilities; label: string }> = [
@@ -821,78 +1585,181 @@ const AdminDashboard = () => {
     { key: 'canMessage', label: t('adminDashboard.capability_message') },
     { key: 'canMute', label: t('adminDashboard.capability_mute') },
     { key: 'canUnmute', label: t('adminDashboard.capability_unmute') },
+    { key: 'canManageRespawn', label: t('adminDashboard.capability_manageRespawn') },
   ];
+
+  const sideNavItems: Array<{ key: Tab; label: string }> = [
+    { key: 'overview', label: t('adminDashboard.sideTx_dashboard') },
+    { key: 'console', label: t('adminDashboard.sideTx_liveConsole') },
+    { key: 'metrics', label: t('adminDashboard.sideTx_resources') },
+    { key: 'logs', label: t('adminDashboard.sideTx_serverLog') },
+    { key: 'cfg', label: t('adminDashboard.sideTx_cfgEditor') },
+    { key: 'respawn', label: t('adminDashboard.sideTx_respawnCenter') },
+    { key: 'events', label: t('adminDashboard.sideTx_revivalJournal') },
+  ];
+  const currentTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? t('adminDashboard.title');
+  const summaryCards = [
+    { label: t('adminDashboard.online'), value: String(status?.online ?? 0), accent: true },
+    { label: t('adminDashboard.bannedUsers'), value: String(activeBannedUsers.length) },
+    { label: t('adminDashboard.mutedUsers'), value: String(activeMutedUsers.length) },
+    { label: t('adminDashboard.tabRespawn'), value: String(downedPlayers.length) },
+  ];
+  const visibleRailPlayers = filteredPlayers.slice(0, 12);
 
   if (!visible) return <></>;
 
   return (
     <div className="admin-overlay" role="dialog" aria-modal="true" aria-label={t('adminDashboard.title')}>
       <div className="admin-dashboard">
-        <div className="admin-dashboard__header">
-          <div className="admin-dashboard__header-text">
-            <h1 className="admin-dashboard__title">
-              {status?.name ? `${t('adminDashboard.title')} — ${status.name}` : t('adminDashboard.title')}
-            </h1>
-            <p className="admin-dashboard__subtitle">{t('adminDashboard.subtitle')}</p>
+        <div className="admin-dashboard__topbar">
+          <div className="admin-dashboard__brand">
+            <div className="admin-dashboard__brand-mark">SK</div>
+            <div className="admin-dashboard__brand-text">
+              <h1 className="admin-dashboard__title">{t('adminDashboard.title')}</h1>
+              <p className="admin-dashboard__subtitle">{status?.name || t('adminDashboard.subtitle')}</p>
+            </div>
           </div>
-          <div className="admin-dashboard__header-meta">
+
+          <div className="admin-dashboard__topnav" role="tablist" aria-label={t('adminDashboard.title')}>
+            {topNavItems.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                id={`admin-top-tab-${key}`}
+                data-testid={`admin-top-tab-${key}`}
+                role="tab"
+                aria-selected={activeTopSection === key}
+                aria-controls={`admin-panel-${defaultTabByTopSection[key]}`}
+                className={`admin-dashboard__topnav-item${activeTopSection === key ? ' admin-dashboard__topnav-item--active' : ''}`}
+                onClick={() => setActiveTopSection(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="admin-dashboard__topbar-meta">
             <span className={`admin-dashboard__role admin-dashboard__role--${adminRole}`}>
-              {t('adminDashboard.role')}: {t(`adminDashboard.role_${adminRole}`)}
+              {adminUser || t(`adminDashboard.role_${adminRole}`)}
             </span>
-            {lastUpdated && <span className="admin-dashboard__updated">{t('adminDashboard.updated')}: {lastUpdated}</span>}
-            <FrameButton name="closeAdmin" text={t('adminDashboard.exit')} variant="DEFAULT" width={120} height={44} onClick={hide} />
+            <FrameButton name="closeAdmin" text={t('adminDashboard.exit')} variant="DEFAULT" width={112} height={40} onClick={hide} />
           </div>
         </div>
 
-        {loading && <div className="admin-dashboard__loading">{t('adminDashboard.loading')}</div>}
-
-        {!loading && (
-          <>
-            {status && (
-              <div className="admin-dashboard__stats-grid">
-                <div className="admin-dashboard__stat-card">
-                  <div className="admin-dashboard__stat-label">{t('adminDashboard.online')}</div>
-                  <div className="admin-dashboard__stat-value admin-dashboard__stat-value--accent">{status.online}</div>
-                </div>
-                <div className="admin-dashboard__stat-card">
-                  <div className="admin-dashboard__stat-label">{t('adminDashboard.maxPlayers')}</div>
-                  <div className="admin-dashboard__stat-value">{status.maxPlayers}</div>
-                </div>
-                <div className="admin-dashboard__stat-card">
-                  <div className="admin-dashboard__stat-label">{t('adminDashboard.port')}</div>
-                  <div className="admin-dashboard__stat-value">{status.port}</div>
-                </div>
-                <div className="admin-dashboard__stat-card">
-                  <div className="admin-dashboard__stat-label">{t('adminDashboard.uptime')}</div>
-                  <div className="admin-dashboard__stat-value">{formatAdminUptime(status.uptimeSec)}</div>
-                </div>
-              </div>
-            )}
-
-            <div className="admin-dashboard__tabs" role="tablist" aria-label={t('adminDashboard.title')}>
-              {tabs.map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  id={`admin-tab-${key}`}
-                  data-testid={`admin-tab-${key}`}
-                  role="tab"
-                  aria-selected={activeTab === key}
-                  aria-controls={`admin-panel-${key}`}
-                  className={`admin-dashboard__tab${activeTab === key ? ' admin-dashboard__tab--active' : ''}`}
-                  onClick={() => setActiveTab(key)}
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="admin-dashboard__prefs-reset-btn"
-                onClick={resetDashboardPreferences}
-              >
-                {t('adminDashboard.resetView')}
-              </button>
+        <div className="admin-dashboard__chrome">
+          <aside className="admin-dashboard__sidebar">
+            <div className="admin-dashboard__sidebar-card admin-dashboard__sidebar-card--brand">
+              <div className="admin-dashboard__server-name">{status?.name || 'SkyMP'}</div>
+              <div className="admin-dashboard__server-meta">{t('adminDashboard.role')}: {t(`adminDashboard.role_${adminRole}`)}</div>
             </div>
+
+            <div className="admin-dashboard__sidebar-card">
+              <div className="admin-dashboard__nav-list">
+                {sideNavItems.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    id={`admin-tab-${item.key}`}
+                    data-testid={`admin-tab-${item.key}`}
+                    className={`admin-dashboard__nav-item${activeTab === item.key ? ' admin-dashboard__nav-item--active' : ''}`}
+                    onClick={() => setActiveTab(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="admin-dashboard__sidebar-card">
+              <div className="admin-dashboard__sidebar-status-row">
+                <span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.online')}</span>
+                <span className={`admin-dashboard__sidebar-pill${status ? ' admin-dashboard__sidebar-pill--online' : ''}`}>
+                  {status ? t('adminDashboard.online') : t('adminDashboard.loading')}
+                </span>
+              </div>
+              <div className="admin-dashboard__sidebar-status-row">
+                <span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.uptime')}</span>
+                <span className="admin-dashboard__sidebar-pill">{status ? formatAdminUptime(status.uptimeSec) : '-'}</span>
+              </div>
+              <div className="admin-dashboard__sidebar-status-row">
+                <span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.port')}</span>
+                <span className="admin-dashboard__sidebar-pill">{status?.port ?? '-'}</span>
+              </div>
+              <div className="admin-dashboard__sidebar-status-row">
+                <span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.players')}</span>
+                <span className="admin-dashboard__sidebar-pill">{status ? `${status.online}/${status.maxPlayers}` : '0'}</span>
+              </div>
+            </div>
+
+            <div className="admin-dashboard__sidebar-card admin-dashboard__sidebar-card--actions">
+              <div className="admin-dashboard__sidebar-section-title">{t('adminDashboard.sidebarActionsTitle')}</div>
+              <div className="admin-dashboard__sidebar-actions-grid">
+                <button
+                  type="button"
+                  className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--disabled"
+                  onClick={() => setStatusMsg(t('adminDashboard.serverControlUnavailable'))}
+                >
+                  {status ? t('adminDashboard.stopServer') : t('adminDashboard.startServer')}
+                </button>
+                <button
+                  type="button"
+                  className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--disabled"
+                  onClick={() => setStatusMsg(t('adminDashboard.serverControlUnavailable'))}
+                >
+                  {t('adminDashboard.restartServer')}
+                </button>
+                <button
+                  type="button"
+                  className="admin-dashboard__sidebar-action"
+                  disabled={!capabilities.canKick || players.length === 0 || sidebarActionSending !== null}
+                  onClick={() => { void kickAllPlayers(); }}
+                >
+                  {sidebarActionSending === 'kick-all' ? t('adminDashboard.loading') : t('adminDashboard.kickAllPlayers')}
+                </button>
+                <button
+                  type="button"
+                  className="admin-dashboard__sidebar-action"
+                  disabled={!capabilities.canMessage || sidebarActionSending !== null}
+                  onClick={() => { void sendAnnouncement(); }}
+                >
+                  {sidebarActionSending === 'announcement' ? t('adminDashboard.loading') : t('adminDashboard.sendAnnouncement')}
+                </button>
+                <button
+                  type="button"
+                  className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--secondary"
+                  onClick={resetDashboardPreferences}
+                >
+                  {t('adminDashboard.resetView')}
+                </button>
+              </div>
+              <div className="admin-dashboard__sidebar-action-hint">{t('adminDashboard.sidebarActionHint')}</div>
+            </div>
+          </aside>
+
+          <main className="admin-dashboard__main">
+            <div className="admin-dashboard__main-header">
+              <div>
+                <h2 className="admin-dashboard__main-title">{currentTabLabel}</h2>
+                <p className="admin-dashboard__main-subtitle">{t('adminDashboard.subtitle')}</p>
+              </div>
+              <div className="admin-dashboard__main-meta">
+                {lastUpdated && <span className="admin-dashboard__updated">{t('adminDashboard.updated')}: {lastUpdated}</span>}
+              </div>
+            </div>
+
+            <div className="admin-dashboard__summary-grid">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="admin-dashboard__summary-card">
+                  <div className="admin-dashboard__summary-label">{card.label}</div>
+                  <div className={`admin-dashboard__summary-value${card.accent ? ' admin-dashboard__summary-value--accent' : ''}`}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {loading && <div className="admin-dashboard__loading">{t('adminDashboard.loading')}</div>}
+
+            {!loading && (
+              <>
 
             {activeTab === 'overview' && status && (
               <div className="admin-dashboard__panel" id="admin-panel-overview" role="tabpanel" aria-labelledby="admin-tab-overview">
@@ -933,6 +1800,12 @@ const AdminDashboard = () => {
 
             {activeTab === 'players' && (
               <div className="admin-dashboard__panel" id="admin-panel-players" data-testid="admin-panel-players" role="tabpanel" aria-labelledby="admin-tab-players">
+                <div className="admin-dashboard__panel-toolbar">
+                  <div className="admin-dashboard__panel-toolbar-left">
+                    <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.tabPlayers')}</span>
+                    {filteredPlayers.length > 0 && <span className="admin-dashboard__panel-badge">{filteredPlayers.length}</span>}
+                  </div>
+                </div>
                 <div className="admin-dashboard__search-row">
                   <input
                     className="admin-dashboard__search-input"
@@ -1291,6 +2164,20 @@ const AdminDashboard = () => {
 
                 {capabilities.canViewLogs && (
                   <>
+                    <div className="admin-dashboard__panel-toolbar">
+                      <div className="admin-dashboard__panel-toolbar-left">
+                        <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.tabLogs')}</span>
+                        {logEntries.length > 0 && <span className="admin-dashboard__panel-badge">{logEntries.length}</span>}
+                      </div>
+                      <div className="admin-dashboard__panel-toolbar-right">
+                        <button type="button" className="admin-dashboard__log-page-btn" onClick={openRecentLogs} disabled={logBeforeTs === null}>
+                          {t('adminDashboard.logRecent')}
+                        </button>
+                        <button type="button" className="admin-dashboard__log-page-btn" onClick={openOlderLogs} disabled={!logHasMore || oldestLogTs === null}>
+                          {t('adminDashboard.logOlder')}
+                        </button>
+                      </div>
+                    </div>
                     <div className="admin-dashboard__log-tools">
                       <label className="admin-dashboard__log-tool">
                         <span>{t('adminDashboard.logLimit')}</span>
@@ -1348,15 +2235,6 @@ const AdminDashboard = () => {
                           {type === '' ? t('adminDashboard.logAll') : t(`adminDashboard.logType_${type}`)}
                         </button>
                       ))}
-                    </div>
-
-                    <div className="admin-dashboard__log-pagination">
-                      <button type="button" className="admin-dashboard__log-page-btn" onClick={openRecentLogs} disabled={logBeforeTs === null}>
-                        {t('adminDashboard.logRecent')}
-                      </button>
-                      <button type="button" className="admin-dashboard__log-page-btn" onClick={openOlderLogs} disabled={!logHasMore || oldestLogTs === null}>
-                        {t('adminDashboard.logOlder')}
-                      </button>
                     </div>
 
                     {logEntries.length === 0 ? (
@@ -1536,8 +2414,581 @@ const AdminDashboard = () => {
                 )}
               </div>
             )}
-          </>
-        )}
+
+            {activeTab === 'cfg' && (
+              <div className="admin-dashboard__panel" id="admin-panel-cfg" role="tabpanel" aria-labelledby="admin-tab-cfg">
+                <div className="admin-dashboard__panel-toolbar">
+                  <div className="admin-dashboard__panel-toolbar-left">
+                    <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.cfgEditorTitle')}</span>
+                  </div>
+                  <div className="admin-dashboard__panel-toolbar-right">
+                    <button type="button" className="admin-dashboard__log-btn" onClick={() => void loadCfgEditor()} disabled={cfgEditorLoading || cfgEditorSaving}>
+                      {t('adminDashboard.cfgLoad')}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-dashboard__log-btn"
+                      onClick={() => {
+                        try {
+                          const normalized = mergeCfgFormIntoJson(cfgEditorText || '{}', cfgForm);
+                          setCfgEditorText(normalized);
+                          setCfgEditorStatus(t('adminDashboard.cfgFormApplied'));
+                        } catch {
+                          setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
+                        }
+                      }}
+                      disabled={cfgEditorLoading || cfgEditorSaving}
+                    >
+                      {t('adminDashboard.cfgApplyForm')}
+                    </button>
+                    <button type="button" className="admin-dashboard__log-btn" onClick={formatCfgEditor} disabled={cfgEditorLoading || cfgEditorSaving}>
+                      {t('adminDashboard.cfgFormat')}
+                    </button>
+                    <button type="button" className="admin-dashboard__log-btn" onClick={applyAccessDiscordToCfgEditor} disabled={cfgEditorLoading || cfgEditorSaving}>
+                      {t('adminDashboard.cfgApplyAccess')}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-dashboard__log-btn admin-dashboard__log-btn--primary"
+                      onClick={async () => {
+                        const normalized = applyAccessDiscordToCfgEditor();
+                        if (!normalized) return;
+                        await saveCfgEditor(normalized);
+                      }}
+                      disabled={cfgEditorLoading || cfgEditorSaving}
+                    >
+                      {t('adminDashboard.cfgSaveAccess')}
+                    </button>
+                    <button type="button" className="admin-dashboard__log-btn admin-dashboard__log-btn--primary" onClick={() => void saveCfgEditor()} disabled={cfgEditorLoading || cfgEditorSaving}>
+                      {cfgEditorSaving ? t('adminDashboard.loading') : t('adminDashboard.cfgSave')}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="admin-dashboard__cfg-tabs" role="tablist" aria-label={t('adminDashboard.cfgEditorTitle')}>
+                  {(['general', 'access', 'inventory', 'json'] as CfgEditorTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="tab"
+                      aria-selected={cfgEditorTab === tab}
+                      className={`admin-dashboard__cfg-tab${cfgEditorTab === tab ? ' admin-dashboard__cfg-tab--active' : ''}`}
+                      onClick={() => setCfgEditorTab(tab)}
+                    >
+                      {t(`adminDashboard.cfgTab_${tab}`)}
+                    </button>
+                  ))}
+                </div>
+
+                {cfgEditorTab === 'general' && (
+                  <div className="admin-dashboard__cfg-form-grid">
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgServerName')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.serverName}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, serverName: e.target.value }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgPort')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="number"
+                        min={1}
+                        value={cfgForm.port}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, port: Number(e.target.value) || 1 }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgMaxPlayers')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="number"
+                        min={1}
+                        value={cfgForm.maxPlayers}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, maxPlayers: Number(e.target.value) || 1 }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgLanguage')}</span>
+                      <select
+                        className="admin-dashboard__log-select"
+                        value={cfgForm.defaultLanguage}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, defaultLanguage: e.target.value }))}
+                      >
+                        <option value="en">en</option>
+                        <option value="de">de</option>
+                        <option value="es">es</option>
+                        <option value="ru">ru</option>
+                      </select>
+                    </label>
+
+                    <label className="admin-dashboard__cfg-check">
+                      <input
+                        type="checkbox"
+                        checked={cfgForm.offlineMode}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, offlineMode: e.target.checked }))}
+                      />
+                      <span>{t('adminDashboard.cfgOfflineMode')}</span>
+                    </label>
+                  </div>
+                )}
+
+                {cfgEditorTab === 'access' && (
+                  <div className="admin-dashboard__cfg-form-grid">
+                    <label className="admin-dashboard__cfg-check">
+                      <input
+                        type="checkbox"
+                        checked={cfgForm.discordBot.enabled}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, discordBot: { ...prev.discordBot, enabled: e.target.checked } }))}
+                      />
+                      <span>{t('adminDashboard.cfgDiscordEnabled')}</span>
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field admin-dashboard__cfg-field--full">
+                      <span>{t('adminDashboard.cfgJoinMode')}</span>
+                      <select
+                        className="admin-dashboard__log-select"
+                        value={cfgForm.joinAccess.mode}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, joinAccess: { ...prev.joinAccess, mode: e.target.value as JoinAccessForm['mode'] } }))}
+                      >
+                        <option value="none">{t('adminDashboard.cfgJoinMode_none')}</option>
+                        <option value="approvedLicense">{t('adminDashboard.cfgJoinMode_approvedLicense')}</option>
+                        <option value="discordMember">{t('adminDashboard.cfgJoinMode_discordMember')}</option>
+                        <option value="discordRoles">{t('adminDashboard.cfgJoinMode_discordRoles')}</option>
+                      </select>
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field admin-dashboard__cfg-field--full">
+                      <span>{t('adminDashboard.cfgRejectMessage')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.joinAccess.rejectionMessage}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, joinAccess: { ...prev.joinAccess, rejectionMessage: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgApprovedLicenses')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.joinAccess.approvedLicenses}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, joinAccess: { ...prev.joinAccess, approvedLicenses: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgApprovedDiscordIds')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.joinAccess.approvedDiscordIds}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, joinAccess: { ...prev.joinAccess, approvedDiscordIds: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgDiscordRoles')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.joinAccess.discordRoleIds}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, joinAccess: { ...prev.joinAccess, discordRoleIds: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgDiscordToken')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="password"
+                        value={cfgForm.discordBot.token}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, discordBot: { ...prev.discordBot, token: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgDiscordGuildId')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.discordBot.guildId}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, discordBot: { ...prev.discordBot, guildId: e.target.value } }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgDiscordWarningsChannel')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.discordBot.warningsChannelId}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, discordBot: { ...prev.discordBot, warningsChannelId: e.target.value } }))}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {cfgEditorTab === 'inventory' && (
+                  <>
+                    <div className="admin-dashboard__cfg-inventory">
+                      <h4 className="admin-dashboard__section-subtitle">{t('adminDashboard.cfgStartSetup')}</h4>
+                      <div className="admin-dashboard__cfg-form-grid">
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnPreset')}</span>
+                          <select
+                            className="admin-dashboard__log-select"
+                            value={selectedSpawnPresetKey}
+                            onChange={(e) => {
+                              const preset = SPAWN_PRESETS.find((entry) => entry.key === e.target.value);
+                              if (!preset) {
+                                return;
+                              }
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                startSpawn: {
+                                  x: preset.x,
+                                  y: preset.y,
+                                  z: preset.z,
+                                  worldOrCell: preset.worldOrCell,
+                                  angleZ: preset.angleZ,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="">{t('adminDashboard.cfgSpawnPreset_custom')}</option>
+                            {SPAWN_PRESETS.map((preset) => (
+                              <option key={preset.key} value={preset.key}>{t(`adminDashboard.${preset.labelKey}`)}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnX')}</span>
+                          <input
+                            className="admin-dashboard__search-input"
+                            type="number"
+                            value={cfgForm.startSpawn.x}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, startSpawn: { ...prev.startSpawn, x: Number(e.target.value) || 0 } }))}
+                          />
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnY')}</span>
+                          <input
+                            className="admin-dashboard__search-input"
+                            type="number"
+                            value={cfgForm.startSpawn.y}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, startSpawn: { ...prev.startSpawn, y: Number(e.target.value) || 0 } }))}
+                          />
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnZ')}</span>
+                          <input
+                            className="admin-dashboard__search-input"
+                            type="number"
+                            value={cfgForm.startSpawn.z}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, startSpawn: { ...prev.startSpawn, z: Number(e.target.value) || 0 } }))}
+                          />
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnWorldOrCell')}</span>
+                          <select
+                            className="admin-dashboard__log-select"
+                            value={selectedWorldOrCellValue}
+                            onChange={(e) => {
+                              const nextValue = e.target.value;
+                              if (nextValue === '__custom__') {
+                                return;
+                              }
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                startSpawn: {
+                                  ...prev.startSpawn,
+                                  worldOrCell: nextValue,
+                                },
+                              }));
+                            }}
+                          >
+                            {selectedWorldOrCellValue === '__custom__' && (
+                              <option value="__custom__">{t('adminDashboard.cfgWorldOrCellOption_custom')}</option>
+                            )}
+                            {WORLD_OR_CELL_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{t(`adminDashboard.${option.labelKey}`)}</option>
+                            ))}
+                          </select>
+                          <span className="admin-dashboard__cfg-hint">{t(`adminDashboard.${worldOrCellHintKey}`)}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSpawnAngleZ')}</span>
+                          <input
+                            className="admin-dashboard__search-input"
+                            type="number"
+                            value={cfgForm.startSpawn.angleZ}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, startSpawn: { ...prev.startSpawn, angleZ: Number(e.target.value) || 0 } }))}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="admin-dashboard__cfg-inventory">
+                      <h4 className="admin-dashboard__section-subtitle">{t('adminDashboard.cfgNpcSettings')}</h4>
+                      <div className="admin-dashboard__cfg-form-grid">
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.npcEnabled}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, npcEnabled: e.target.checked }))}
+                          />
+                          <span>{t('adminDashboard.cfgNpcEnabled')}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.npcDefaultSettings.spawnInInterior}
+                            onChange={(e) => setCfgForm((prev) => ({
+                              ...prev,
+                              npcDefaultSettings: {
+                                ...prev.npcDefaultSettings,
+                                spawnInInterior: e.target.checked,
+                              },
+                            }))}
+                          />
+                          <span>{t('adminDashboard.cfgNpcSpawnInInterior')}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.npcDefaultSettings.spawnInExterior}
+                            onChange={(e) => setCfgForm((prev) => ({
+                              ...prev,
+                              npcDefaultSettings: {
+                                ...prev.npcDefaultSettings,
+                                spawnInExterior: e.target.checked,
+                              },
+                            }))}
+                          />
+                          <span>{t('adminDashboard.cfgNpcSpawnInExterior')}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.npcDefaultSettings.allowHumanoid}
+                            onChange={(e) => setCfgForm((prev) => ({
+                              ...prev,
+                              npcDefaultSettings: {
+                                ...prev.npcDefaultSettings,
+                                allowHumanoid: e.target.checked,
+                              },
+                            }))}
+                          />
+                          <span>{t('adminDashboard.cfgNpcAllowHumanoid')}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.npcDefaultSettings.allowCreature}
+                            onChange={(e) => setCfgForm((prev) => ({
+                              ...prev,
+                              npcDefaultSettings: {
+                                ...prev.npcDefaultSettings,
+                                allowCreature: e.target.checked,
+                              },
+                            }))}
+                          />
+                          <span>{t('adminDashboard.cfgNpcAllowCreature')}</span>
+                        </label>
+
+                        <div className="admin-dashboard__cfg-field admin-dashboard__cfg-field--full">
+                          <span className="admin-dashboard__cfg-hint">{t('adminDashboard.cfgNpcHint')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="admin-dashboard__cfg-inventory">
+                      <h4 className="admin-dashboard__section-subtitle">{t('adminDashboard.cfgStarterInventory')}</h4>
+                      <div className="admin-dashboard__cfg-inventory-controls">
+                    <select className="admin-dashboard__log-select" value={inventoryCategory} onChange={(e) => setInventoryCategory(e.target.value as ItemCategory)}>
+                      {ITEM_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>{t(`adminDashboard.itemCategory_${category}`)}</option>
+                      ))}
+                    </select>
+
+                    <select className="admin-dashboard__log-select" value={inventoryItemCode} onChange={(e) => setInventoryItemCode(e.target.value)}>
+                      {filteredCatalogItems.map((item) => (
+                        <option key={item.codeHex} value={item.codeHex}>{`${t(`items.${item.codeHex}`, { defaultValue: item.name })} (${item.codeHex})`}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      className="admin-dashboard__search-input"
+                      type="text"
+                      value={inventoryCustomCode}
+                      placeholder={t('adminDashboard.cfgItemCodePlaceholder')}
+                      onChange={(e) => setInventoryCustomCode(e.target.value)}
+                    />
+
+                    <input
+                      className="admin-dashboard__search-input"
+                      type="number"
+                      min={1}
+                      value={inventoryCount}
+                      onChange={(e) => setInventoryCount(Number(e.target.value) || 1)}
+                    />
+
+                    <label className="admin-dashboard__cfg-check">
+                      <input type="checkbox" checked={inventoryWorn} onChange={(e) => setInventoryWorn(e.target.checked)} />
+                      <span>{t('adminDashboard.cfgWorn')}</span>
+                    </label>
+                    <label className="admin-dashboard__cfg-check">
+                      <input type="checkbox" checked={inventoryWornLeft} onChange={(e) => setInventoryWornLeft(e.target.checked)} />
+                      <span>{t('adminDashboard.cfgWornLeft')}</span>
+                    </label>
+
+                    <button type="button" className="admin-dashboard__log-btn admin-dashboard__log-btn--primary admin-dashboard__log-btn--icon" onClick={addStarterInventoryEntry} aria-label={t('adminDashboard.add')} title={t('adminDashboard.add')}>+</button>
+                      </div>
+
+                      <div className="admin-dashboard__table-wrapper">
+                        <table className="admin-dashboard__table">
+                          <thead>
+                            <tr>
+                              <th>{t('adminDashboard.cfgItem')}</th>
+                              <th>{t('adminDashboard.cfgCode')}</th>
+                              <th>{t('adminDashboard.cfgCount')}</th>
+                              <th>{t('adminDashboard.cfgFlags')}</th>
+                              <th>{t('adminDashboard.actions')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cfgForm.starterInventory.map((entry, index) => (
+                              <tr key={`${entry.baseId}-${index}`}>
+                                <td>{t(`items.${toCodeHex(entry.baseId)}`, { defaultValue: catalogNameByBaseId.get(entry.baseId) || t('adminDashboard.cfgCustomItem') })}</td>
+                                <td>{toCodeHex(entry.baseId)}</td>
+                                <td>{entry.count}</td>
+                                <td>{[entry.worn ? 'worn' : null, entry.wornLeft ? 'wornLeft' : null].filter(Boolean).join(', ') || '-'}</td>
+                                <td>
+                                  <button type="button" className="admin-dashboard__kick-btn" onClick={() => removeStarterInventoryEntry(index)}>
+                                    {t('adminDashboard.remove')}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {cfgEditorTab === 'json' && (
+                <textarea
+                  className="admin-dashboard__cfg-editor"
+                  value={cfgEditorText}
+                  onChange={(e) => setCfgEditorText(e.target.value)}
+                  spellCheck={false}
+                  aria-label={t('adminDashboard.cfgEditorTitle')}
+                />
+                )}
+                <div className="admin-dashboard__cfg-status">{cfgEditorStatus}</div>
+              </div>
+            )}
+
+            {activeTab === 'respawn' && (
+              <>
+                {!capabilities.canManageRespawn && (
+                  <p className="admin-dashboard__no-players">{t('adminDashboard.noPermission')}</p>
+                )}
+
+                {capabilities.canManageRespawn && (
+                  <RespawnPanel
+                    downedPlayers={downedPlayers}
+                    moderationReason={moderationReason}
+                    onModerationReasonChange={setModerationReason}
+                    onRevivePlayer={(userId) => void revivePlayer(userId)}
+                    nowTs={nowTs}
+                    statusMsg={statusMsg}
+                    loading={loading}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'events' && (
+              <>
+                {!capabilities.canViewLogs && (
+                  <p className="admin-dashboard__no-players">{t('adminDashboard.logsDisabled')}</p>
+                )}
+
+                {capabilities.canViewLogs && (
+                  <EventsPanel
+                    revivalEvents={revivalEvents}
+                    eventTypeFilter={eventTypeFilter}
+                    onEventTypeFilterChange={setEventTypeFilter}
+                    eventLimit={eventLimit}
+                    onEventLimitChange={setEventLimit}
+                    onRefresh={() => void fetchRevivalEvents()}
+                    loading={loading}
+                  />
+                )}
+              </>
+            )}
+
+              </>
+            )}
+          </main>
+
+          <aside className="admin-dashboard__rightbar">
+            <div className="admin-dashboard__player-summary-card">
+              <div className="admin-dashboard__player-summary-label">{t('adminDashboard.players')}</div>
+              <div className="admin-dashboard__player-summary-value">
+                {status?.online ?? 0}<span className="admin-dashboard__player-summary-max">/{status?.maxPlayers ?? '?'}</span>
+              </div>
+            </div>
+
+            <div className="admin-dashboard__rightbar-card">
+              <input
+                className="admin-dashboard__player-search"
+                type="text"
+                placeholder={t('adminDashboard.searchPlaceholder')}
+                aria-label={t('adminDashboard.searchPlaceholder')}
+                value={playerSearch}
+                onChange={(e) => setPlayerSearch(e.target.value)}
+              />
+
+              {visibleRailPlayers.length === 0 ? (
+                <p className="admin-dashboard__rightbar-empty">{t('adminDashboard.noPlayers')}</p>
+              ) : (
+                <div className="admin-dashboard__player-rail">
+                  {visibleRailPlayers.map((player) => (
+                    <button
+                      key={player.userId}
+                      type="button"
+                      className="admin-dashboard__player-rail-item"
+                      onClick={() => setActiveTab('players')}
+                    >
+                      <span className="admin-dashboard__player-rail-name">{player.actorName || `userId=${player.userId}`}</span>
+                      <span className="admin-dashboard__player-rail-meta">ID {player.userId}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );
