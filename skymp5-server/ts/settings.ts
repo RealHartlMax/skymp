@@ -13,6 +13,32 @@ export interface DiscordAuthSettings {
   hideIpRoleId?: string;
 }
 
+export interface StartSpawnPoint {
+  pos: number[];
+  worldOrCell: string;
+  angleZ: number;
+}
+
+export interface StarterInventoryEntry {
+  baseId: number;
+  count: number;
+  health?: number;
+  enchantmentId?: number;
+  maxCharge?: number;
+  removeEnchantmentOnUnequip?: boolean;
+  chargePercent?: number;
+  name?: string;
+  soul?: 0 | 1 | 2 | 3 | 4 | 5;
+  poisonId?: number;
+  poisonCount?: number;
+  worn?: boolean;
+  wornLeft?: boolean;
+}
+
+export interface StarterInventory {
+  entries: StarterInventoryEntry[];
+}
+
 export class Settings {
   masterKey: string | null = null;
   port = 7777;
@@ -23,13 +49,19 @@ export class Settings {
   loadOrder = new Array<string>();
   dataDir = './data';
   offlineMode = false;
-  startPoints = [
+  startSpawn: StartSpawnPoint = {
+    pos: [133857, -61130, 14662],
+    worldOrCell: '0x3c',
+    angleZ: 72,
+  };
+  startPoints: StartSpawnPoint[] = [
     {
       pos: [133857, -61130, 14662],
       worldOrCell: '0x3c',
       angleZ: 72,
     },
   ];
+  starterInventory: StarterInventory = { entries: [] };
   discordAuth: DiscordAuthSettings | null = null;
 
   allSettings: Record<string, unknown> | null = null;
@@ -65,7 +97,9 @@ export class Settings {
       'gamemodePath',
       'loadOrder',
       'dataDir',
+      'startSpawn',
       'startPoints',
+      'starterInventory',
       'offlineMode',
       'discordAuth',
     ].forEach((prop) => {
@@ -73,6 +107,18 @@ export class Settings {
         (this as Record<string, unknown>)[prop] = settings[prop];
       }
     });
+
+    if (settings.startSpawn) {
+      this.startPoints = [settings.startSpawn as StartSpawnPoint];
+    }
+
+    if (!Array.isArray(this.startPoints) || this.startPoints.length === 0) {
+      this.startPoints = [this.startSpawn];
+    }
+
+    if (!this.starterInventory || !Array.isArray(this.starterInventory.entries)) {
+      this.starterInventory = { entries: [] };
+    }
 
     this.allSettings = settings;
   }

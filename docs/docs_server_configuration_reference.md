@@ -258,6 +258,70 @@ Contains a list of spawn points, one of which will be chosen at random.
 }
 ```
 
+## startSpawn
+
+Contains a single spawn point for newly created characters.
+If `startSpawn` is present, the server uses it as the only initial spawn point.
+
+```json5
+{
+  // ...
+  "startSpawn": {
+    "pos": [22659, -8697, -3594],
+    "worldOrCell": "0x1a26f",
+    "angleZ": 268
+  }
+  // ...
+}
+```
+
+This is only used when a character is created for the first time.
+Afterwards the actor respawns at its saved `spawnPoint`.
+
+## starterInventory
+
+Contains the inventory that is assigned once to newly created characters.
+
+```json5
+{
+  // ...
+  "starterInventory": {
+    "entries": [
+      {
+        "baseId": 0x1397e,
+        "count": 1,
+        "worn": true
+      },
+      {
+        "baseId": 0x12eb7,
+        "count": 1,
+        "worn": true
+      },
+      {
+        "baseId": 0x3eada,
+        "count": 10
+      }
+    ]
+  }
+  // ...
+}
+```
+
+Supported entry fields include:
+- `baseId`
+- `count`
+- `worn`
+- `wornLeft`
+- `health`
+- `enchantmentId`
+- `maxCharge`
+- `removeEnchantmentOnUnequip`
+- `chargePercent`
+- `name`
+- `soul`
+- `poisonId`
+- `poisonCount`
+
 ## isPapyrusHotReloadEnabled
 
 A boolean setting that enables to turn on or turn off hot reload for compiled Papyrus scripts (.pex)

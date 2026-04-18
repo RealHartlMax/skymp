@@ -4,6 +4,23 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ---
 
+## ✅ Completed & Implemented Patterns
+
+### Property Binding Architecture
+- **Implementation:** `canRespawn` property binding system for custom server-side control
+- **Pattern:** Read-write property bindings exposed via `mp.set()`/`mp.get()` from TypeScript
+- **Benefit:** Clean separation of concerns; enables advanced game mechanics (healer revival systems) without C++ monoliths
+- **Lesson:** FiveM-style flexible property systems enable complex gameplay without architectural bloat
+- **Related Files:** CanRespawnBinding.h/cpp, IsDeadBinding.cpp, SpawnDelayBinding.cpp (reference architecture)
+
+### Configuration-Driven Gameplay  
+- **Implementation:** `startSpawn`, `starterInventory` configurable via server-settings.json
+- **Pattern:** Settings interface → CMake generation → Runtime property binding
+- **Benefit:** Non-technical server admins can customize spawn points and starter gear without code changes
+- **Related Files:** settings.ts, spawn.ts, generate_server_settings.cmake
+
+---
+
 ## 1. Resource Diagnostics & Validation Endpoint
 **Goal:** Add a diagnostics endpoint (CLI or admin dashboard) to validate resource integrity, manifest correctness, and missing/corrupt files for both server and client.
 - **Effort:** Medium

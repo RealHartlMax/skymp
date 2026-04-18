@@ -1,6 +1,5 @@
 import { Settings } from "../settings";
 import { System, SystemContext } from "./system";
-import { Client, ClientOptions, GatewayIntentBits } from "discord.js";
 
 type Mp = any; // TODO
 
@@ -31,6 +30,9 @@ export class DiscordBanSystem implements System {
             return console.warn("discordAuth.banRoleId is missing, skipping Discord ban system");
         }
 
+        // Load discord.js only when the feature is actually enabled.
+        // This avoids pulling optional dependency trees in offline mode.
+        const { Client, GatewayIntentBits } = await import("discord.js");
         const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
         try {

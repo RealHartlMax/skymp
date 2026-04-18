@@ -1,6 +1,5 @@
 const Koa = require("koa");
 const serve = require("koa-static");
-const proxy = require("koa-proxy");
 const Router = require("koa-router");
 const auth = require("koa-basic-auth");
 import * as koaBody from "koa-body";
@@ -2389,6 +2388,8 @@ export const main = (settings: Settings): void => {
       const appStatic = createApp(settings, () => state.port);
       const srv = http.createServer(appStatic.callback());
       srv.listen(0, () => {
+        // Load koa-proxy only when dev server proxy mode is active.
+        const proxy = require("koa-proxy");
         const { port } = srv.address() as AddressInfo;
         state.port = port;
         const appProxy = new Koa();

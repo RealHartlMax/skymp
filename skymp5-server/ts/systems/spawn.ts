@@ -8,6 +8,14 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
+function toSpawnPoint(point: { pos: number[]; worldOrCell: string; angleZ: number }) {
+  return {
+    pos: point.pos,
+    rot: [0, 0, point.angleZ],
+    cellOrWorldDesc: point.worldOrCell,
+  };
+}
+
 export class Spawn implements System {
   systemName = "Spawn";
   constructor(private log: Log) { }
@@ -15,7 +23,7 @@ export class Spawn implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     const settingsObject = await Settings.get();
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string) => {
-      const { startPoints } = settingsObject;
+      const { startPoints, starterInventory } = settingsObject;
       // TODO: Show race menu if character is not created after relogging
       let actorId = ctx.svr.getActorsByProfileId(userProfileId)[0];
       if (actorId) {
@@ -24,15 +32,22 @@ export class Spawn implements System {
         ctx.svr.setUserActor(userId, actorId);
       } else {
         const idx = randomInteger(0, startPoints.length - 1);
+        const startPoint = startPoints[idx];
         actorId = ctx.svr.createActor(
           0,
-          startPoints[idx].pos,
-          startPoints[idx].angleZ,
-          +startPoints[idx].worldOrCell,
+          startPoint.pos,
+          startPoint.angleZ,
+          +startPoint.worldOrCell,
           userProfileId
         );
         this.log("Creating character", actorId.toString(16));
         ctx.svr.setUserActor(userId, actorId);
+
+        const mp = ctx.svr as unknown as Mp;
+        mp.set(actorId, "spawnPoint", toSpawnPoint(startPoint));
+        if (starterInventory.entries.length > 0) {
+          mp.set(actorId, "inventory", starterInventory);
+        }
         ctx.svr.setRaceMenuOpen(actorId, true);
       }
 

@@ -36,6 +36,9 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | *Death* | Done |
 | *Inventory* | Done |
 | *Craft (forge like)* | Done |
+| *Custom Respawn Control* | Done - canRespawn property allows disabling auto-respawn for custom revival systems (healer/doctor mechanics) |
+| *Spawn Point Configuration* | Done - startSpawn configurable in server-settings.json for new player spawning |
+| *Starter Inventory* | Done - starterInventory configurable in server-settings.json with full entry support (baseId, count, enchantments, etc.) |
 | **PARTIALLY:** | **Implemented features we plan to improve or fix.** |
 | *Movement* | Add lag compensation; work on the details - walking speed and stuff, ask for help in ST. |
 | *Character creation* | Add server-side validation |

@@ -58,6 +58,15 @@ if(NOT EMSCRIPTEN)
   # Make 'cmake --build . --target skymp5-server' building typescript part as well
   add_dependencies(${PROJECT_NAME} skymp5-server-ts)
 
+  # Ensure runtime artifacts are available in clean builds.
+  if(TARGET skymp5-functions-lib)
+    add_dependencies(${PROJECT_NAME} skymp5-functions-lib)
+  endif()
+
+  if(TARGET skymp5-scripts)
+    add_dependencies(${PROJECT_NAME} skymp5-scripts)
+  endif()
+
   # Put build artifacts into build/dist/server
   if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -112,6 +121,13 @@ endif()
 
 message(STATUS "esm_prefix is '${esm_prefix}'")
 
+set(server_data_source_dir "")
+if(SKYRIM_DIR)
+  set(server_data_source_dir "${SKYRIM_DIR}/Data")
+elseif(UNIT_DATA_DIR)
+  set(server_data_source_dir "${UNIT_DATA_DIR}")
+endif()
+
 if(TARGET ${PROJECT_NAME})
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
@@ -126,6 +142,15 @@ if(TARGET ${PROJECT_NAME})
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/yarn.lock ${CMAKE_BINARY_DIR}/dist/server/yarn.lock
+  )
+
+  add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+      -DDEST_DIR=${CMAKE_BINARY_DIR}/dist/server/data
+      -DPEX_SOURCE_DIR=${CMAKE_SOURCE_DIR}/skymp5-scripts/pex
+      -DSOURCE_DATA_DIR=${server_data_source_dir}
+      -P ${CMAKE_SOURCE_DIR}/cmake/scripts/prepare_server_data.cmake
   )
 endif()
 
