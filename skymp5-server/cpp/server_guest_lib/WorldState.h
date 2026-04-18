@@ -52,6 +52,9 @@ public:
     bool spawnInInterior = false;
     bool spawnInExterior = false;
     bool overriden = false;
+    bool allowHumanoid = true;
+    bool allowCreature = true;
+    bool classOverriden = false;
   };
 
 public:

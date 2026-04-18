@@ -76,11 +76,11 @@ project(skymp)
 enable_testing()
 
 # Check the Visual Studio version
-if(MSVC)
-  if(NOT CMAKE_GENERATOR MATCHES "Visual Studio 17 2022")
-    message(FATAL_ERROR "This project requires \"Visual Studio 17 2022\". But the generator was \"${CMAKE_GENERATOR}\"")
-  endif()
-endif()
+# if(MSVC)
+#  if(NOT CMAKE_GENERATOR MATCHES "Visual Studio 17 2022")
+#    message(FATAL_ERROR "This project requires \"Visual Studio 17 2022\". But the generator was # \"${CMAKE_GENERATOR}\"")
+#  endif()
+# endif()
 
 # Bool options (Part 2)
 option(PREPARE_NEXUS_ARCHIVES "Prepare SP and other archives during build or not" OFF)

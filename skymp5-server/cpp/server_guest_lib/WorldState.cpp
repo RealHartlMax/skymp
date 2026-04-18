@@ -549,7 +549,9 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
   if (isNpc && NpcSourceFilesOverriden()) {
     bool isInterior = false, isExterior = false,
          spawnInInterior = defaultSetting.spawnInInterior,
-         spawnInExterior = defaultSetting.spawnInExterior;
+         spawnInExterior = defaultSetting.spawnInExterior,
+         allowHumanoid = defaultSetting.allowHumanoid,
+         allowCreature = defaultSetting.allowCreature;
     espm::LookupResult res = br.LookupById(worldOrCell);
     auto* cellRecord = espm::Convert<espm::CELL>(res.rec);
     if (cellRecord) {
@@ -577,15 +579,38 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
     }
     auto it = npcSettings.find(espmFiles[npcFileIdx]);
     if (it != npcSettings.end()) {
-      spawnInInterior = it->second.spawnInInterior;
-      spawnInExterior = it->second.spawnInExterior;
+      if (it->second.overriden) {
+        spawnInInterior = it->second.spawnInInterior;
+        spawnInExterior = it->second.spawnInExterior;
+      }
+      if (it->second.classOverriden) {
+        allowHumanoid = it->second.allowHumanoid;
+        allowCreature = it->second.allowCreature;
+      }
       spdlog::trace(
-        "found npc setting spawnInInterior: {}, spawnInExterior: {}",
-        spawnInInterior, spawnInExterior);
+        "found npc setting spawnInInterior: {}, spawnInExterior: {}, allowHumanoid: {}, allowCreature: {}",
+        spawnInInterior, spawnInExterior, allowHumanoid, allowCreature);
     } else {
       spdlog::trace("npc setting has not been found. Use default "
-                    "spawnInInterior: {} and spawnInExterior: {}",
-                    spawnInInterior, spawnInExterior);
+                    "spawnInInterior: {} and spawnInExterior: {}, allowHumanoid: {}, allowCreature: {}",
+                    spawnInInterior, spawnInExterior, allowHumanoid,
+                    allowCreature);
+    }
+
+    const bool isHumanoidNpc = HasKeyword(baseId, "ActorTypeNPC");
+    if ((isHumanoidNpc && !allowHumanoid) ||
+        (!isHumanoidNpc && !allowCreature)) {
+      spdlog::trace(
+        "Unable to spawn npc because of class filters: isHumanoid={}, allowHumanoid={}, allowCreature={}",
+        isHumanoidNpc, allowHumanoid, allowCreature);
+      if (optionalOutTrace) {
+        *optionalOutTrace
+          << fmt::format(
+               "Unable to spawn npc because of class filters: isHumanoid={}, allowHumanoid={}, allowCreature={}",
+               isHumanoidNpc, allowHumanoid, allowCreature)
+          << std::endl;
+      }
+      return false;
     }
 
     if (spawnInInterior && isInterior || spawnInExterior && isExterior) {

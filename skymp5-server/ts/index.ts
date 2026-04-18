@@ -284,6 +284,60 @@ const main = async () => {
     const type = `${content.customPacketType}`;
     delete content.customPacketType;
 
+    if (type === 'clientTelemetry') {
+      const source = typeof content.source === 'string'
+        ? String(content.source).slice(0, 80)
+        : 'skymp5-client';
+      const sessionId = typeof content.sessionId === 'string'
+        ? String(content.sessionId).slice(0, 64)
+        : undefined;
+      const receivedAt = Date.now();
+
+      const events = Array.isArray(content.events) ? content.events : [content];
+      const ip = (() => {
+        try {
+          return ctx.svr.getUserIp(userId);
+        } catch {
+          return '';
+        }
+      })();
+
+      const safeEvents = events.slice(0, 50).map((entry: any) => {
+        const eventName = String(entry?.name ?? 'unknown').slice(0, 120);
+        const levelRaw = String(entry?.level ?? 'info').toLowerCase();
+        const level: 'info' | 'warn' | 'error' = (
+          levelRaw === 'warn' || levelRaw === 'error' || levelRaw === 'info'
+        ) ? levelRaw : 'info';
+
+        let details = '';
+        if (typeof entry?.details === 'string') {
+          details = entry.details;
+        } else if (entry?.details !== undefined) {
+          try {
+            details = JSON.stringify(entry.details);
+          } catch {
+            details = String(entry.details);
+          }
+        }
+
+        const tsRaw = Number(entry?.ts);
+
+        return {
+          userId,
+          ip,
+          source,
+          sessionId,
+          event: eventName,
+          level,
+          ts: Number.isFinite(tsRaw) ? tsRaw : receivedAt,
+          receivedAt,
+          details,
+        };
+      });
+
+      ui.pushClientRuntimeEvents(safeEvents);
+    }
+
     for (const system of systems) {
       try {
         if (system.customPacket)

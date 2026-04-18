@@ -172,6 +172,16 @@ export class AuthService extends ClientListener {
         this.loggingStartMoment = 0;
         this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData }));
         break;
+      case 'loginFailedJoinAccess':
+        this.authAttemptProgressIndicator = false;
+        this.controller.lookupListener(NetworkingService).close();
+        logTrace(this, 'loginFailedJoinAccess received');
+        browserState.loginFailedReason = String(msgContent['reason'] || 'server access denied');
+        browserState.comment = '';
+        this.setListenBrowserMessage(true, 'loginFailedJoinAccess received');
+        this.loggingStartMoment = 0;
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData }));
+        break;
     }
   }
 

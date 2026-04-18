@@ -361,6 +361,9 @@ Optional npcs configuration. May not be present or can be an empty object which 
 `"NpcSettings"` consists of fields, each of which describes from what game file it is permitted to load an npc and additional restrictions of
 how they should be spawned: in interior or exterior. By default all the npcs are allowed (`"npcSettings": {}`).
 `"default":{}` field specifies `"spawnInInterior"` and `"spawnInExterior"` for all non-mentioned game files.
+Optional class filters are also supported:
+- `allowHumanoid` (default `true`) - allow/disallow humanoid NPCs (keyword `ActorTypeNPC`).
+- `allowCreature` (default `true`) - allow/disallow creatures, beasts, monsters.
 
 ```json5
 {
@@ -368,7 +371,9 @@ how they should be spawned: in interior or exterior. By default all the npcs are
   "npcSettings": {
     "default": {
       "spawnInInterior": true,
-      "spawnInExterior": false
+      "spawnInExterior": false,
+      "allowHumanoid": true,
+      "allowCreature": true
     },
     "Skyrim.esm": {
       "spawnInInterior": true,
@@ -384,6 +389,22 @@ how they should be spawned: in interior or exterior. By default all the npcs are
     },
   },
   // ...
+}
+```
+
+Example: make cities mostly empty, but keep wildlife/monsters spawnable.
+
+```json5
+{
+  "npcEnabled": true,
+  "npcSettings": {
+    "default": {
+      "spawnInInterior": true,
+      "spawnInExterior": true,
+      "allowHumanoid": false,
+      "allowCreature": true
+    }
+  }
 }
 ```
 

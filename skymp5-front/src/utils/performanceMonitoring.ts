@@ -5,12 +5,25 @@ interface FrontendMetric {
   ts: number;
 }
 
+interface FrontendMetricsPayload {
+  source: string;
+  url: string;
+  path: string;
+  userAgent: string;
+  language: string;
+  platform: string;
+  visibilityState: string;
+  sessionId: string;
+  metrics: FrontendMetric[];
+}
+
 const MAX_BUFFER = 30;
 const BUFFER_FLUSH_MS = 15000;
 
 let metricBuffer: FrontendMetric[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let metricsDisabled = false;
+const metricsSessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const pushMetric = (metric: FrontendMetric): void => {
   metricBuffer.push(metric);
@@ -46,9 +59,15 @@ const shouldSkipNetworkFlush = (endpoint: string): boolean => {
 const flushMetrics = (): void => {
   if (metricBuffer.length === 0 || metricsDisabled) return;
 
-  const payload = {
+  const payload: FrontendMetricsPayload = {
     source: 'skymp5-front',
     url: window.location.href,
+    path: window.location.pathname,
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    visibilityState: String(document.visibilityState || 'unknown'),
+    sessionId: metricsSessionId,
     metrics: metricBuffer,
   };
 

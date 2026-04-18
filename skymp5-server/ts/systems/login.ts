@@ -8,11 +8,22 @@ const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned"
 const loginFailedIpMismatch = JSON.stringify({ customPacketType: "loginFailedIpMismatch" });
 const loginFailedSessionNotFound = JSON.stringify({ customPacketType: "loginFailedSessionNotFound" });
 
+type JoinAccessMode = 'open' | 'adminOnly' | 'approvedLicense' | 'discordMember' | 'discordRoles';
+
+interface JoinAccessSettings {
+  mode: JoinAccessMode;
+  rejectionMessage: string;
+  approvedLicenses: string[];
+  approvedDiscordIds: string[];
+  discordRoleIds: string[];
+}
+
 type Mp = any; // TODO
 
 interface UserProfile {
   id: number;
   discordId: string | null;
+  [key: string]: unknown;
 }
 
 namespace DiscordErrors {
@@ -46,6 +57,158 @@ export class Login implements System {
       },
       retries: 10
     };
+  }
+
+  private uniqueTrimmedList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    const set = new Set<string>();
+    value.forEach((entry) => {
+      const text = String(entry || '').trim();
+      if (!text) return;
+      set.add(text);
+    });
+    return Array.from(set.values());
+  }
+
+  private getJoinAccessSettings(): JoinAccessSettings {
+    const fallback: JoinAccessSettings = {
+      mode: 'open',
+      rejectionMessage: 'Access denied. Please contact server staff for whitelist approval.',
+      approvedLicenses: [],
+      approvedDiscordIds: [],
+      discordRoleIds: [],
+    };
+
+    const allSettings = this.settingsObject?.allSettings;
+    const joinAccessRaw = (allSettings && typeof allSettings === 'object')
+      ? (allSettings.joinAccess as Record<string, unknown> | undefined)
+      : undefined;
+
+    const modeRaw = String(joinAccessRaw?.mode || fallback.mode).trim();
+    const mode: JoinAccessMode = (
+      modeRaw === 'adminOnly'
+      || modeRaw === 'approvedLicense'
+      || modeRaw === 'discordMember'
+      || modeRaw === 'discordRoles'
+      || modeRaw === 'open'
+    ) ? modeRaw : fallback.mode;
+
+    return {
+      mode,
+      rejectionMessage: String(joinAccessRaw?.rejectionMessage || fallback.rejectionMessage).trim() || fallback.rejectionMessage,
+      approvedLicenses: this.uniqueTrimmedList(joinAccessRaw?.approvedLicenses),
+      approvedDiscordIds: this.uniqueTrimmedList(joinAccessRaw?.approvedDiscordIds),
+      discordRoleIds: this.uniqueTrimmedList(joinAccessRaw?.discordRoleIds),
+    };
+  }
+
+  private extractProfileLicenseKeys(profile: UserProfile): string[] {
+    const set = new Set<string>();
+
+    const add = (value: unknown) => {
+      const text = String(value || '').trim();
+      if (!text) return;
+      set.add(text);
+    };
+
+    add(profile.id);
+
+    const possibleKeys = [
+      'license',
+      'licenseId',
+      'steamId',
+      'socialClubId',
+      'xblId',
+      'fivemLicense',
+      'identifiers',
+      'licenses',
+    ];
+
+    possibleKeys.forEach((key) => {
+      const value = profile[key];
+      if (Array.isArray(value)) {
+        value.forEach((entry) => add(entry));
+      } else {
+        add(value);
+      }
+    });
+
+    return Array.from(set.values());
+  }
+
+  private denyLoginWithReason(ctx: SystemContext, userId: number, reason: string): never {
+    const message = String(reason || 'Access denied').trim() || 'Access denied';
+    const payload = JSON.stringify({ customPacketType: 'loginFailedJoinAccess', reason: message });
+    ctx.svr.sendCustomPacket(userId, payload);
+    throw new Error(`Join access denied: ${message}`);
+  }
+
+  private enforceJoinAccess(
+    ctx: SystemContext,
+    userId: number,
+    profile: UserProfile,
+    roles: string[],
+    discordCheckAttempted: boolean,
+    discordMemberConfirmed: boolean,
+    discordAuthConfigured: boolean,
+  ): void {
+    const joinAccess = this.getJoinAccessSettings();
+    if (joinAccess.mode === 'open') return;
+
+    const baseReason = joinAccess.rejectionMessage;
+    const profileLicenseKeys = this.extractProfileLicenseKeys(profile);
+    const approvedLicenses = new Set(joinAccess.approvedLicenses);
+    const approvedDiscordIds = new Set(joinAccess.approvedDiscordIds);
+    const requiredDiscordRoles = new Set(joinAccess.discordRoleIds);
+
+    const isLicenseApproved = profileLicenseKeys.some((key) => approvedLicenses.has(key));
+    const hasApprovedDiscordId = Boolean(profile.discordId && approvedDiscordIds.has(String(profile.discordId)));
+
+    if (joinAccess.mode === 'adminOnly') {
+      if (isLicenseApproved || hasApprovedDiscordId) return;
+      this.denyLoginWithReason(ctx, userId, `${baseReason} (admin only)`);
+    }
+
+    if (joinAccess.mode === 'approvedLicense') {
+      if (isLicenseApproved) return;
+      this.denyLoginWithReason(ctx, userId, `${baseReason} (whitelist required)`);
+    }
+
+    if (joinAccess.mode === 'discordMember') {
+      if (!discordAuthConfigured) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord verification unavailable)`);
+      }
+      if (!profile.discordId) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord account not linked)`);
+      }
+      if (!discordCheckAttempted) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord verification failed)`);
+      }
+      if (!discordMemberConfirmed) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord membership required)`);
+      }
+      return;
+    }
+
+    if (joinAccess.mode === 'discordRoles') {
+      if (!discordAuthConfigured) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord verification unavailable)`);
+      }
+      if (!profile.discordId) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord account not linked)`);
+      }
+      if (!discordCheckAttempted || !discordMemberConfirmed) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (discord membership required)`);
+      }
+      if (requiredDiscordRoles.size === 0) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (required roles not configured)`);
+      }
+      const hasRequiredRole = roles.some((roleId) => requiredDiscordRoles.has(String(roleId || '')));
+      if (!hasRequiredRole) {
+        this.denyLoginWithReason(ctx, userId, `${baseReason} (required discord role missing)`);
+      }
+      return;
+    }
   }
 
   private async getUserProfile(session: string, userId: number, ctx: SystemContext): Promise<UserProfile> {
@@ -126,8 +289,12 @@ export class Login implements System {
         }
 
         let roles = new Array<string>();
+        let discordCheckAttempted = false;
+        let discordMemberConfirmed = false;
+        const discordAuthConfigured = Boolean(discordAuth && discordAuth.botToken && discordAuth.guildId);
 
         if (discordAuth && profile.discordId) {
+          discordCheckAttempted = true;
           const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
           const response = await this.fetchRetry(
             `https://discord.com/api/guilds/${discordAuth.guildId}/members/${profile.discordId}`,
@@ -158,6 +325,10 @@ export class Login implements System {
           const currentRoles: string[] | null = actorId ? mp.get(actorId, "private.discordRoles") : null;
           roles = receivedRoles || currentRoles || [];
 
+          if (response.ok) {
+            discordMemberConfirmed = true;
+          }
+
           console.log('Discord request:', JSON.stringify({ status: response.status, data: responseData }));
 
           if (response.status === 404 && responseData?.code === DiscordErrors.unknownMember) {
@@ -178,6 +349,16 @@ export class Login implements System {
             throw new Error("Banned");
           }
         }
+
+        this.enforceJoinAccess(
+          ctx,
+          userId,
+          profile,
+          roles,
+          discordCheckAttempted,
+          discordMemberConfirmed,
+          discordAuthConfigured,
+        );
 
         if ((ctx.svr as any).onLoginAttempt) {
           const isContinue = (ctx.svr as any).onLoginAttempt(profile.id);

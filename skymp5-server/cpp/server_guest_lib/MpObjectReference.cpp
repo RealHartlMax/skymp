@@ -1789,8 +1789,8 @@ void MpObjectReference::InitScripts()
     auto lookupRes =
       GetParent()->GetEspm().GetBrowser().LookupById(cellOrWorld);
     if (lookupRes.rec && lookupRes.rec->GetType() == "WRLD") {
-      spdlog::info("Skipping non-Sweet scripts for exterior form {:x}",
-                   cellOrWorld);
+      spdlog::debug("Skipping non-Sweet scripts for exterior form {:x}",
+                    cellOrWorld);
       scriptNames.erase(std::remove_if(scriptNames.begin(), scriptNames.end(),
                                        [](const std::string& val) {
                                          auto kPrefix = "Sweet";
@@ -1811,7 +1811,9 @@ void MpObjectReference::InitScripts()
       !Utils::stricmp(val.data(), "DA06PreRitualSceneTriggerScript") ||
       !Utils::stricmp(val.data(), "CritterSpawn");
 
-    spdlog::info("Skipping script {}", val);
+    if (isRemoveNeeded) {
+      spdlog::debug("Skipping unsupported script {}", val);
+    }
 
     return isRemoveNeeded;
   };

@@ -250,22 +250,63 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       if (serverSettings.at("npcSettings").is_object()) {
         std::unordered_map<std::string, WorldState::NpcSettingsEntry>
           npcSettings;
-        if (serverSettings.find("default") != serverSettings.end()) {
-          partOne->worldState.defaultSetting.spawnInInterior =
-            serverSettings.at("spawnInInterior").get<bool>();
-          partOne->worldState.defaultSetting.spawnInExterior =
-            serverSettings.at("spawnInExterior").get<bool>();
-          partOne->worldState.defaultSetting.overriden = true;
+        const auto& npcSettingsJson = serverSettings.at("npcSettings");
+        if (npcSettingsJson.find("default") != npcSettingsJson.end() &&
+            npcSettingsJson.at("default").is_object()) {
+          const auto& defaultJson = npcSettingsJson.at("default");
+
+          // Keep broad compatibility when only a subset of fields is provided.
+          partOne->worldState.defaultSetting.spawnInInterior = true;
+          partOne->worldState.defaultSetting.spawnInExterior = true;
+          partOne->worldState.defaultSetting.allowHumanoid = true;
+          partOne->worldState.defaultSetting.allowCreature = true;
+
+          if (defaultJson.find("spawnInInterior") != defaultJson.end()) {
+            partOne->worldState.defaultSetting.spawnInInterior =
+              defaultJson.at("spawnInInterior").get<bool>();
+          }
+          if (defaultJson.find("spawnInExterior") != defaultJson.end()) {
+            partOne->worldState.defaultSetting.spawnInExterior =
+              defaultJson.at("spawnInExterior").get<bool>();
+          }
+          if (defaultJson.find("allowHumanoid") != defaultJson.end()) {
+            partOne->worldState.defaultSetting.allowHumanoid =
+              defaultJson.at("allowHumanoid").get<bool>();
+          }
+          if (defaultJson.find("allowCreature") != defaultJson.end()) {
+            partOne->worldState.defaultSetting.allowCreature =
+              defaultJson.at("allowCreature").get<bool>();
+          }
+
+          partOne->worldState.defaultSetting.overriden =
+            defaultJson.find("spawnInInterior") != defaultJson.end() ||
+            defaultJson.find("spawnInExterior") != defaultJson.end();
+          partOne->worldState.defaultSetting.classOverriden =
+            defaultJson.find("allowHumanoid") != defaultJson.end() ||
+            defaultJson.find("allowCreature") != defaultJson.end();
         }
-        for (const auto& field : serverSettings["npcSettings"].items()) {
+        for (const auto& field : npcSettingsJson.items()) {
+          if (field.key() == "default") {
+            continue;
+          }
           WorldState::NpcSettingsEntry entry;
           if (field.value().find("spawnInInterior") != field.value().end()) {
             entry.spawnInInterior =
               field.value().at("spawnInInterior").get<bool>();
+            entry.overriden = true;
           }
           if (field.value().find("spawnInExterior") != field.value().end()) {
             entry.spawnInExterior =
               field.value().at("spawnInExterior").get<bool>();
+            entry.overriden = true;
+          }
+          if (field.value().find("allowHumanoid") != field.value().end()) {
+            entry.allowHumanoid = field.value().at("allowHumanoid").get<bool>();
+            entry.classOverriden = true;
+          }
+          if (field.value().find("allowCreature") != field.value().end()) {
+            entry.allowCreature = field.value().at("allowCreature").get<bool>();
+            entry.classOverriden = true;
           }
           npcSettings[field.key()] = entry;
         }

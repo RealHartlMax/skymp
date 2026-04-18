@@ -56,6 +56,7 @@ import { SweetCameraEnforcementService } from "./services/services/sweetCameraEn
 import { SweetTaffyNicknamesService } from "./services/services/sweetTaffyNicknamesService";
 import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
+import { ClientRuntimeTelemetryService } from "./services/services/clientRuntimeTelemetryService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -86,6 +87,7 @@ const main = () => {
       new DeathService(sp, controller),
       new ContainersService(sp, controller),
       new NetworkingService(sp, controller),
+      new ClientRuntimeTelemetryService(sp, controller),
       new RemoteServer(sp, controller),
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),

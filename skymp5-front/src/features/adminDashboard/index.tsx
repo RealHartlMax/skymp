@@ -55,6 +55,13 @@ interface FrontendMetricEntry {
   ts: number;
   receivedAt: number;
   url?: string;
+  path?: string;
+  clientSource?: string;
+  userAgent?: string;
+  language?: string;
+  platform?: string;
+  visibilityState?: string;
+  sessionId?: string;
 }
 
 interface FrontendMetricsSummary {
@@ -64,6 +71,27 @@ interface FrontendMetricsSummary {
   averageValue: number;
   sources: Array<{ name: string; count: number }>;
   names: Array<{ name: string; count: number }>;
+}
+
+interface ClientRuntimeEventEntry {
+  userId: number;
+  ip?: string;
+  source: string;
+  sessionId?: string;
+  event: string;
+  level: 'info' | 'warn' | 'error';
+  ts: number;
+  receivedAt: number;
+  details?: string;
+}
+
+interface ClientRuntimeEventsSummary {
+  totalCount: number;
+  errorCount: number;
+  warnCount: number;
+  lastReceivedAt: number | null;
+  sources: Array<{ name: string; count: number }>;
+  events: Array<{ name: string; count: number }>;
 }
 
 interface AdminCapabilities {
@@ -97,13 +125,22 @@ const EMPTY_FRONTEND_METRICS_SUMMARY: FrontendMetricsSummary = {
   names: [],
 };
 
+const EMPTY_CLIENT_RUNTIME_SUMMARY: ClientRuntimeEventsSummary = {
+  totalCount: 0,
+  errorCount: 0,
+  warnCount: 0,
+  lastReceivedAt: null,
+  sources: [],
+  events: [],
+};
+
 const REFRESH_INTERVAL_MS = 5000;
 const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
 
 interface PersistedAdminDashboardState {
   activeTab?: Tab;
   playerSearch?: string;
-  logTypeFilter?: '' | 'kick' | 'ban' | 'console';
+  logTypeFilter?: '' | 'kick' | 'ban' | 'mute' | 'console';
   logLimit?: number;
   logSinceMinutes?: '' | '15' | '60' | '1440';
   metricLimit?: number;
@@ -149,6 +186,8 @@ const AdminDashboard = () => {
   const [metricLimit, setMetricLimit] = useState(50);
   const [metricSourceFilter, setMetricSourceFilter] = useState('');
   const [metricNameFilter, setMetricNameFilter] = useState('');
+  const [clientRuntimeEntries, setClientRuntimeEntries] = useState<ClientRuntimeEventEntry[]>([]);
+  const [clientRuntimeSummary, setClientRuntimeSummary] = useState<ClientRuntimeEventsSummary>(EMPTY_CLIENT_RUNTIME_SUMMARY);
   const [sendMsgTargetId, setSendMsgTargetId] = useState<number | null>(null);
   const [sendMsgTargetName, setSendMsgTargetName] = useState('');
   const [sendMsgText, setSendMsgText] = useState('');
@@ -169,7 +208,7 @@ const AdminDashboard = () => {
         setActiveTab(persisted.activeTab);
       }
       if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
-      if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'console') {
+      if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'mute' || persisted.logTypeFilter === 'console') {
         setLogTypeFilter(persisted.logTypeFilter);
       }
       if (persisted.logLimit && [25, 50, 100, 200].includes(persisted.logLimit)) setLogLimit(persisted.logLimit);
@@ -349,6 +388,34 @@ const AdminDashboard = () => {
       // silently ignore
     }
   }, [capabilities.canViewLogs, metricLimit, metricNameFilter, metricSourceFilter]);
+
+  const fetchClientRuntimeEvents = useCallback(async () => {
+    try {
+      if (!capabilities.canViewLogs) {
+        setClientRuntimeEntries([]);
+        setClientRuntimeSummary(EMPTY_CLIENT_RUNTIME_SUMMARY);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set('limit', String(metricLimit));
+
+      const res = await fetch(`/api/admin/client-runtime-events?${params.toString()}`);
+      if (!res.ok) {
+        if (res.status === 403) {
+          setClientRuntimeEntries([]);
+          setClientRuntimeSummary(EMPTY_CLIENT_RUNTIME_SUMMARY);
+        }
+        return;
+      }
+
+      const payload = await res.json();
+      setClientRuntimeEntries(Array.isArray(payload?.entries) ? payload.entries : []);
+      setClientRuntimeSummary(payload?.summary || EMPTY_CLIENT_RUNTIME_SUMMARY);
+    } catch {
+      // silently ignore
+    }
+  }, [capabilities.canViewLogs, metricLimit]);
 
   const kickPlayer = async (userId: number) => {
     const reason = moderationReason.trim();
@@ -549,6 +616,8 @@ const AdminDashboard = () => {
     setLogHasMore(false);
     setMetricEntries([]);
     setMetricSummary(EMPTY_FRONTEND_METRICS_SUMMARY);
+    setClientRuntimeEntries([]);
+    setClientRuntimeSummary(EMPTY_CLIENT_RUNTIME_SUMMARY);
     setSendMsgTargetId(null);
     setSendMsgText('');
     setModerationReason('');
@@ -593,7 +662,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (activeTab === 'logs') void fetchLogs();
     if (activeTab === 'metrics') void fetchFrontendMetrics();
-  }, [activeTab, fetchFrontendMetrics, fetchLogs]);
+    if (activeTab === 'metrics') void fetchClientRuntimeEvents();
+  }, [activeTab, fetchClientRuntimeEvents, fetchFrontendMetrics, fetchLogs]);
 
   useEffect(() => {
     setLogBeforeTs(null);
@@ -1330,8 +1400,47 @@ const AdminDashboard = () => {
                             <div className="admin-dashboard__metrics-meta">
                               <span>{t('adminDashboard.metricsEventTs')}: {formatAdminTime(entry.ts)}</span>
                               <span>{t('adminDashboard.metricsReceivedTs')}: {formatAdminTime(entry.receivedAt)}</span>
+                              {entry.clientSource && <span>Client: {entry.clientSource}</span>}
+                              {entry.sessionId && <span>Session: {entry.sessionId}</span>}
+                              {entry.path && <span>Path: {entry.path}</span>}
+                              {entry.visibilityState && <span>Visibility: {entry.visibilityState}</span>}
+                              {entry.language && <span>Lang: {entry.language}</span>}
+                              {entry.platform && <span>Platform: {entry.platform}</span>}
+                              {entry.userAgent && <span>UA: {entry.userAgent}</span>}
                               {entry.url && <span>{entry.url}</span>}
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="admin-dashboard__metrics-groups" style={{ marginTop: 16 }}>
+                      <div className="admin-dashboard__bans-section">
+                        <h3 className="admin-dashboard__section-subtitle">Client Runtime Events (skymp5-client)</h3>
+                        <div className="admin-dashboard__metric-chips">
+                          <span className="admin-dashboard__metric-chip">Total {clientRuntimeSummary.totalCount}</span>
+                          <span className="admin-dashboard__metric-chip">Errors {clientRuntimeSummary.errorCount}</span>
+                          <span className="admin-dashboard__metric-chip">Warnings {clientRuntimeSummary.warnCount}</span>
+                          <span className="admin-dashboard__metric-chip">
+                            Last {clientRuntimeSummary.lastReceivedAt ? formatAdminTime(clientRuntimeSummary.lastReceivedAt) : '-'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {clientRuntimeEntries.length === 0 ? (
+                      <p className="admin-dashboard__no-players">No client runtime events yet.</p>
+                    ) : (
+                      <div className="admin-dashboard__log-list" style={{ marginTop: 10 }}>
+                        {clientRuntimeEntries.map((entry, index) => (
+                          <div key={`${entry.userId}-${entry.receivedAt}-${index}`} className="admin-dashboard__log-entry">
+                            <span className="admin-dashboard__log-ts">{formatAdminTime(entry.receivedAt)}</span>
+                            <span className={`admin-dashboard__log-type admin-dashboard__log-type--${entry.level === 'error' ? 'ban' : entry.level === 'warn' ? 'kick' : 'console'}`}>
+                              {entry.level}
+                            </span>
+                            <span className="admin-dashboard__log-msg">
+                              [{entry.event}] userId={entry.userId} {entry.ip ? `ip=${entry.ip}` : ''} {entry.details || ''}
+                            </span>
                           </div>
                         ))}
                       </div>
