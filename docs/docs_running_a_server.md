@@ -10,11 +10,26 @@ The server requires `Windows 8.1` / `Windows Server 2012` or higher. It may stil
 
 You obviously need to have 64-bit Windows version since the server is 64-bit program.
 
-You are able to build whole project from sources. Server build would be in `build/dist/server`. Use `launch_server.bat` to launch.
+You are able to build whole project from sources. Server build would be in `build/dist/server`. Use `launch_server.bat` to launch. A convenience launcher is also generated as `build/launch_server.bat`.
+
+`launch_server.bat` now includes restart protection: before starting a new server process it checks for an already running `dist_back/skymp5-server.js` process and terminates it automatically.
 
 ### Linux
 
-Only Windows builds are supported currently.
+Linux server support is prepared for source builds.
+
+If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
+
+Client support remains Windows-first, but the dedicated server can be prepared for Linux environments.
+
+## Admin Dashboard
+
+The admin dashboard is available at `http://<host>:<uiPort>/admin`.
+
+- `uiPort` is taken from `server-settings.json` (if omitted, it falls back to `port`).
+- The page uses an in-app login form (not browser Basic Auth popup).
+- Credentials are validated against `adminUiAuth` (or `metricsAuth` as fallback when `adminUiAuth` is not set).
+- Session timeout is 10 minutes of inactivity for dashboard interactions.
 
 ## Configuration
 

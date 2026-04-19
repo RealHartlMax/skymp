@@ -19,6 +19,12 @@ This roadmap translates key architectural concepts and best practices from FiveM
 - **Benefit:** Non-technical server admins can customize spawn points and starter gear without code changes
 - **Related Files:** settings.ts, spawn.ts, generate_server_settings.cmake
 
+### Startup Process Hardening
+- **Implementation:** Windows launchers now auto-terminate stale `dist_back/skymp5-server.js` processes before startup
+- **Pattern:** Supervisor-like preflight process cleanup in launcher scripts
+- **Benefit:** Avoids startup collisions and peer init failures caused by orphaned background node instances
+- **Related Files:** `skymp5-server/CMakeLists.txt`, `build/dist/server/launch_server.bat`
+
 ---
 
 ## 1. Resource Diagnostics & Validation Endpoint

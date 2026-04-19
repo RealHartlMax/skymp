@@ -87,26 +87,59 @@ endif()
 
 # All targets are ready
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/dist/server)
+
+set(launch_server_sh_dist "#!/usr/bin/env sh\n")
+set(launch_server_sh_dist "${launch_server_sh_dist}set -eu\n")
+set(launch_server_sh_dist "${launch_server_sh_dist}SCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\n")
+set(launch_server_sh_dist "${launch_server_sh_dist}cd \"$SCRIPT_DIR\"\n")
+set(launch_server_sh_dist "${launch_server_sh_dist}exec node dist_back/skymp5-server.js \"$@\"\n")
+file(WRITE ${CMAKE_BINARY_DIR}/dist/server/launch_server.sh "${launch_server_sh_dist}")
+file(CHMOD ${CMAKE_BINARY_DIR}/dist/server/launch_server.sh
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
+set(launch_server_sh_dev "#!/usr/bin/env sh\n")
+set(launch_server_sh_dev "${launch_server_sh_dev}set -eu\n")
+set(launch_server_sh_dev "${launch_server_sh_dev}SCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\n")
+set(launch_server_sh_dev "${launch_server_sh_dev}cd \"$SCRIPT_DIR/dist/server\"\n")
+set(launch_server_sh_dev "${launch_server_sh_dev}exec node dist_back/skymp5-server.js \"$@\"\n")
+file(WRITE ${CMAKE_BINARY_DIR}/launch_server.sh "${launch_server_sh_dev}")
+file(CHMOD ${CMAKE_BINARY_DIR}/launch_server.sh
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
 if(WIN32)
   # On Windows create launch_server.bat in ./build/dist/server
   # This .bat file is for launching the server
-  set(bat "node dist_back/skymp5-server.js\n")
-  set(bat "${bat}pause\n")
-  file(WRITE ${PROJECT_BINARY_DIR}/launch_server.bat.tmp "${bat}")
+  set(bat_dist "@echo off\n")
+  set(bat_dist "${bat_dist}setlocal\n")
+  set(bat_dist "${bat_dist}echo [SkyMP] Checking for existing server process...\n")
+  set(bat_dist "${bat_dist}powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'dist_back[\\\\/]skymp5-server\\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\" >nul 2>nul\n")
+  set(bat_dist "${bat_dist}echo [SkyMP] Starting server...\n")
+  set(bat_dist "${bat_dist}node dist_back/skymp5-server.js\n")
+  set(bat_dist "${bat_dist}set EXIT_CODE=%ERRORLEVEL%\n")
+  set(bat_dist "${bat_dist}pause\n")
+  set(bat_dist "${bat_dist}endlocal & exit /B %EXIT_CODE%\n")
+  file(WRITE ${CMAKE_BINARY_DIR}/dist/server/launch_server.bat "${bat_dist}")
 
   # Same but for dev (no pause, placed into ./build dir)
-  set(bat "@echo off\n") # Turn off command echoing
-  set(bat "${bat}setlocal\n") # setlocal/endlocal is for temporary cd
+  set(bat "@echo off\n")
+  set(bat "${bat}setlocal\n")
   set(bat "${bat}cd dist/server\n")
+  set(bat "${bat}echo [SkyMP] Checking for existing server process...\n")
+  set(bat "${bat}powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match 'dist_back[\\\\/]skymp5-server\\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\" >nul 2>nul\n")
+  set(bat "${bat}echo [SkyMP] Starting server...\n")
   set(bat "${bat}node dist_back/skymp5-server.js\n")
   set(bat "${bat}set EXIT_CODE=%ERRORLEVEL%\n")
   set(bat "${bat}endlocal & exit /B %EXIT_CODE%\n")
   file(WRITE ${CMAKE_BINARY_DIR}/launch_server.bat "${bat}")
-
-  add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/launch_server.bat.tmp ${CMAKE_BINARY_DIR}/dist/server/launch_server.bat
-  )
 endif()
 
 # Create server-settings.json in build/dist/server
@@ -151,6 +184,15 @@ if(TARGET ${PROJECT_NAME})
       -DPEX_SOURCE_DIR=${CMAKE_SOURCE_DIR}/skymp5-scripts/pex
       -DSOURCE_DATA_DIR=${server_data_source_dir}
       -P ${CMAKE_SOURCE_DIR}/cmake/scripts/prepare_server_data.cmake
+  )
+
+  set(FRONTEND_BUILD_JS "${CMAKE_SOURCE_DIR}/skymp5-front/dist/build.js")
+  set(FRONTEND_UI_DIR "${CMAKE_BINARY_DIR}/dist/server/ui")
+  add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${FRONTEND_UI_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FRONTEND_BUILD_JS}" "${FRONTEND_UI_DIR}/build.js"
+    COMMENT "Copying frontend build.js to dist/server/ui/"
   )
 endif()
 

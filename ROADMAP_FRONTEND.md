@@ -12,6 +12,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Admin dashboard core | tabs, moderation actions, console, logs, metrics implemented | `src/features/adminDashboard/index.tsx` | ✅ Confirmed |
 | Admin backend endpoints | status/players/kick/ban/mute/message/logs/frontend-metrics/capabilities implemented | `skymp5-server/ts/ui.ts` | ✅ Confirmed |
 | Admin resources and config workflows | resources inventory panel + server-settings CFG editor + locale routing APIs implemented | `skymp5-server/ts/ui.ts`, `cmake/scripts/generate_server_settings.cmake` | ✅ Confirmed |
+| Admin auth and route migration | `/admin` serves new dashboard flow with in-app login and inactivity session timeout; `/admin-app` is compatibility redirect | `skymp5-server/ts/ui.ts` | ✅ Confirmed |
 | Dev server presets | LAN preset and fixed-port mode available | `package.json` scripts `dev:lan`, `watch:fixed` | ✅ Confirmed |
 | Admin dashboard shell redesign | txAdmin-inspired three-zone layout (topbar / sidebar / main / rightbar) | `src/features/adminDashboard/index.tsx`, `styles.scss` | ✅ Confirmed |
 | Respawn & Revival system | canRespawn binding, RespawnPanel, EventsPanel, backend routes `/api/admin/respawn-status` + `/api/admin/revive` + `/api/admin/events` | `skymp5-server/ts/ui.ts`, `RespawnPanel.tsx`, `EventsPanel.tsx` | ✅ Confirmed |
@@ -81,6 +82,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | *TypeScript Build* | ✅ Done | Webpack bundling, tree-shaking, minification |
 | *Code Formatting* | ✅ Done | ESLint configured; formatting conventions documented in CONTRIBUTING.md |
 | *Git Hooks* | ✅ Done | Husky + lint-staged for pre-commit checks |
+| *Windows Launch Script Safety* | ✅ Done | Generated `launch_server.bat` now terminates stale `dist_back/skymp5-server.js` processes before starting a new instance |
 | **IN PROGRESS:** | **Currently being worked on.** | |
 | *Documentation* | 🔄 In Progress | Updated CONTRIBUTING.md with frontend setup and dev guidelines |
 | **TODO:** | **Planned features.** | |
@@ -99,7 +101,7 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Component | Status | Details |
 | --- | --- | --- |
 | **DONE:** | **Fully implemented and tested.** | |
-| *Backend Routes* | ✅ Done | `/admin`, `/api/admin/status`, `/api/admin/players`, kick (with reason), ban/unban (permanent + timed with expiry), `POST/DELETE /api/admin/players/:id/mute`, `GET /api/admin/mutes`, `POST /api/admin/players/:id/message`, console command endpoint, and logs endpoint; file-persisted ban/mute lists, language support |
+| *Backend Routes* | ✅ Done | `/admin` serves the current admin flow (custom login + React dashboard shell), `/admin-app` redirects to `/admin`; API routes include `/api/admin/status`, `/api/admin/players`, kick (with reason), ban/unban (permanent + timed with expiry), `POST/DELETE /api/admin/players/:id/mute`, `GET /api/admin/mutes`, `POST /api/admin/players/:id/message`, console/log endpoints, and session auth endpoints (`/api/admin/session/login`, `/api/admin/session/logout`, `/api/admin/session/touch`, `/api/admin/session`) with file-persisted ban/mute lists and language support |
 | *Dashboard Layout* | ✅ Done | txAdmin-inspired shell: fixed topbar with brand + tab navigation + role/user display; left sidebar with server card, full navigation list, status pills (uptime/port/players), and reset action; main content zone with panel-toolbar bars, summary KPI cards (online/banned/muted/downed), and independently-scrollable panel area with sticky table headers; right player rail with search and online/max counter |
 | *Server Stats Panel* | ✅ Done | Online players, max players, uptime, tick counters, API status |
 | *Player List View* | ✅ Done | Live player table with id/name/level/location and selection state |

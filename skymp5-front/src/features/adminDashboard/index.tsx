@@ -212,8 +212,10 @@ const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
 interface PersistedAdminDashboardState {
   activeTab?: Tab;
   playerSearch?: string;
+  consoleSearch?: string;
   logTypeFilter?: '' | 'kick' | 'ban' | 'mute' | 'console' | 'server';
   logLevelFilter?: '' | ServerLogLevel;
+  logTextFilter?: string;
   logLimit?: number;
   logSinceMinutes?: '' | '15' | '60' | '1440';
   metricLimit?: number;
@@ -379,6 +381,7 @@ const AdminDashboard = () => {
   const [consoleHistory, setConsoleHistory] = useState<string[]>([]);
   const [consoleHistoryIndex, setConsoleHistoryIndex] = useState<number | null>(null);
   const [consoleSending, setConsoleSending] = useState(false);
+  const [consoleSearch, setConsoleSearch] = useState('');
   const [cfgEditorText, setCfgEditorText] = useState('');
   const [cfgEditorStatus, setCfgEditorStatus] = useState('');
   const [cfgEditorLoading, setCfgEditorLoading] = useState(false);
@@ -395,6 +398,7 @@ const AdminDashboard = () => {
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [logTypeFilter, setLogTypeFilter] = useState<'' | 'kick' | 'ban' | 'mute' | 'console' | 'server'>('');
   const [logLevelFilter, setLogLevelFilter] = useState<'' | ServerLogLevel>('');
+  const [logTextFilter, setLogTextFilter] = useState('');
   const [logLimit, setLogLimit] = useState(100);
   const [logSinceMinutes, setLogSinceMinutes] = useState<'' | '15' | '60' | '1440'>('');
   const [logBeforeTs, setLogBeforeTs] = useState<number | null>(null);
@@ -431,12 +435,14 @@ const AdminDashboard = () => {
         setActiveTab(persisted.activeTab);
       }
       if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
+      if (typeof persisted.consoleSearch === 'string') setConsoleSearch(persisted.consoleSearch);
       if (persisted.logTypeFilter === '' || persisted.logTypeFilter === 'kick' || persisted.logTypeFilter === 'ban' || persisted.logTypeFilter === 'mute' || persisted.logTypeFilter === 'console' || persisted.logTypeFilter === 'server') {
         setLogTypeFilter(persisted.logTypeFilter);
       }
       if (persisted.logLevelFilter === '' || persisted.logLevelFilter === 'info' || persisted.logLevelFilter === 'error') {
         setLogLevelFilter(persisted.logLevelFilter);
       }
+      if (typeof persisted.logTextFilter === 'string') setLogTextFilter(persisted.logTextFilter);
       if (persisted.logLimit && [25, 50, 100, 200].includes(persisted.logLimit)) setLogLimit(persisted.logLimit);
       if (persisted.logSinceMinutes === '' || persisted.logSinceMinutes === '15' || persisted.logSinceMinutes === '60' || persisted.logSinceMinutes === '1440') {
         setLogSinceMinutes(persisted.logSinceMinutes);
@@ -464,8 +470,10 @@ const AdminDashboard = () => {
       const stateToPersist: PersistedAdminDashboardState = {
         activeTab,
         playerSearch,
+        consoleSearch,
         logTypeFilter,
         logLevelFilter,
+        logTextFilter,
         logLimit,
         logSinceMinutes,
         metricLimit,
@@ -480,7 +488,7 @@ const AdminDashboard = () => {
     } catch {
       // ignore storage write failures
     }
-  }, [activeTab, cfgEditorText, consoleHistory, eventLimit, eventTypeFilter, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
+  }, [activeTab, cfgEditorText, consoleHistory, consoleSearch, eventLimit, eventTypeFilter, logLevelFilter, logLimit, logSinceMinutes, logTextFilter, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
 
   const setForbiddenAwareStatus = useCallback((res: Response, successText: string) => {
     if (res.ok) {
@@ -1525,8 +1533,10 @@ const AdminDashboard = () => {
   const resetDashboardPreferences = () => {
     setActiveTab('overview');
     setPlayerSearch('');
+    setConsoleSearch('');
     setLogTypeFilter('');
     setLogLevelFilter('');
+    setLogTextFilter('');
     setLogLimit(100);
     setLogSinceMinutes('');
     setLogBeforeTs(null);
@@ -1566,6 +1576,17 @@ const AdminDashboard = () => {
     system: 'metrics',
   };
 
+  const topSectionByTab: Record<Tab, TopSection> = {
+    overview: 'settings',
+    players: 'players',
+    console: 'admins',
+    logs: 'history',
+    metrics: 'system',
+    respawn: 'whitelist',
+    events: 'playerDrops',
+    cfg: 'settings',
+  };
+
   const topNavItems: Array<{ key: TopSection; label: string }> = [
     { key: 'players', label: t('adminDashboard.topTx_players') },
     { key: 'history', label: t('adminDashboard.topTx_history') },
@@ -1597,14 +1618,54 @@ const AdminDashboard = () => {
     { key: 'respawn', label: t('adminDashboard.sideTx_respawnCenter') },
     { key: 'events', label: t('adminDashboard.sideTx_revivalJournal') },
   ];
+
+  useEffect(() => {
+    setActiveTopSection(topSectionByTab[activeTab]);
+  }, [activeTab]);
+
   const currentTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? t('adminDashboard.title');
+  const currentTopSectionLabel = topNavItems.find((item) => item.key === activeTopSection)?.label ?? t('adminDashboard.subtitle');
+  const playerRatio = status && status.maxPlayers > 0
+    ? status.online / status.maxPlayers
+    : 0;
   const summaryCards = [
-    { label: t('adminDashboard.online'), value: String(status?.online ?? 0), accent: true },
-    { label: t('adminDashboard.bannedUsers'), value: String(activeBannedUsers.length) },
-    { label: t('adminDashboard.mutedUsers'), value: String(activeMutedUsers.length) },
-    { label: t('adminDashboard.tabRespawn'), value: String(downedPlayers.length) },
+    {
+      label: t('adminDashboard.players'),
+      value: status ? `${status.online}/${status.maxPlayers}` : '0/0',
+      tone: playerRatio >= 0.9 ? 'warn' : 'accent',
+    },
+    {
+      label: t('adminDashboard.bannedUsers'),
+      value: String(activeBannedUsers.length),
+      tone: activeBannedUsers.length > 0 ? 'warn' : 'neutral',
+    },
+    {
+      label: t('adminDashboard.mutedUsers'),
+      value: String(activeMutedUsers.length),
+      tone: activeMutedUsers.length > 0 ? 'warn' : 'neutral',
+    },
+    {
+      label: t('adminDashboard.tabRespawn'),
+      value: String(downedPlayers.length),
+      tone: downedPlayers.length > 0 ? 'warn' : 'neutral',
+    },
   ];
   const visibleRailPlayers = filteredPlayers.slice(0, 12);
+  const normalizedConsoleSearch = consoleSearch.trim().toLowerCase();
+  const filteredServerConsoleEntries = useMemo(
+    () => normalizedConsoleSearch.length === 0
+      ? serverConsoleEntries
+      : serverConsoleEntries.filter((entry) => `${entry.level ?? ''} ${entry.message}`.toLowerCase().includes(normalizedConsoleSearch)),
+    [normalizedConsoleSearch, serverConsoleEntries],
+  );
+  const normalizedLogTextFilter = logTextFilter.trim().toLowerCase();
+  const filteredLogEntries = useMemo(
+    () => normalizedLogTextFilter.length === 0
+      ? logEntries
+      : logEntries.filter((entry) => `${entry.type} ${entry.level ?? ''} ${entry.message}`.toLowerCase().includes(normalizedLogTextFilter)),
+    [logEntries, normalizedLogTextFilter],
+  );
+  const hasActiveLogFilters = Boolean(logTypeFilter || logLevelFilter || logSinceMinutes || normalizedLogTextFilter);
 
   if (!visible) return <></>;
 
@@ -1631,7 +1692,10 @@ const AdminDashboard = () => {
                 aria-selected={activeTopSection === key}
                 aria-controls={`admin-panel-${defaultTabByTopSection[key]}`}
                 className={`admin-dashboard__topnav-item${activeTopSection === key ? ' admin-dashboard__topnav-item--active' : ''}`}
-                onClick={() => setActiveTopSection(key)}
+                onClick={() => {
+                  setActiveTopSection(key);
+                  setActiveTab(defaultTabByTopSection[key]);
+                }}
               >
                 {label}
               </button>
@@ -1654,6 +1718,9 @@ const AdminDashboard = () => {
             </div>
 
             <div className="admin-dashboard__sidebar-card">
+              <div className="admin-dashboard__sidebar-section-title">
+                {t('adminDashboard.sideSectionNavigation', { defaultValue: 'Navigation' })}
+              </div>
               <div className="admin-dashboard__nav-list">
                 {sideNavItems.map((item) => (
                   <button
@@ -1671,6 +1738,9 @@ const AdminDashboard = () => {
             </div>
 
             <div className="admin-dashboard__sidebar-card">
+              <div className="admin-dashboard__sidebar-section-title">
+                {t('adminDashboard.sideSectionStatus', { defaultValue: 'Server Status' })}
+              </div>
               <div className="admin-dashboard__sidebar-status-row">
                 <span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.online')}</span>
                 <span className={`admin-dashboard__sidebar-pill${status ? ' admin-dashboard__sidebar-pill--online' : ''}`}>
@@ -1740,7 +1810,7 @@ const AdminDashboard = () => {
             <div className="admin-dashboard__main-header">
               <div>
                 <h2 className="admin-dashboard__main-title">{currentTabLabel}</h2>
-                <p className="admin-dashboard__main-subtitle">{t('adminDashboard.subtitle')}</p>
+                <p className="admin-dashboard__main-subtitle">{currentTopSectionLabel}</p>
               </div>
               <div className="admin-dashboard__main-meta">
                 {lastUpdated && <span className="admin-dashboard__updated">{t('adminDashboard.updated')}: {lastUpdated}</span>}
@@ -1749,9 +1819,9 @@ const AdminDashboard = () => {
 
             <div className="admin-dashboard__summary-grid">
               {summaryCards.map((card) => (
-                <div key={card.label} className="admin-dashboard__summary-card">
+                <div key={card.label} className={`admin-dashboard__summary-card${card.tone === 'warn' ? ' admin-dashboard__summary-card--warn' : ''}`}>
                   <div className="admin-dashboard__summary-label">{card.label}</div>
-                  <div className={`admin-dashboard__summary-value${card.accent ? ' admin-dashboard__summary-value--accent' : ''}`}>{card.value}</div>
+                  <div className={`admin-dashboard__summary-value${card.tone === 'accent' ? ' admin-dashboard__summary-value--accent' : ''}${card.tone === 'warn' ? ' admin-dashboard__summary-value--warn' : ''}`}>{card.value}</div>
                 </div>
               ))}
             </div>
@@ -2062,13 +2132,32 @@ const AdminDashboard = () => {
             )}
             {activeTab === 'console' && (
               <div className="admin-dashboard__panel" id="admin-panel-console" role="tabpanel" aria-labelledby="admin-tab-console">
+                <div className="admin-dashboard__console-filter-row">
+                  <input
+                    className="admin-dashboard__search-input"
+                    type="text"
+                    placeholder={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'In Konsolen-Logs suchen…' })}
+                    aria-label={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'In Konsolen-Logs suchen…' })}
+                    value={consoleSearch}
+                    onChange={(e) => setConsoleSearch(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="admin-dashboard__console-clear-btn"
+                    onClick={() => setConsoleSearch('')}
+                    disabled={consoleSearch.trim().length === 0}
+                  >
+                    {t('adminDashboard.clearSearch', { defaultValue: 'Suche löschen' })}
+                  </button>
+                </div>
+
                 <div className="admin-dashboard__console-out" role="log" aria-live="polite" aria-relevant="additions text">
-                  {serverConsoleEntries.length === 0 && consoleLines.length === 0 && (
+                  {filteredServerConsoleEntries.length === 0 && consoleLines.length === 0 && (
                     <div className="admin-dashboard__console-line admin-dashboard__console-line--input">
                       {t('adminDashboard.noLogs')}
                     </div>
                   )}
-                  {serverConsoleEntries.map((entry, i) => (
+                  {filteredServerConsoleEntries.map((entry, i) => (
                     <div key={`server-${entry.ts}-${i}`} className={`admin-dashboard__console-line admin-dashboard__console-line--${entry.level === 'error' ? 'err' : 'ok'}`}>
                       [{formatAdminTime(entry.ts)}] {entry.level ?? 'info'}: {entry.message}
                     </div>
@@ -2109,6 +2198,11 @@ const AdminDashboard = () => {
 
                 <div className="admin-dashboard__console-history">
                   <span className="admin-dashboard__console-history-label">{t('adminDashboard.consoleHistory')}</span>
+                  {consoleSearch.trim().length > 0 && (
+                    <span className="admin-dashboard__console-history-empty">
+                      {t('adminDashboard.consoleFilteredCount', { defaultValue: '{{shown}} von {{total}} Einträgen sichtbar', shown: filteredServerConsoleEntries.length, total: serverConsoleEntries.length })}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="admin-dashboard__console-clear-btn"
@@ -2167,7 +2261,7 @@ const AdminDashboard = () => {
                     <div className="admin-dashboard__panel-toolbar">
                       <div className="admin-dashboard__panel-toolbar-left">
                         <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.tabLogs')}</span>
-                        {logEntries.length > 0 && <span className="admin-dashboard__panel-badge">{logEntries.length}</span>}
+                        {filteredLogEntries.length > 0 && <span className="admin-dashboard__panel-badge">{filteredLogEntries.length}</span>}
                       </div>
                       <div className="admin-dashboard__panel-toolbar-right">
                         <button type="button" className="admin-dashboard__log-page-btn" onClick={openRecentLogs} disabled={logBeforeTs === null}>
@@ -2176,9 +2270,32 @@ const AdminDashboard = () => {
                         <button type="button" className="admin-dashboard__log-page-btn" onClick={openOlderLogs} disabled={!logHasMore || oldestLogTs === null}>
                           {t('adminDashboard.logOlder')}
                         </button>
+                        <button
+                          type="button"
+                          className="admin-dashboard__log-page-btn"
+                          onClick={() => {
+                            setLogTypeFilter('');
+                            setLogLevelFilter('');
+                            setLogSinceMinutes('');
+                            setLogTextFilter('');
+                            setLogBeforeTs(null);
+                          }}
+                          disabled={!hasActiveLogFilters && logBeforeTs === null}
+                        >
+                          {t('adminDashboard.clearFilters', { defaultValue: 'Filter zurücksetzen' })}
+                        </button>
                       </div>
                     </div>
                     <div className="admin-dashboard__log-tools">
+                      <input
+                        className="admin-dashboard__search-input admin-dashboard__search-input--reason"
+                        type="text"
+                        placeholder={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'In Logs suchen…' })}
+                        aria-label={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'In Logs suchen…' })}
+                        value={logTextFilter}
+                        onChange={(e) => setLogTextFilter(e.target.value)}
+                      />
+
                       <label className="admin-dashboard__log-tool">
                         <span>{t('adminDashboard.logLimit')}</span>
                         <select
@@ -2237,11 +2354,17 @@ const AdminDashboard = () => {
                       ))}
                     </div>
 
-                    {logEntries.length === 0 ? (
+                    {hasActiveLogFilters && (
+                      <div className="admin-dashboard__log-active-filters">
+                        {t('adminDashboard.activeFiltersHint', { defaultValue: 'Aktive Filter beeinflussen die Ergebnisliste.' })}
+                      </div>
+                    )}
+
+                    {filteredLogEntries.length === 0 ? (
                       <p className="admin-dashboard__no-players">{t('adminDashboard.noLogs')}</p>
                     ) : (
                       <div className="admin-dashboard__log-list">
-                        {logEntries.map((entry, i) => (
+                        {filteredLogEntries.map((entry, i) => (
                           <div key={i} className="admin-dashboard__log-entry">
                             <span className="admin-dashboard__log-ts">{formatAdminTime(entry.ts)}</span>
                             <span className={`admin-dashboard__log-type admin-dashboard__log-type--${entry.type}`}>

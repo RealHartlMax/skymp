@@ -67,6 +67,37 @@ If omitted, `/metrics` is not available.
 }
 ```
 
+## adminUiAuth
+
+Credentials for the web admin dashboard (`/admin`).
+
+If omitted, the server falls back to `metricsAuth` credentials. If neither is configured, admin dashboard login is unavailable.
+
+```json5
+{
+  // ...
+  "adminUiAuth": {
+    "user": "admin",
+    "password": "admin"
+  },
+  // ...
+}
+```
+
+## uiPort
+
+HTTP port used for server resources and admin dashboard routes (for example `/admin`, `/api/admin/*`, `/metrics`).
+
+If omitted, the server uses `port`.
+
+```json5
+{
+  // ...
+  "uiPort": 8080,
+  // ...
+}
+```
+
 ## port
 
 This port would be used by player clients to connect to your server. At the current version of Skyrim Multiplayer servers use multiple ports and different protocols to manage different sorts of packets. See [Server Ports Usage](docs_server_ports_usage.md) page to learn more.

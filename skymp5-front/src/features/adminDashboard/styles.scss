@@ -416,7 +416,9 @@ $admin-line: #2c4552;
   &__main-subtitle {
     margin: 6px 0 0;
     color: $admin-muted;
-    font-size: 13px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   &__main-meta {
@@ -444,6 +446,11 @@ $admin-line: #2c4552;
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 12px;
     padding: 16px 18px;
+
+    &--warn {
+      border-color: rgba($admin-warn, 0.42);
+      background: linear-gradient(180deg, rgba($admin-warn, 0.14), rgba($admin-warn, 0.05));
+    }
   }
 
   &__summary-label {
@@ -461,6 +468,10 @@ $admin-line: #2c4552;
 
     &--accent {
       color: $admin-accent;
+    }
+
+    &--warn {
+      color: #f0a0a0;
     }
   }
 
@@ -694,6 +705,17 @@ $admin-line: #2c4552;
     color: rgba($admin-muted, 0.9);
     font-size: 11px;
     line-height: 1.4;
+  }
+
+  &__cfg-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: $admin-muted;
+    border-bottom: 1px solid $admin-line;
+    padding-bottom: 4px;
+    margin-top: 6px;
   }
 
   &__cfg-check {
@@ -1425,6 +1447,16 @@ $admin-line: #2c4552;
       gap: 8px;
     }
 
+    &__console-filter-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+
+      .admin-dashboard__search-input {
+        flex: 1;
+      }
+    }
+
     &__console-input {
       background: $admin-card;
       border: 1px solid $admin-line;
@@ -1542,6 +1574,12 @@ $admin-line: #2c4552;
       gap: 12px;
       flex-wrap: wrap;
       margin-bottom: 2px;
+      align-items: center;
+
+      .admin-dashboard__search-input {
+        flex: 1 1 260px;
+        min-width: 220px;
+      }
     }
 
     &__log-tool {
@@ -1573,6 +1611,14 @@ $admin-line: #2c4552;
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
+    }
+
+    &__log-active-filters {
+      color: $admin-muted;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      padding-left: 2px;
+      margin-top: -2px;
     }
 
     &__log-pagination {

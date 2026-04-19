@@ -6,6 +6,7 @@ import * as koaBody from "koa-body";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 import { Settings } from "./settings";
 import Axios from "axios";
 import { AddressInfo } from "net";
@@ -15,6 +16,14 @@ let gScampServer: any = null;
 
 let metricsAuth: { user: string; password: string } | null = null;
 let adminAuth: { user: string; password: string } | null = null;
+const ADMIN_SESSION_COOKIE = 'skymp_admin_session';
+const ADMIN_SESSION_IDLE_MS = 10 * 60 * 1000;
+const adminSessions = new Map<string, {
+  id: string;
+  user: string;
+  createdAt: number;
+  lastActivityAt: number;
+}>();
 const processStartedAt = Date.now();
 // ---------------------------------------------------------------------------
 // Admin event log (in-memory, capped at MAX_ADMIN_LOG entries)
@@ -835,7 +844,95 @@ const normalizeAdminRole = (value: unknown): AdminRole => {
   return 'viewer';
 };
 
+const cleanupExpiredAdminSessions = (): void => {
+  const now = Date.now();
+  adminSessions.forEach((session, id) => {
+    if (now - session.lastActivityAt > ADMIN_SESSION_IDLE_MS) {
+      adminSessions.delete(id);
+    }
+  });
+};
+
+const createAdminSession = (user: string) => {
+  cleanupExpiredAdminSessions();
+  const now = Date.now();
+  const id = crypto.randomBytes(24).toString('hex');
+  const session = {
+    id,
+    user,
+    createdAt: now,
+    lastActivityAt: now,
+  };
+  adminSessions.set(id, session);
+  return session;
+};
+
+const getAdminSessionFromCtx = (ctx: any) => {
+  cleanupExpiredAdminSessions();
+  const id = String(ctx?.cookies?.get?.(ADMIN_SESSION_COOKIE) || '').trim();
+  if (!id) return null;
+  const session = adminSessions.get(id);
+  if (!session) return null;
+  if (Date.now() - session.lastActivityAt > ADMIN_SESSION_IDLE_MS) {
+    adminSessions.delete(id);
+    return null;
+  }
+  return session;
+};
+
+const touchAdminSession = (session: { lastActivityAt: number }): void => {
+  session.lastActivityAt = Date.now();
+};
+
+const setAdminSessionCookie = (ctx: any, sessionId: string): void => {
+  ctx.cookies.set(ADMIN_SESSION_COOKIE, sessionId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: ADMIN_SESSION_IDLE_MS,
+  });
+};
+
+const clearAdminSessionCookie = (ctx: any): void => {
+  ctx.cookies.set(ADMIN_SESSION_COOKIE, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+};
+
+const decodeBasicAuth = (ctx: any): { user: string; password: string } | null => {
+  const authHeader = String(ctx?.headers?.authorization ?? '');
+  const m = authHeader.match(/^Basic\s+(.+)$/i);
+  if (!m) return null;
+
+  try {
+    const decoded = Buffer.from(m[1], 'base64').toString('utf8');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex < 0) return null;
+    const user = decoded.slice(0, separatorIndex);
+    const password = decoded.slice(separatorIndex + 1);
+    return { user, password };
+  } catch {
+    return null;
+  }
+};
+
+const getValidBasicAdminUser = (ctx: any): string => {
+  if (!adminAuth) return '';
+  const creds = decodeBasicAuth(ctx);
+  if (!creds) return '';
+  if (creds.user === adminAuth.user && creds.password === adminAuth.password) {
+    return creds.user;
+  }
+  return '';
+};
+
 const getBasicAuthUser = (ctx: any): string => {
+  const sessionUser = ctx?.state?.adminUser;
+  if (typeof sessionUser === 'string' && sessionUser.length > 0) return sessionUser;
+
   const stateUser = ctx?.state?.user;
   if (typeof stateUser === 'string' && stateUser.length > 0) return stateUser;
 
@@ -895,1039 +992,6 @@ const ensureAdminCapability = (
   ctx.body = { ok: false, error: 'forbidden' };
   return false;
 };
-
-const renderAdminDashboard = () => `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SkyMP Control Panel</title>
-  <style>
-    :root {
-      --bg: #0b0f15;
-      --bg-alt: #121822;
-      --surface: #181f2b;
-      --surface-soft: #20293a;
-      --line: #2f3b50;
-      --text: #e6ebf4;
-      --muted: #95a3bb;
-      --brand: #27c1b5;
-      --brand-soft: rgba(39,193,181,.17);
-      --warn: #ff6d62;
-      --warn-soft: rgba(255,109,98,.16);
-      --gold: #f4c86b;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 8% -18%, rgba(39,193,181,.2) 0%, rgba(39,193,181,0) 35%),
-        radial-gradient(circle at 90% -10%, rgba(98,120,255,.18) 0%, rgba(98,120,255,0) 30%),
-        linear-gradient(180deg, #0c1017, #0b1018 35%, #0b0f15);
-      font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
-    }
-    .topbar {
-      height: 56px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(17,23,33,.88);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 16px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      backdrop-filter: blur(8px);
-    }
-    .brand { font-size: 31px; letter-spacing: .3px; color: var(--brand); font-weight: 700; }
-    .brand small { font-size: 13px; color: var(--muted); margin-left: 8px; font-weight: 600; }
-    .main-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-left: 16px; }
-    .main-tab {
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--muted);
-      border-radius: 7px;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-    }
-    .main-tab:hover { color: var(--text); }
-    .main-tab.active { background: var(--brand-soft); color: #8ef7ef; border-color: rgba(39,193,181,.35); }
-    .meta { color: var(--muted); font-size: 12px; }
-    .layout {
-      min-height: calc(100vh - 56px);
-      display: grid;
-      grid-template-columns: 220px minmax(0, 1fr) 240px;
-      gap: 12px;
-      padding: 12px;
-    }
-    .pane {
-      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)), var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-    }
-    .left-pane { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-    .section-title { font-size: 15px; font-weight: 700; letter-spacing: .4px; }
-    .quick-links { display: flex; flex-direction: column; gap: 6px; }
-    .quick-link {
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: 8px;
-      color: var(--muted);
-      text-align: left;
-      padding: 8px 10px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-    }
-    .quick-link.active { background: rgba(255,255,255,.05); border-color: var(--line); color: var(--text); }
-    .status-box { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-    .status-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: var(--muted); }
-    .status-row:last-child { margin-bottom: 0; }
-    .status-pill { color: #8ef7ef; background: var(--brand-soft); border: 1px solid rgba(39,193,181,.3); border-radius: 999px; padding: 0 8px; font-size: 11px; }
-    .status-note { margin-top: 8px; font-size: 12px; color: var(--gold); }
-    .center-pane { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-    .card {
-      background: var(--bg-alt);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px;
-      min-height: 74px;
-    }
-    .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-    .v { margin-top: 8px; font-size: 22px; font-weight: 700; }
-    .v--brand { color: #8ef7ef; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-    .block {
-      background: var(--bg-alt);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px;
-    }
-    .search-row { display: flex; gap: 8px; margin-bottom: 8px; }
-    .search-input, .console-input {
-      width: 100%;
-      background: #111722;
-      border: 1px solid var(--line);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-family: inherit;
-      font-size: 13px;
-    }
-    .search-input:focus, .console-input:focus { outline: none; border-color: rgba(39,193,181,.6); }
-    .tbl-wrap { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th {
-      background: #151d2a;
-      color: var(--muted);
-      text-transform: uppercase;
-      font-size: 11px;
-      letter-spacing: .05em;
-      font-weight: 600;
-      text-align: left;
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--line);
-    }
-    td { padding: 9px 10px; border-bottom: 1px solid rgba(47,59,80,.55); }
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover { background: rgba(255,255,255,.03); }
-    td.pos { font-family: Consolas, "Courier New", monospace; color: var(--muted); font-size: 12px; }
-    .btn {
-      border-radius: 7px;
-      font-size: 12px;
-      padding: 5px 10px;
-      cursor: pointer;
-      border: 1px solid var(--line);
-      background: #131a27;
-      color: var(--text);
-      font-family: inherit;
-    }
-    .btn:hover { background: #172134; }
-    .btn-kick { color: #ff9e97; border-color: rgba(255,109,98,.45); }
-    .btn-kick:hover { background: var(--warn-soft); }
-    .btn-ban { color: #ffd08d; border-color: rgba(244,200,107,.45); margin-left: 4px; }
-    .btn-ban:hover { background: rgba(244,200,107,.15); }
-    .btn-send { color: #8ef7ef; border-color: rgba(39,193,181,.45); min-width: 110px; }
-    .btn-send:hover { background: var(--brand-soft); }
-    .console-out {
-      height: 390px;
-      overflow-y: auto;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #0f1622;
-      padding: 10px;
-      margin-bottom: 8px;
-      font-family: Consolas, "Courier New", monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .console-row { display: flex; gap: 8px; }
-    .log-filters { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-    .log-filter {
-      background: #121927;
-      border: 1px solid var(--line);
-      color: var(--muted);
-      border-radius: 7px;
-      padding: 5px 9px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .log-filter.active { border-color: rgba(39,193,181,.5); color: #8ef7ef; }
-    .log-list { display: flex; flex-direction: column; gap: 6px; max-height: 480px; overflow-y: auto; }
-    .log-entry { display: flex; gap: 10px; background: #111825; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
-    .log-ts { color: var(--muted); min-width: 70px; }
-    .log-type { text-transform: uppercase; font-weight: 700; font-size: 10px; border-radius: 4px; padding: 2px 5px; }
-    .log-type--kick { color: #ff9e97; background: var(--warn-soft); }
-    .log-type--ban { color: #ffd08d; background: rgba(244,200,107,.15); }
-    .log-type--console { color: #8ef7ef; background: var(--brand-soft); }
-    .no-data { color: var(--muted); font-size: 13px; padding: 14px 0; }
-    .status-bar { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 18px; }
-    .coming-soon { color: var(--muted); font-size: 13px; line-height: 1.7; }
-    .right-pane { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-    .online-box { text-align: center; background: var(--bg-alt); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-    .online-box .value { font-size: 34px; font-weight: 700; }
-    .mini-list { background: var(--bg-alt); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
-    .mini-item { font-size: 12px; color: var(--text); padding: 7px 6px; border-bottom: 1px solid rgba(47,59,80,.45); }
-    .mini-item:last-child { border-bottom: none; }
-    .mini-item small { color: var(--muted); display: block; margin-top: 2px; }
-    @media (max-width: 1220px) {
-      .layout { grid-template-columns: 210px minmax(0,1fr); }
-      .right-pane { grid-column: 1 / -1; }
-      .cards { grid-template-columns: repeat(2, minmax(0,1fr)); }
-    }
-    @media (max-width: 860px) {
-      .layout { grid-template-columns: 1fr; }
-      .cards { grid-template-columns: 1fr; }
-      .topbar { height: auto; padding: 10px 12px; align-items: flex-start; gap: 10px; flex-direction: column; }
-      .main-tabs { margin-left: 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <div class="brand" id="title">SkyMP Admin</div>
-      <div class="main-tabs">
-        <button class="main-tab active tab" data-tab="players" id="tabPlayers"></button>
-        <button class="main-tab tab" data-tab="console" id="tabConsole"></button>
-        <button class="main-tab tab" data-tab="logs" id="tabLogs"></button>
-        <button class="main-tab tab" data-tab="resources" id="tabResources"></button>
-        <button class="main-tab tab" data-tab="cfg" id="tabCfg"></button>
-      </div>
-    </div>
-    <div class="meta" id="updatedAt"></div>
-  </div>
-
-  <div class="layout">
-    <aside class="pane left-pane">
-      <div class="section-title" id="leftPanelTitle"></div>
-      <div class="quick-links">
-        <button class="quick-link tab active" data-tab="players" id="quickPlayers"></button>
-        <button class="quick-link tab" data-tab="console" id="quickConsole"></button>
-        <button class="quick-link tab" data-tab="logs" id="quickLogs"></button>
-        <button class="quick-link tab" data-tab="resources" id="quickResources"></button>
-        <button class="quick-link tab" data-tab="cfg" id="quickCfg"></button>
-      </div>
-      <div class="status-box">
-        <div class="status-row"><span id="kOnline"></span><span class="status-pill" id="onlineBadge">-</span></div>
-        <div class="status-row"><span id="kUptime"></span><span id="lsUptime">-</span></div>
-        <div class="status-row"><span id="kPort"></span><span id="lsPort">-</span></div>
-        <div class="status-row"><span id="kMax"></span><span id="lsMax">-</span></div>
-        <div class="status-note" id="subtitle"></div>
-      </div>
-    </aside>
-
-    <main class="pane center-pane">
-      <div class="cards">
-        <div class="card"><div class="k" id="cardOnlineLabel"></div><div class="v v--brand" id="online">-</div></div>
-        <div class="card"><div class="k" id="cardMaxLabel"></div><div class="v" id="maxPlayers">-</div></div>
-        <div class="card"><div class="k" id="cardPortLabel"></div><div class="v" id="port">-</div></div>
-        <div class="card"><div class="k" id="cardUptimeLabel"></div><div class="v" id="uptime">-</div></div>
-      </div>
-
-      <section class="panel active" id="panel-players">
-        <div class="block">
-          <div class="search-row"><input class="search-input" id="playerSearch" type="text" /></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th id="hUser"></th><th id="hActor"></th><th id="hName"></th><th id="hIp"></th><th id="hPos"></th><th id="hActions"></th></tr></thead>
-              <tbody id="playersBody"></tbody>
-            </table>
-          </div>
-          <div class="status-bar" id="playerStatus"></div>
-        </div>
-      </section>
-
-      <section class="panel" id="panel-console">
-        <div class="block">
-          <div class="console-out" id="consoleOut"></div>
-          <div class="console-row">
-            <input class="console-input" id="consoleInput" type="text" />
-            <button class="btn btn-send" id="consoleSendBtn"></button>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" id="panel-logs">
-        <div class="block">
-          <div class="log-filters">
-            <button class="log-filter active" data-type="" id="fAll"></button>
-            <button class="log-filter" data-type="kick" id="fKick"></button>
-            <button class="log-filter" data-type="ban" id="fBan"></button>
-            <button class="log-filter" data-type="console" id="fConsole"></button>
-          </div>
-          <div class="log-list" id="logList"></div>
-        </div>
-      </section>
-
-      <section class="panel" id="panel-resources">
-        <div class="block">
-          <div class="search-row"><input class="search-input" id="resourceSearch" type="text" /></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th id="rhName"></th><th id="rhKind"></th><th id="rhPath"></th><th id="rhSize"></th><th id="rhUpdated"></th></tr></thead>
-              <tbody id="resourcesBody"></tbody>
-            </table>
-          </div>
-          <div class="status-bar" id="resourceStatus"></div>
-        </div>
-      </section>
-
-      <section class="panel" id="panel-cfg">
-        <div class="block">
-          <div class="search-row">
-            <button class="btn" id="cfgLoadBtn"></button>
-            <button class="btn" id="cfgFormatBtn"></button>
-            <button class="btn btn-send" id="cfgSaveBtn"></button>
-            <button class="btn" id="cfgApplyAccessBtn"></button>
-            <button class="btn" id="cfgSaveAccessBtn"></button>
-          </div>
-          <div class="status-bar" id="accessTitle" style="font-weight:700;margin-top:2px;"></div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="joinModeLabel"></label>
-            <select class="search-input" id="accessJoinMode">
-              <option value="open">Open</option>
-              <option value="adminOnly">Admin Only</option>
-              <option value="approvedLicense">Approved License</option>
-              <option value="discordMember">Discord Member</option>
-              <option value="discordRoles">Discord Roles</option>
-            </select>
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="joinRejectLabel"></label>
-            <input class="search-input" id="accessRejectMessage" type="text" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="joinLicensesLabel"></label>
-            <input class="search-input" id="accessLicenses" type="text" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="joinDiscordIdsLabel"></label>
-            <input class="search-input" id="accessDiscordIds" type="text" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="joinDiscordRolesLabel"></label>
-            <input class="search-input" id="accessDiscordRoles" type="text" />
-          </div>
-
-          <div class="status-bar" id="discordTitle" style="font-weight:700;margin-top:2px;"></div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="discordEnabledLabel"></label>
-            <input id="discordEnabled" type="checkbox" style="width:18px;height:18px;" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="discordTokenLabel"></label>
-            <input class="search-input" id="discordToken" type="password" autocomplete="off" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="discordGuildLabel"></label>
-            <input class="search-input" id="discordGuildId" type="text" />
-          </div>
-          <div class="search-row" style="align-items:center;">
-            <label class="muted" style="min-width:170px;" id="discordWarningsLabel"></label>
-            <input class="search-input" id="discordWarningsChannel" type="text" />
-          </div>
-
-          <textarea class="console-input" id="cfgEditor" style="height:420px;resize:vertical;font-family:Consolas, 'Courier New', monospace;line-height:1.45;"></textarea>
-          <div class="status-bar" id="cfgStatus"></div>
-          <div class="coming-soon" id="cfgPlaceholder"></div>
-        </div>
-      </section>
-    </main>
-
-    <aside class="pane right-pane">
-      <div class="online-box">
-        <div class="k" id="rightPlayersLabel"></div>
-        <div class="value" id="rightPlayersCount">0</div>
-      </div>
-      <input class="search-input" id="rightPlayerSearch" type="text" />
-      <div class="mini-list" id="rightPlayersList"></div>
-    </aside>
-  </div>
-
-  <script>
-    const I18N = {
-      en: {
-        title: 'SkyMP Admin', subtitle: 'Live server control panel',
-        online: 'Online', maxPlayers: 'Max Players', port: 'Port', uptime: 'Uptime',
-        tabPlayers: 'Players', tabConsole: 'Live Console', tabLogs: 'Server Log', tabResources: 'Resources', tabCfg: 'CFG Editor',
-        leftPanelTitle: 'SERVER PANEL', user: 'User ID', actor: 'Actor ID', name: 'Name', ip: 'IP', pos: 'Position', actions: 'Actions',
-        kick: 'Kick', ban: 'Ban', noPlayers: 'No players online', updated: 'Updated',
-        kicked: 'Kicked', banned: 'Banned', searchPlaceholder: 'Filter players by id, name or ip...',
-        resourceSearchPlaceholder: 'Filter mods and scripts...',
-        rightSearchPlaceholder: 'Filter side list...', consoleSend: 'Execute', consoleHint: '> Enter JavaScript command',
-        sent: 'Command sent', apiError: 'API error', noLogs: 'No log entries',
-        fAll: 'All', fKick: 'Kick', fBan: 'Ban', fConsole: 'Console',
-        resourcesPlaceholder: 'Skyrim-relevant resources currently available on this server instance (.esm and .pex).',
-        resourceName: 'Resource', resourceKind: 'Type', resourcePath: 'Path', resourceSize: 'Size', resourceUpdated: 'Updated',
-        resourceTypeMod: 'Mod', resourceTypeScript: 'Script',
-        resourcesLoaded: 'Resources loaded',
-        cfgPlaceholder: 'Use localeRouting.defaultLanguage and localeRouting.countryCodeToLanguage to control language loading by country code (e.g. DE -> de, US -> en).',
-        cfgLoad: 'Load', cfgFormat: 'Format JSON', cfgSave: 'Save',
-        cfgApplyAccess: 'Apply Access/Discord', cfgSaveAccess: 'Save Access/Discord',
-        accessTitle: 'Who can join (txAdmin style)',
-        joinModeLabel: 'Join mode', joinRejectLabel: 'Reject message',
-        joinLicensesLabel: 'Approved licenses (comma)',
-        joinDiscordIdsLabel: 'Approved Discord IDs (comma)',
-        joinDiscordRolesLabel: 'Required Discord role IDs (comma)',
-        discordTitle: 'Discord bot settings',
-        discordEnabledLabel: 'Enabled', discordTokenLabel: 'Bot token',
-        discordGuildLabel: 'Guild/Server ID', discordWarningsLabel: 'Warnings channel ID',
-        cfgValidationPrefix: 'Validation failed',
-        cfgValidationNeedWhitelist: 'At least one approved license is required for approvedLicense mode',
-        cfgValidationInvalidDiscordIds: 'Approved Discord IDs must be numeric snowflake IDs',
-        cfgValidationInvalidDiscordRoles: 'Required Discord role IDs must be numeric snowflake IDs',
-        cfgValidationNeedDiscordSetup: 'Discord bot token and guild ID are required for this join mode',
-        cfgValidationNeedDiscordRoles: 'At least one required Discord role ID is required for discordRoles mode',
-        accessApplied: 'Access/Discord settings applied to JSON editor',
-        cfgLoaded: 'Config loaded', cfgSaved: 'Config saved. Restart server to apply runtime changes.', cfgInvalidJson: 'Invalid JSON',
-        noPlayersSide: 'No players online'
-      },
-      de: {
-        title: 'SkyMP Admin', subtitle: 'Live-Server-Kontrollzentrum',
-        online: 'Online', maxPlayers: 'Max. Spieler', port: 'Port', uptime: 'Laufzeit',
-        tabPlayers: 'Spieler', tabConsole: 'Live-Konsole', tabLogs: 'Server-Log', tabResources: 'Ressourcen', tabCfg: 'CFG Editor',
-        leftPanelTitle: 'SERVER PANEL', user: 'Benutzer-ID', actor: 'Actor-ID', name: 'Name', ip: 'IP', pos: 'Position', actions: 'Aktionen',
-        kick: 'Kicken', ban: 'Bannen', noPlayers: 'Keine Spieler online', updated: 'Aktualisiert',
-        kicked: 'Gekickt', banned: 'Gebannt', searchPlaceholder: 'Spieler nach ID, Name oder IP filtern...',
-        resourceSearchPlaceholder: 'Mods und Scripts filtern...',
-        rightSearchPlaceholder: 'Seitenliste filtern...', consoleSend: 'Ausfuehren', consoleHint: '> JavaScript-Befehl eingeben',
-        sent: 'Befehl gesendet', apiError: 'API-Fehler', noLogs: 'Keine Log-Eintraege',
-        fAll: 'Alle', fKick: 'Kick', fBan: 'Ban', fConsole: 'Konsole',
-        resourcesPlaceholder: 'Skyrim-relevante Ressourcen auf dieser Server-Instanz (.esm und .pex).',
-        resourceName: 'Ressource', resourceKind: 'Typ', resourcePath: 'Pfad', resourceSize: 'Groesse', resourceUpdated: 'Aktualisiert',
-        resourceTypeMod: 'Mod', resourceTypeScript: 'Script',
-        resourcesLoaded: 'Ressourcen geladen',
-        cfgPlaceholder: 'Nutze localeRouting.defaultLanguage und localeRouting.countryCodeToLanguage fuer Sprachwahl nach Laendercode (z.B. DE -> de, US -> en).',
-        cfgLoad: 'Laden', cfgFormat: 'JSON formatieren', cfgSave: 'Speichern',
-        cfgApplyAccess: 'Access/Discord uebernehmen', cfgSaveAccess: 'Access/Discord speichern',
-        accessTitle: 'Wer darf beitreten (txAdmin-Stil)',
-        joinModeLabel: 'Join-Modus', joinRejectLabel: 'Ablehnungsnachricht',
-        joinLicensesLabel: 'Freigegebene Lizenzen (Komma)',
-        joinDiscordIdsLabel: 'Freigegebene Discord-IDs (Komma)',
-        joinDiscordRolesLabel: 'Noetige Discord-Rollen-IDs (Komma)',
-        discordTitle: 'Discord-Bot-Einstellungen',
-        discordEnabledLabel: 'Aktiv', discordTokenLabel: 'Bot-Token',
-        discordGuildLabel: 'Guild/Server-ID', discordWarningsLabel: 'Warnings-Channel-ID',
-        cfgValidationPrefix: 'Validierung fehlgeschlagen',
-        cfgValidationNeedWhitelist: 'Mindestens eine freigegebene Lizenz ist fuer den Modus approvedLicense erforderlich',
-        cfgValidationInvalidDiscordIds: 'Freigegebene Discord-IDs muessen numerische Snowflake-IDs sein',
-        cfgValidationInvalidDiscordRoles: 'Discord-Rollen-IDs muessen numerische Snowflake-IDs sein',
-        cfgValidationNeedDiscordSetup: 'Discord-Bot-Token und Guild-ID sind fuer diesen Join-Modus erforderlich',
-        cfgValidationNeedDiscordRoles: 'Mindestens eine Discord-Rollen-ID ist fuer den Modus discordRoles erforderlich',
-        accessApplied: 'Access/Discord in JSON-Editor uebernommen',
-        cfgLoaded: 'Config geladen', cfgSaved: 'Config gespeichert. Server-Neustart noetig fuer Laufzeit-Aenderungen.', cfgInvalidJson: 'Ungueltiges JSON',
-        noPlayersSide: 'Keine Spieler online'
-      },
-      es: {
-        title: 'SkyMP Admin', subtitle: 'Panel de control del servidor en vivo',
-        online: 'En linea', maxPlayers: 'Jugadores maximos', port: 'Puerto', uptime: 'Tiempo activo',
-        tabPlayers: 'Jugadores', tabConsole: 'Consola en vivo', tabLogs: 'Log del servidor', tabResources: 'Recursos', tabCfg: 'Editor CFG',
-        leftPanelTitle: 'PANEL DEL SERVIDOR', user: 'ID de usuario', actor: 'ID de actor', name: 'Nombre', ip: 'IP', pos: 'Posicion', actions: 'Acciones',
-        kick: 'Expulsar', ban: 'Banear', noPlayers: 'No hay jugadores en linea', updated: 'Actualizado',
-        kicked: 'Expulsado', banned: 'Baneado', searchPlaceholder: 'Filtrar jugadores por id, nombre o ip...',
-        resourceSearchPlaceholder: 'Filtrar mods y scripts...',
-        rightSearchPlaceholder: 'Filtrar lista lateral...', consoleSend: 'Ejecutar', consoleHint: '> Introduce comando JavaScript',
-        sent: 'Comando enviado', apiError: 'Error de API', noLogs: 'No hay entradas de log',
-        fAll: 'Todo', fKick: 'Kick', fBan: 'Ban', fConsole: 'Consola',
-        resourcesPlaceholder: 'Recursos relevantes de Skyrim disponibles en esta instancia del servidor (.esm y .pex).',
-        resourceName: 'Recurso', resourceKind: 'Tipo', resourcePath: 'Ruta', resourceSize: 'Tamano', resourceUpdated: 'Actualizado',
-        resourceTypeMod: 'Mod', resourceTypeScript: 'Script',
-        resourcesLoaded: 'Recursos cargados',
-        cfgPlaceholder: 'Usa localeRouting.defaultLanguage y localeRouting.countryCodeToLanguage para controlar el idioma por codigo de pais (por ejemplo ES -> es, US -> en).',
-        cfgLoad: 'Cargar', cfgFormat: 'Formatear JSON', cfgSave: 'Guardar',
-        cfgApplyAccess: 'Aplicar acceso/Discord', cfgSaveAccess: 'Guardar acceso/Discord',
-        accessTitle: 'Quien puede entrar (estilo txAdmin)',
-        joinModeLabel: 'Modo de acceso', joinRejectLabel: 'Mensaje de rechazo',
-        joinLicensesLabel: 'Licencias aprobadas (coma)',
-        joinDiscordIdsLabel: 'IDs de Discord aprobados (coma)',
-        joinDiscordRolesLabel: 'IDs de roles de Discord requeridos (coma)',
-        discordTitle: 'Ajustes del bot de Discord',
-        discordEnabledLabel: 'Activado', discordTokenLabel: 'Token del bot',
-        discordGuildLabel: 'ID del servidor', discordWarningsLabel: 'ID del canal de avisos',
-        cfgValidationPrefix: 'Validacion fallida',
-        cfgValidationNeedWhitelist: 'Se requiere al menos una licencia aprobada para el modo approvedLicense',
-        cfgValidationInvalidDiscordIds: 'Los IDs de Discord aprobados deben ser snowflakes numericos',
-        cfgValidationInvalidDiscordRoles: 'Los IDs de roles de Discord deben ser snowflakes numericos',
-        cfgValidationNeedDiscordSetup: 'El token del bot y el ID del servidor son obligatorios para este modo de acceso',
-        cfgValidationNeedDiscordRoles: 'Se requiere al menos un ID de rol de Discord para el modo discordRoles',
-        accessApplied: 'Acceso/Discord aplicado al editor JSON',
-        cfgLoaded: 'Configuracion cargada', cfgSaved: 'Configuracion guardada. Reinicia el servidor para aplicar los cambios.', cfgInvalidJson: 'JSON invalido',
-        noPlayersSide: 'No hay jugadores en linea'
-      }
-    };
-
-    const lang = (navigator.language || 'en').slice(0,2).toLowerCase();
-    const t = I18N[lang] || I18N.en;
-    const el = (id) => document.getElementById(id);
-    const setText = (id, value) => { const e = el(id); if (e) e.textContent = value; };
-    const escapeHtml = (text) => String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
-
-    setText('title', t.title);
-    setText('subtitle', t.subtitle);
-    setText('kOnline', t.online);
-    setText('kUptime', t.uptime);
-    setText('kPort', t.port);
-    setText('kMax', t.maxPlayers);
-    setText('cardOnlineLabel', t.online);
-    setText('cardMaxLabel', t.maxPlayers);
-    setText('cardPortLabel', t.port);
-    setText('cardUptimeLabel', t.uptime);
-    setText('tabPlayers', t.tabPlayers);
-    setText('tabConsole', t.tabConsole);
-    setText('tabLogs', t.tabLogs);
-    setText('tabResources', t.tabResources);
-    setText('tabCfg', t.tabCfg);
-    setText('quickPlayers', t.tabPlayers);
-    setText('quickConsole', t.tabConsole);
-    setText('quickLogs', t.tabLogs);
-    setText('quickResources', t.tabResources);
-    setText('quickCfg', t.tabCfg);
-    setText('leftPanelTitle', t.leftPanelTitle);
-    setText('hUser', t.user);
-    setText('hActor', t.actor);
-    setText('hName', t.name);
-    setText('hIp', t.ip);
-    setText('hPos', t.pos);
-    setText('hActions', t.actions);
-    setText('rhName', t.resourceName);
-    setText('rhKind', t.resourceKind);
-    setText('rhPath', t.resourcePath);
-    setText('rhSize', t.resourceSize);
-    setText('rhUpdated', t.resourceUpdated);
-    setText('consoleSendBtn', t.consoleSend);
-    setText('fAll', t.fAll);
-    setText('fKick', t.fKick);
-    setText('fBan', t.fBan);
-    setText('fConsole', t.fConsole);
-    setText('resourcesPlaceholder', t.resourcesPlaceholder);
-    setText('cfgPlaceholder', t.cfgPlaceholder);
-    setText('cfgLoadBtn', t.cfgLoad);
-    setText('cfgFormatBtn', t.cfgFormat);
-    setText('cfgSaveBtn', t.cfgSave);
-    setText('cfgApplyAccessBtn', t.cfgApplyAccess);
-    setText('cfgSaveAccessBtn', t.cfgSaveAccess);
-    setText('accessTitle', t.accessTitle);
-    setText('joinModeLabel', t.joinModeLabel);
-    setText('joinRejectLabel', t.joinRejectLabel);
-    setText('joinLicensesLabel', t.joinLicensesLabel);
-    setText('joinDiscordIdsLabel', t.joinDiscordIdsLabel);
-    setText('joinDiscordRolesLabel', t.joinDiscordRolesLabel);
-    setText('discordTitle', t.discordTitle);
-    setText('discordEnabledLabel', t.discordEnabledLabel);
-    setText('discordTokenLabel', t.discordTokenLabel);
-    setText('discordGuildLabel', t.discordGuildLabel);
-    setText('discordWarningsLabel', t.discordWarningsLabel);
-    setText('rightPlayersLabel', t.online + ' / ' + t.tabPlayers);
-
-    el('playerSearch').placeholder = t.searchPlaceholder;
-    el('resourceSearch').placeholder = t.resourceSearchPlaceholder;
-    el('rightPlayerSearch').placeholder = t.rightSearchPlaceholder;
-    el('consoleInput').placeholder = t.consoleHint;
-    el('accessRejectMessage').placeholder = t.joinRejectLabel;
-    el('accessLicenses').placeholder = 'license:abc, steam:123';
-    el('accessDiscordIds').placeholder = '123456789012345678, 987654321098765432';
-    el('accessDiscordRoles').placeholder = '987654321098765432';
-    el('discordToken').placeholder = 'Discord bot token';
-    el('discordGuildId').placeholder = 'Discord guild id';
-    el('discordWarningsChannel').placeholder = 'Discord channel id';
-
-    let activeTab = 'players';
-    let allPlayers = [];
-    let allResources = [];
-    let logTypeFilter = '';
-    let cfgLoadedOnce = false;
-
-    const switchTab = (nextTab) => {
-      activeTab = nextTab;
-      document.querySelectorAll('.tab').forEach((button) => {
-        const isActive = button.dataset.tab === nextTab;
-        button.classList.toggle('active', isActive);
-      });
-      document.querySelectorAll('.panel').forEach((panel) => {
-        panel.classList.toggle('active', panel.id === ('panel-' + nextTab));
-      });
-      if (nextTab === 'logs') refreshLogs();
-      if (nextTab === 'resources') refreshResources();
-      if (nextTab === 'cfg' && !cfgLoadedOnce) refreshCfgEditor();
-    };
-
-    document.querySelectorAll('.tab').forEach((button) => {
-      button.addEventListener('click', () => switchTab(button.dataset.tab));
-    });
-
-    document.querySelectorAll('.log-filter').forEach((button) => {
-      button.addEventListener('click', () => {
-        logTypeFilter = button.dataset.type;
-        document.querySelectorAll('.log-filter').forEach((n) => n.classList.remove('active'));
-        button.classList.add('active');
-        refreshLogs();
-      });
-    });
-
-    const fmtUptime = (seconds) => {
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = Math.floor(seconds % 60);
-      if (h > 0) return h + 'h ' + m + 'm';
-      if (m > 0) return m + 'm ' + s + 's';
-      return s + 's';
-    };
-
-    const fmtTime = (timestamp) => new Date(timestamp).toLocaleTimeString();
-    const fmtDateTime = (timestamp) => timestamp ? new Date(timestamp).toLocaleString() : '-';
-    const fmtSize = (bytes) => {
-      const num = Number(bytes || 0);
-      if (!Number.isFinite(num) || num <= 0) return '-';
-      if (num < 1024) return num + ' B';
-      if (num < 1024 * 1024) return (num / 1024).toFixed(1) + ' KB';
-      if (num < 1024 * 1024 * 1024) return (num / (1024 * 1024)).toFixed(1) + ' MB';
-      return (num / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-    };
-
-    const renderSidePlayers = () => {
-      const query = String(el('rightPlayerSearch').value || '').toLowerCase();
-      const list = el('rightPlayersList');
-      const filtered = query
-        ? allPlayers.filter((p) => String(p.userId).includes(query) || String(p.actorName || '').toLowerCase().includes(query) || String(p.ip || '').includes(query))
-        : allPlayers;
-      list.innerHTML = '';
-      if (!filtered.length) {
-        list.innerHTML = '<div class="mini-item">' + t.noPlayersSide + '</div>';
-        return;
-      }
-      for (const p of filtered.slice(0, 32)) {
-        const row = document.createElement('div');
-        row.className = 'mini-item';
-        row.innerHTML = '#' + escapeHtml(String(p.userId)) + ' ' + escapeHtml(String(p.actorName || '-')) + '<small>' + escapeHtml(String(p.ip || '-')) + '</small>';
-        list.appendChild(row);
-      }
-    };
-
-    const renderPlayers = () => {
-      const query = String(el('playerSearch').value || '').toLowerCase();
-      const filtered = query
-        ? allPlayers.filter((p) => String(p.userId).includes(query) || String(p.actorName || '').toLowerCase().includes(query) || String(p.ip || '').includes(query))
-        : allPlayers;
-
-      const tbody = el('playersBody');
-      tbody.innerHTML = '';
-
-      if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="no-data">' + (allPlayers.length ? 'No match' : t.noPlayers) + '</td></tr>';
-        renderSidePlayers();
-        return;
-      }
-
-      for (const p of filtered) {
-        const pos = Array.isArray(p.pos) ? p.pos.map((n) => Math.round(Number(n))).join(', ') : '-';
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td>' + escapeHtml(String(p.userId)) + '</td>' +
-          '<td>' + escapeHtml(String(p.actorId || '-')) + '</td>' +
-          '<td>' + escapeHtml(String(p.actorName || '-')) + '</td>' +
-          '<td>' + escapeHtml(String(p.ip || '-')) + '</td>' +
-          '<td class="pos">' + escapeHtml(pos) + '</td>';
-
-        const actionCell = document.createElement('td');
-        const kickBtn = document.createElement('button');
-        kickBtn.className = 'btn btn-kick';
-        kickBtn.textContent = t.kick;
-        kickBtn.onclick = () => kickPlayer(p.userId);
-
-        const banBtn = document.createElement('button');
-        banBtn.className = 'btn btn-ban';
-        banBtn.textContent = t.ban;
-        banBtn.onclick = () => banPlayer(p.userId);
-
-        actionCell.append(kickBtn, banBtn);
-        tr.appendChild(actionCell);
-        tbody.appendChild(tr);
-      }
-
-      renderSidePlayers();
-    };
-
-    el('playerSearch').addEventListener('input', renderPlayers);
-    el('rightPlayerSearch').addEventListener('input', renderSidePlayers);
-    el('resourceSearch').addEventListener('input', () => renderResources());
-
-    const renderResources = () => {
-      const query = String(el('resourceSearch').value || '').toLowerCase();
-      const filtered = query
-        ? allResources.filter((entry) => {
-          return String(entry.name || '').toLowerCase().includes(query)
-            || String(entry.path || '').toLowerCase().includes(query)
-            || String(entry.kind || '').toLowerCase().includes(query);
-        })
-        : allResources;
-
-      const tbody = el('resourcesBody');
-      tbody.innerHTML = '';
-
-      if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="no-data">' + t.noLogs + '</td></tr>';
-        return;
-      }
-
-      for (const entry of filtered) {
-        const tr = document.createElement('tr');
-        const kindLabel = String(entry.kind || '').toLowerCase() === 'mod' ? t.resourceTypeMod : t.resourceTypeScript;
-        tr.innerHTML =
-          '<td>' + escapeHtml(String(entry.name || '-')) + '</td>' +
-          '<td>' + escapeHtml(kindLabel) + '</td>' +
-          '<td>' + escapeHtml(String(entry.path || '-')) + '</td>' +
-          '<td>' + escapeHtml(fmtSize(entry.size)) + '</td>' +
-          '<td>' + escapeHtml(fmtDateTime(entry.mtimeMs)) + '</td>';
-        tbody.appendChild(tr);
-      }
-    };
-
-    const refreshResources = async () => {
-      const response = await fetch('/api/admin/resources');
-      if (!response.ok) {
-        setText('resourceStatus', t.apiError);
-        return;
-      }
-
-      const data = await response.json();
-      allResources = Array.isArray(data.entries) ? data.entries : [];
-      renderResources();
-      setText('resourceStatus', t.resourcesLoaded + ': ' + String(data.total ?? allResources.length));
-    };
-
-    const parseCommaList = (value) => {
-      const items = String(value || '')
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0);
-      return Array.from(new Set(items));
-    };
-
-    const normalizeJoinMode = (mode) => {
-      const value = String(mode || '').trim();
-      if (value === 'adminOnly' || value === 'approvedLicense' || value === 'discordMember' || value === 'discordRoles' || value === 'open') {
-        return value;
-      }
-      return 'open';
-    };
-
-    const isSnowflakeId = (value) => /^[0-9]{15,25}$/.test(String(value || '').trim());
-
-    const validateAccessDiscordFormData = (formData) => {
-      const mode = normalizeJoinMode(formData?.joinAccess?.mode);
-      const approvedLicenses = Array.isArray(formData?.joinAccess?.approvedLicenses) ? formData.joinAccess.approvedLicenses : [];
-      const approvedDiscordIds = Array.isArray(formData?.joinAccess?.approvedDiscordIds) ? formData.joinAccess.approvedDiscordIds : [];
-      const discordRoleIds = Array.isArray(formData?.joinAccess?.discordRoleIds) ? formData.joinAccess.discordRoleIds : [];
-      const token = String(formData?.discordBot?.token || '').trim();
-      const guildId = String(formData?.discordBot?.guildId || '').trim();
-
-      if (mode === 'approvedLicense' && approvedLicenses.length === 0) {
-        return t.cfgValidationNeedWhitelist;
-      }
-
-      if (approvedDiscordIds.some((id) => !isSnowflakeId(id))) {
-        return t.cfgValidationInvalidDiscordIds;
-      }
-
-      if (discordRoleIds.some((id) => !isSnowflakeId(id))) {
-        return t.cfgValidationInvalidDiscordRoles;
-      }
-
-      if ((mode === 'discordMember' || mode === 'discordRoles') && (!token || !guildId)) {
-        return t.cfgValidationNeedDiscordSetup;
-      }
-
-      if (mode === 'discordRoles' && discordRoleIds.length === 0) {
-        return t.cfgValidationNeedDiscordRoles;
-      }
-
-      return null;
-    };
-
-    const readAccessDiscordFromForm = () => {
-      return {
-        joinAccess: {
-          mode: normalizeJoinMode(el('accessJoinMode').value),
-          rejectionMessage: String(el('accessRejectMessage').value || '').trim(),
-          approvedLicenses: parseCommaList(el('accessLicenses').value),
-          approvedDiscordIds: parseCommaList(el('accessDiscordIds').value),
-          discordRoleIds: parseCommaList(el('accessDiscordRoles').value),
-        },
-        discordBot: {
-          enabled: Boolean(el('discordEnabled').checked),
-          token: String(el('discordToken').value || '').trim(),
-          guildId: String(el('discordGuildId').value || '').trim(),
-          warningsChannelId: String(el('discordWarningsChannel').value || '').trim(),
-        }
-      };
-    };
-
-    const applyAccessDiscordToForm = (parsed) => {
-      const joinAccess = parsed && typeof parsed === 'object' && parsed.joinAccess && typeof parsed.joinAccess === 'object'
-        ? parsed.joinAccess
-        : {};
-      const discordAuth = parsed && typeof parsed === 'object' && parsed.discordAuth && typeof parsed.discordAuth === 'object'
-        ? parsed.discordAuth
-        : {};
-      const discordBot = parsed && typeof parsed === 'object' && parsed.discordBot && typeof parsed.discordBot === 'object'
-        ? parsed.discordBot
-        : {};
-
-      el('accessJoinMode').value = normalizeJoinMode(joinAccess.mode);
-      el('accessRejectMessage').value = String(joinAccess.rejectionMessage || 'Access denied. Please contact server staff for whitelist approval.');
-      el('accessLicenses').value = Array.isArray(joinAccess.approvedLicenses) ? joinAccess.approvedLicenses.join(', ') : '';
-      el('accessDiscordIds').value = Array.isArray(joinAccess.approvedDiscordIds) ? joinAccess.approvedDiscordIds.join(', ') : '';
-      el('accessDiscordRoles').value = Array.isArray(joinAccess.discordRoleIds) ? joinAccess.discordRoleIds.join(', ') : '';
-
-      el('discordEnabled').checked = Boolean(discordBot.enabled);
-      el('discordToken').value = String(discordBot.token || discordAuth.botToken || '');
-      el('discordGuildId').value = String(discordBot.guildId || discordAuth.guildId || '');
-      el('discordWarningsChannel').value = String(discordBot.warningsChannelId || discordAuth.eventLogChannelId || '');
-    };
-
-    const mergeAccessDiscordIntoParsed = (parsed) => {
-      const next = parsed && typeof parsed === 'object' ? parsed : {};
-      const formData = readAccessDiscordFromForm();
-      next.joinAccess = formData.joinAccess;
-      next.discordBot = formData.discordBot;
-      const existingDiscordAuth = next.discordAuth && typeof next.discordAuth === 'object' ? next.discordAuth : {};
-      next.discordAuth = {
-        ...existingDiscordAuth,
-        botToken: formData.discordBot.token,
-        guildId: formData.discordBot.guildId,
-        eventLogChannelId: formData.discordBot.warningsChannelId,
-      };
-      return next;
-    };
-
-    const applyAccessDiscordToEditor = () => {
-      const editor = el('cfgEditor');
-      let parsed;
-      try {
-        parsed = JSON.parse(String(editor.value || '{}'));
-      } catch {
-        setText('cfgStatus', t.cfgInvalidJson);
-        return null;
-      }
-
-      const merged = mergeAccessDiscordIntoParsed(parsed);
-      editor.value = JSON.stringify(merged, null, 2);
-      setText('cfgStatus', t.accessApplied);
-      return merged;
-    };
-
-    const refreshCfgEditor = async () => {
-      const response = await fetch('/api/admin/cfg/server-settings');
-      if (!response.ok) {
-        setText('cfgStatus', t.apiError);
-        return;
-      }
-
-      const data = await response.json();
-      el('cfgEditor').value = String(data.json || '');
-      try {
-        applyAccessDiscordToForm(JSON.parse(String(data.json || '{}')));
-      } catch {
-        // Keep editor text untouched and show generic status below.
-      }
-      setText('cfgStatus', t.cfgLoaded + (data.path ? (': ' + data.path) : ''));
-      cfgLoadedOnce = true;
-    };
-
-    const formatCfgEditor = () => {
-      const editor = el('cfgEditor');
-      try {
-        const parsed = JSON.parse(String(editor.value || ''));
-        editor.value = JSON.stringify(parsed, null, 2);
-        setText('cfgStatus', t.cfgLoaded);
-      } catch {
-        setText('cfgStatus', t.cfgInvalidJson);
-      }
-    };
-
-    const saveCfgEditor = async () => {
-      const editor = el('cfgEditor');
-      let parsed;
-      try {
-        parsed = JSON.parse(String(editor.value || ''));
-      } catch {
-        setText('cfgStatus', t.cfgInvalidJson);
-        return;
-      }
-
-      const formData = readAccessDiscordFromForm();
-      const validationError = validateAccessDiscordFormData(formData);
-      if (validationError) {
-        setText('cfgStatus', t.cfgValidationPrefix + ': ' + validationError);
-        return;
-      }
-
-      parsed = mergeAccessDiscordIntoParsed(parsed);
-      const normalized = JSON.stringify(parsed, null, 2);
-      editor.value = normalized;
-
-      const response = await fetch('/api/admin/cfg/server-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ json: normalized }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        setText('cfgStatus', t.apiError + ': ' + errorText.slice(0, 160));
-        return;
-      }
-
-      setText('cfgStatus', t.cfgSaved);
-    };
-
-    el('cfgLoadBtn').addEventListener('click', refreshCfgEditor);
-    el('cfgFormatBtn').addEventListener('click', formatCfgEditor);
-    el('cfgSaveBtn').addEventListener('click', saveCfgEditor);
-    el('cfgApplyAccessBtn').addEventListener('click', applyAccessDiscordToEditor);
-    el('cfgSaveAccessBtn').addEventListener('click', async () => {
-      const applied = applyAccessDiscordToEditor();
-      if (!applied) return;
-      await saveCfgEditor();
-    });
-
-    const kickPlayer = async (userId) => {
-      const response = await fetch('/api/admin/players/' + userId + '/kick', { method: 'POST' });
-      setText('playerStatus', response.ok ? (t.kicked + ' #' + userId) : t.apiError);
-      if (response.ok) await refreshPlayers();
-    };
-
-    const banPlayer = async (userId) => {
-      if (!confirm(t.ban + ' userId=' + userId + '?')) return;
-      const response = await fetch('/api/admin/players/' + userId + '/ban', { method: 'POST' });
-      setText('playerStatus', response.ok ? (t.banned + ' #' + userId) : t.apiError);
-      if (response.ok) await refreshPlayers();
-    };
-
-    const refreshPlayers = async () => {
-      const [statusResponse, playersResponse] = await Promise.all([
-        fetch('/api/admin/status'),
-        fetch('/api/admin/players'),
-      ]);
-
-      if (!statusResponse.ok || !playersResponse.ok) {
-        setText('playerStatus', t.apiError);
-        return;
-      }
-
-      const status = await statusResponse.json();
-      allPlayers = await playersResponse.json();
-
-      const uptimeText = fmtUptime(Number(status.uptimeSec || 0));
-      const onlineText = String(status.online ?? 0);
-      const maxText = String(status.maxPlayers ?? 0);
-      const portText = String(status.port ?? '-');
-
-      setText('online', onlineText);
-      setText('maxPlayers', maxText);
-      setText('port', portText);
-      setText('uptime', uptimeText);
-      setText('onlineBadge', onlineText + '/' + maxText);
-      setText('lsUptime', uptimeText);
-      setText('lsPort', portText);
-      setText('lsMax', maxText);
-      setText('rightPlayersCount', onlineText);
-      setText('updatedAt', t.updated + ': ' + new Date().toLocaleTimeString());
-
-      renderPlayers();
-    };
-
-    const appendConsole = (line, color) => {
-      const out = el('consoleOut');
-      const row = document.createElement('div');
-      row.textContent = line;
-      if (color) row.style.color = color;
-      out.appendChild(row);
-      out.scrollTop = out.scrollHeight;
-    };
-
-    const sendConsole = async () => {
-      const input = el('consoleInput');
-      const command = String(input.value || '').trim();
-      if (!command) return;
-
-      appendConsole('> ' + command, 'var(--muted)');
-      input.value = '';
-
-      const response = await fetch('/api/admin/console', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: command }),
-      });
-
-      appendConsole(response.ok ? t.sent : t.apiError, response.ok ? '#8ef7ef' : '#ff9e97');
-    };
-
-    el('consoleSendBtn').addEventListener('click', sendConsole);
-    el('consoleInput').addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') sendConsole();
-    });
-
-    const refreshLogs = async () => {
-      const url = logTypeFilter ? ('/api/admin/logs?type=' + logTypeFilter) : '/api/admin/logs';
-      const response = await fetch(url);
-      if (!response.ok) return;
-
-      const entries = await response.json();
-      const list = el('logList');
-      list.innerHTML = '';
-
-      if (!entries.length) {
-        list.innerHTML = '<div class="no-data">' + t.noLogs + '</div>';
-        return;
-      }
-
-      for (const entry of entries) {
-        const row = document.createElement('div');
-        row.className = 'log-entry';
-        row.innerHTML =
-          '<span class="log-ts">' + escapeHtml(fmtTime(entry.ts)) + '</span>' +
-          '<span class="log-type log-type--' + escapeHtml(String(entry.type || 'console')) + '">' + escapeHtml(String(entry.type || 'log')) + '</span>' +
-          '<span class="log-msg">' + escapeHtml(String(entry.message || '')) + '</span>';
-        list.appendChild(row);
-      }
-    };
-
-    switchTab('players');
-    refreshPlayers();
-    setInterval(() => { if (activeTab === 'players') refreshPlayers(); }, 5000);
-    setInterval(() => { if (activeTab === 'logs') refreshLogs(); }, 5000);
-    setInterval(() => { if (activeTab === 'resources') refreshResources(); }, 10000);
-  </script>
-</body>
-</html>`;
 
 const createApp = (settings: Settings, getOriginPort: () => number) => {
   const dataDir: string = settings.dataDir ?? './data';
@@ -2026,17 +1090,342 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   });
 
   if (adminAuth) {
-    router.use('/admin', auth({ name: adminAuth.user, pass: adminAuth.password }));
-    router.use('/api/admin', auth({ name: adminAuth.user, pass: adminAuth.password }));
+    router.post('/api/admin/session/login', (ctx: any) => {
+      const user = String(ctx.request.body?.user ?? '').trim();
+      const password = String(ctx.request.body?.password ?? '');
+      if (!adminAuth || user !== adminAuth.user || password !== adminAuth.password) {
+        ctx.status = 401;
+        ctx.body = { ok: false, error: 'invalid credentials' };
+        return;
+      }
+
+      const session = createAdminSession(user);
+      setAdminSessionCookie(ctx, session.id);
+      ctx.body = {
+        ok: true,
+        user: session.user,
+        idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        remainingMs: ADMIN_SESSION_IDLE_MS,
+      };
+    });
+
+    router.post('/api/admin/session/logout', (ctx: any) => {
+      const session = getAdminSessionFromCtx(ctx);
+      if (session) {
+        adminSessions.delete(session.id);
+      }
+      clearAdminSessionCookie(ctx);
+      ctx.body = { ok: true };
+    });
+
+    router.get('/api/admin/session', (ctx: any) => {
+      const session = getAdminSessionFromCtx(ctx);
+      if (!session) {
+        clearAdminSessionCookie(ctx);
+        ctx.status = 401;
+        ctx.body = { ok: false, authenticated: false, idleTimeoutMs: ADMIN_SESSION_IDLE_MS };
+        return;
+      }
+
+      const remainingMs = Math.max(0, ADMIN_SESSION_IDLE_MS - (Date.now() - session.lastActivityAt));
+      ctx.body = {
+        ok: true,
+        authenticated: true,
+        user: session.user,
+        idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        remainingMs,
+      };
+    });
+
+    router.post('/api/admin/session/touch', (ctx: any) => {
+      const session = getAdminSessionFromCtx(ctx);
+      if (!session) {
+        clearAdminSessionCookie(ctx);
+        ctx.status = 401;
+        ctx.body = { ok: false, authenticated: false, idleTimeoutMs: ADMIN_SESSION_IDLE_MS };
+        return;
+      }
+
+      touchAdminSession(session);
+      setAdminSessionCookie(ctx, session.id);
+      ctx.body = {
+        ok: true,
+        authenticated: true,
+        user: session.user,
+        idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        remainingMs: ADMIN_SESSION_IDLE_MS,
+      };
+    });
 
     router.get('/admin', (ctx: any) => {
+      const session = getAdminSessionFromCtx(ctx);
+      if (!session) {
+        clearAdminSessionCookie(ctx);
+        ctx.type = 'text/html; charset=utf-8';
+        ctx.body = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SkyMP Admin Login</title>
+  <style>
+    :root {
+      --bg: #0b0f15;
+      --panel: #121a27;
+      --line: #273246;
+      --text: #e6edf8;
+      --muted: #9cb0ca;
+      --brand: #2ec7b8;
+      --brand-2: #6fd6cc;
+      --danger: #ff7c7c;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% -20%, rgba(46,199,184,.28) 0%, rgba(46,199,184,0) 36%),
+        radial-gradient(circle at 90% -12%, rgba(121,140,255,.2) 0%, rgba(121,140,255,0) 33%),
+        linear-gradient(180deg, #0d1119 0%, #0a0f16 60%, #090d13 100%);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .login-card {
+      width: min(420px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(18, 26, 39, 0.92);
+      box-shadow: 0 18px 80px rgba(0,0,0,.38);
+      overflow: hidden;
+    }
+    .login-head {
+      padding: 18px 20px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .login-title { margin: 0; font-size: 22px; color: var(--brand-2); }
+    .login-sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .login-form { padding: 18px 20px 20px; display: grid; gap: 12px; }
+    .login-label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .login-input {
+      width: 100%;
+      border: 1px solid #33435f;
+      background: #0d1420;
+      color: var(--text);
+      border-radius: 10px;
+      height: 42px;
+      padding: 0 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .login-input:focus { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(46,199,184,.2); }
+    .login-btn {
+      border: 1px solid rgba(46,199,184,.45);
+      background: linear-gradient(180deg, rgba(46,199,184,.3), rgba(46,199,184,.16));
+      color: #dcfffb;
+      height: 42px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .login-btn:disabled { opacity: .65; cursor: wait; }
+    .login-error { min-height: 18px; color: var(--danger); font-size: 13px; }
+    .login-note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-head">
+      <h1 class="login-title">SkyMP Admin Login</h1>
+      <p class="login-sub">Melde dich an, um das Dashboard zu oeffnen.</p>
+    </div>
+    <form class="login-form" id="login-form">
+      <label class="login-label">Benutzername
+        <input id="login-user" class="login-input" type="text" autocomplete="username" value="${adminAuth.user}" required />
+      </label>
+      <label class="login-label">Passwort
+        <input id="login-password" class="login-input" type="password" autocomplete="current-password" required />
+      </label>
+      <button id="login-submit" class="login-btn" type="submit">Einloggen</button>
+      <div id="login-error" class="login-error"></div>
+      <p class="login-note">Sicherheitsregel: Nach 10 Minuten ohne Mausklick auf dieser Seite wirst du automatisch ausgeloggt.</p>
+    </form>
+  </div>
+  <script>
+    const form = document.getElementById('login-form');
+    const userInput = document.getElementById('login-user');
+    const passInput = document.getElementById('login-password');
+    const submitBtn = document.getElementById('login-submit');
+    const errorBox = document.getElementById('login-error');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.textContent = '';
+      submitBtn.disabled = true;
+      try {
+        const response = await fetch('/api/admin/session/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            user: String(userInput.value || ''),
+            password: String(passInput.value || ''),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('invalid credentials');
+        }
+
+        window.location.href = '/admin?devUi=1&admin=1';
+      } catch {
+        errorBox.textContent = 'Login fehlgeschlagen. Bitte Zugangsdaten pruefen.';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>`;
+        return;
+      }
+
+      touchAdminSession(session);
+      setAdminSessionCookie(ctx, session.id);
+
+      const devUi = String(ctx.query?.devUi ?? '');
+      const admin = String(ctx.query?.admin ?? '');
+      if (devUi !== '1' || admin !== '1') {
+        ctx.redirect('/admin?devUi=1&admin=1');
+        return;
+      }
+
       ctx.type = 'text/html; charset=utf-8';
-      ctx.body = renderAdminDashboard();
+      ctx.body = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SkyMP Admin Dashboard</title>
+  <style>html,body{margin:0;height:100%;background:#0b0f15;}</style>
+</head>
+<body>
+  <div style="position:fixed;right:12px;top:10px;z-index:1300;background:rgba(10,16,24,.9);border:1px solid rgba(46,199,184,.45);border-radius:999px;padding:6px 10px;color:#c7fff7;font:600 12px/1.2 'Trebuchet MS','Segoe UI',Tahoma,sans-serif;">
+    Session: <span id="admin-session-timer">10:00</span>
+    <button id="admin-session-logout" style="margin-left:8px;border:1px solid rgba(255,124,124,.55);background:rgba(255,124,124,.15);color:#ffd8d8;border-radius:999px;padding:2px 8px;cursor:pointer;">Logout</button>
+  </div>
+  <div id="root"></div>
+  <script>
+    window.__SKYMP_ADMIN_MODE__ = true;
+    try {
+      window.localStorage.setItem('skymp.dev.loggedIn', '1');
+    } catch {}
+
+    (function setupAdminSessionTimer() {
+      const timerEl = document.getElementById('admin-session-timer');
+      const logoutBtn = document.getElementById('admin-session-logout');
+      const idleTimeoutMs = ${ADMIN_SESSION_IDLE_MS};
+      let deadlineAt = Date.now() + idleTimeoutMs;
+
+      const formatMs = (ms) => {
+        const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      };
+
+      const updateTimer = () => {
+        const remaining = deadlineAt - Date.now();
+        if (timerEl) timerEl.textContent = formatMs(remaining);
+        if (remaining <= 0) {
+          window.location.href = '/admin?loggedOut=1';
+        }
+      };
+
+      const touchSession = async () => {
+        try {
+          const response = await fetch('/api/admin/session/touch', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          if (!response.ok) {
+            window.location.href = '/admin?loggedOut=1';
+            return;
+          }
+          const data = await response.json();
+          const remainingMs = Number(data?.remainingMs);
+          deadlineAt = Date.now() + (Number.isFinite(remainingMs) ? remainingMs : idleTimeoutMs);
+        } catch {
+          window.location.href = '/admin?loggedOut=1';
+        }
+      };
+
+      document.addEventListener('click', () => {
+        void touchSession();
+      }, true);
+
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (event) => {
+          event.preventDefault();
+          try {
+            await fetch('/api/admin/session/logout', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+            });
+          } catch {}
+          window.location.href = '/admin?loggedOut=1';
+        });
+      }
+
+      setInterval(updateTimer, 1000);
+      updateTimer();
+    })();
+  </script>
+  <script src="/build.js?v=${Date.now()}"></script>
+</body>
+</html>`;
     });
 
     router.get('/admin/', (ctx: any) => {
-      ctx.type = 'text/html; charset=utf-8';
-      ctx.body = renderAdminDashboard();
+      ctx.redirect('/admin');
+    });
+
+    router.get('/admin-app', (ctx: any) => {
+      ctx.redirect('/admin');
+    });
+
+    router.get('/admin-app/', (ctx: any) => {
+      ctx.redirect('/admin');
+    });
+
+    router.use('/api/admin', async (ctx: any, next: any) => {
+      if (ctx.path.startsWith('/api/admin/session/')) {
+        await next();
+        return;
+      }
+
+      const session = getAdminSessionFromCtx(ctx);
+      if (session) {
+        ctx.state.adminUser = session.user;
+        await next();
+        return;
+      }
+
+      const basicUser = getValidBasicAdminUser(ctx);
+      if (basicUser) {
+        ctx.state.adminUser = basicUser;
+        await next();
+        return;
+      }
+
+      ctx.status = 401;
+      ctx.body = { ok: false, error: 'unauthorized' };
     });
 
     router.get('/api/admin/status', (ctx: any) => {
@@ -2587,6 +1976,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   }
 
   app.use(router.routes()).use(router.allowedMethods());
+  app.use(serve("ui"));
   app.use(serve("data"));
   return app;
 };

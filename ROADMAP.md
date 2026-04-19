@@ -17,7 +17,9 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Admin dashboard auth routing | Active | `/admin` and `/admin/` both serve dashboard directly; redirect loop removed. |
+| Admin dashboard auth routing | Active | `/admin` serves the new React-based admin UI with in-app login and session timeout; `/admin/` normalizes to `/admin`; `/admin-app` redirects to `/admin`. |
+| Admin dashboard auth UX | Active | Browser HTTP Basic popup was replaced by a custom login form (`/api/admin/session/login`, `/logout`, `/touch`), with 10-minute inactivity timeout based on dashboard click activity. |
+| Windows launcher self-restart safety | Active | `launch_server.bat` now auto-detects and terminates stale `dist_back/skymp5-server.js` processes before starting a new instance. |
 | Admin resources inventory | Active | `GET /api/admin/resources` lists Skyrim-relevant discovered resources from server disk and loadOrder context (`.esm` and `.pex`). |
 | Server settings editor API | Active | `GET/POST /api/admin/cfg/server-settings` supports load + save in Admin CFG panel. |
 | Access/Discord config validation | Active | Admin CFG structured Access/Discord form now validates required fields and Discord ID formats before save. |
