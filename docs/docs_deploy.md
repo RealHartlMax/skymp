@@ -11,7 +11,7 @@ This guide shows how to set it up.
 (https://github.com/skyrim-multiplayer/skymp/settings/secrets/actions in our case):
   * `DEPLOY_TARGET_HOST`: IP address or domain name of the server you want to deploy to.
   * `DEPLOY_SSH_PRIVATE_KEY`, `DEPLOY_SSH_KNOWN_HOSTS`: private key to access
-    your server and its' expected ssh fingerprint. See below for details.
+    your server and its expected ssh fingerprint. See below for details.
   * `DEPLOY_STATUS_WEBHOOK`: a Discord webhook. See https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks for details. **Don't append anything like /github to it!**
 * Add the branches you wish to deploy to [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
   Also change the desired target user (`DEPLOY_TARGET_USER`) to the one you've set up on your server.
@@ -98,7 +98,7 @@ https://github.com/skyrim-multiplayer/skymp/actions/workflows/deploy.yml
 ![](img/run_deploy.png)
 
 Progress can be tracked by following the link in run list or in the Discord
-channel `DEPLOY_WEBHOOK` is attached to.
+channel the `DEPLOY_STATUS_WEBHOOK` is attached to.
 
 Several actions are available:
 * `deploy` - merge all PRs with `merge-to:<branch>` label set, build the resulting
@@ -119,7 +119,7 @@ docker exec -it skymp-server-indev gdb /usr/bin/node /var/crash/...
 ```
 
 Deployed server might crash under some circumstances. It's important to be able
-to be able to debug it in case something goes wrong.
+to debug it in case something goes wrong.
 
 Prerequisites:
 1. `scam_native.node` should contain debug symbols, otherwise core dump won't make much sense.
@@ -192,7 +192,7 @@ How to check that everything is working fine:
    ```
 
 Debugging a core dump:
-1. Attach to en existing container with a server (or create a new container
+1. Attach to an existing container with a server (or create a new container
    with a similar setup) and run `gdb`:
    `docker exec -it skymp-server-indev gdb /usr/bin/node /var/crash/...`
 2. Run `bt` to view a stack trace

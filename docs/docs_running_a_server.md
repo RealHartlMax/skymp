@@ -28,12 +28,14 @@ The admin dashboard is available at `http://<host>:<uiPort>/admin`.
 
 - `uiPort` is taken from `server-settings.json` (if omitted, it falls back to `port`).
 - The page uses an in-app login form (not browser Basic Auth popup).
-- Credentials are validated against `adminUiAuth` (or `metricsAuth` as fallback when `adminUiAuth` is not set).
+- Credentials are validated against configured admin credentials (secure setup flow), with legacy `adminUiAuth` / `metricsAuth` fallback behavior where applicable.
 - Session timeout is 10 minutes of inactivity for dashboard interactions.
 
 ## Configuration
 
-Once you build the server, you should be able to launch it. But default config values are only usable to verify that server works. After launching the server you will see a server called `My Server` in the master list: https://skymp.io/api/servers. You also will be able to connect, but players from the Internet will not. You need to change the `ip` field in `server-settings.json` to get this functionality to work. This file is placed into `build/dist/server` directory during build.
+Once you build the server, you should be able to launch it. But default config values are only usable to verify that server works. After launching the server you will see a server called `My Server` in the master list: https://skymp.io/api/servers.
+
+To make your server reachable from outside your local machine/network, configure bind/listen settings and open required ports in your firewall/router.
 
 ```json5
 {
@@ -45,11 +47,14 @@ Once you build the server, you should be able to launch it. But default config v
     "HearthFires.esm",
     "Dragonborn.esm"
   ],
-  "ip": "127.0.0.1", // <=
+  "listenHost": "0.0.0.0",
+  "uiListenHost": "0.0.0.0",
+  "port": 7777,
+  "uiPort": 8080,
   "name": "My Server"
 }
 ```
 
 - You may find out your public IP here http://api.ipify.org
-- You need to have ports open. Talk to your Internet provider support if you want to open ports. Status of each port can be checked here https://www.yougetsignal.com/tools/open-ports/. You can learn about ports that are really used by the server on [Server Configuration Reference](docs_server_configuration_reference.md) page or to simplify think that it may use any of available ports and protocols.
+- You need to have ports open. Talk to your Internet provider support if you want to open ports. Status of each port can be checked here https://www.yougetsignal.com/tools/open-ports/. See [Server Ports Usage](docs_server_ports_usage.md) and [Server Configuration Reference](docs_server_configuration_reference.md).
 - If you use `LogMeIn Hamachi` or similar software then just type an IP address you got assigned from it. Your friends who share a "local" network with you will be able to connect, players from the Internet will not.

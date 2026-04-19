@@ -31,3 +31,27 @@ Use camel case for file names: `JsEngine.h`.
 ## TypeScript Projects
 
 Use lower camel case for file names: `fooBar.ts`.
+
+## Frontend structure (`skymp5-front`)
+
+Main source code lives under `skymp5-front/src`.
+
+- `src/features/adminDashboard` - Web admin dashboard pages, panels and settings forms
+- `src/features/serverList` - launcher/server list UI
+- `src/features/login` - frontend login flows
+- `src/features/chat` - chat UI feature module
+- `src/features/skillsMenu` - skills UI feature module
+- `src/features/animList` - animation list UI feature module
+- `src/features/testMenu` - development/testing UI module
+- `src/locales` - i18n resources (`en`, `ru`, `de`, `es`)
+
+## Server TypeScript structure (`skymp5-server/ts`)
+
+- `index.ts` - server entrypoint bootstrap
+- `ui.ts` - HTTP routes (`/api/admin/*`, metrics, admin auth/session flows)
+- `settings.ts` - `server-settings.json` loading, validation and additional settings merge
+- `manifestGen.ts` - resource/load-order manifest generation helpers
+- `scampNative.ts` - native bridge bindings used by server runtime
+- `systems/` - gameplay/runtime systems
+- `examples/` - sample scripts (for example healer/respawn flows)
+- `shims/` - compatibility shims used during bundling/runtime

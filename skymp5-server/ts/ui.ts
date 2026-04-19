@@ -7,6 +7,7 @@ import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { spawn } from "child_process";
 import { Settings } from "./settings";
 import Axios from "axios";
 import { AddressInfo } from "net";
@@ -16,6 +17,23 @@ let gScampServer: any = null;
 
 let metricsAuth: { user: string; password: string } | null = null;
 let adminAuth: { user: string; password: string } | null = null;
+let adminAuthSource: 'none' | 'adminUiAuth' | 'metricsAuth' = 'none';
+type StoredAdminAuthAlgo = 'scrypt-v1';
+interface StoredAdminAuth {
+  user: string;
+  passwordHash: string;
+  algo: StoredAdminAuthAlgo;
+  createdAt: number;
+  updatedAt: number;
+}
+
+let storedAdminAuth: StoredAdminAuth | null = null;
+const ADMIN_AUTH_FILE = 'admin-auth.json';
+const ADMIN_MENU_DEBUG_LOG_FILE = 'admin-menu-debug.log';
+const ADMIN_PLAYER_STATS_FILE = 'admin-player-stats.json';
+const ADMIN_HISTORY_FILE = 'admin-history.json';
+const PLAYER_STATS_PERSIST_INTERVAL_MS = 30 * 1000;
+const ADMIN_PASSWORD_MIN_LENGTH = 10;
 const ADMIN_SESSION_COOKIE = 'skymp_admin_session';
 const ADMIN_SESSION_IDLE_MS = 10 * 60 * 1000;
 const adminSessions = new Map<string, {
@@ -101,6 +119,100 @@ interface AdminResourceEntry {
   mtimeMs: number;
 }
 
+interface AdminPlayerStatsEntry {
+  userId: number;
+  firstJoinedAt: number;
+  lastConnectionAt: number;
+  totalPlayMs: number;
+  activeSessionStartedAt: number | null;
+  lastDisplayName: string;
+}
+
+type AdminHistoryActionType = 'warn' | 'ban' | 'kick' | 'mute';
+
+interface AdminHistoryEntry {
+  id: string;
+  type: AdminHistoryActionType;
+  playerName: string;
+  userId: number;
+  reason: string;
+  author: string;
+  ts: number;
+}
+
+const adminHistory: AdminHistoryEntry[] = [];
+const MAX_ADMIN_HISTORY = 2000;
+
+const generateHistoryId = (): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const part = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `${part(4)}-${part(4)}`;
+};
+
+const addAdminHistory = (entry: Omit<AdminHistoryEntry, 'id' | 'ts'>): void => {
+  adminHistory.push({ ...entry, id: generateHistoryId(), ts: Date.now() });
+  if (adminHistory.length > MAX_ADMIN_HISTORY) adminHistory.shift();
+};
+
+const loadHistory = (dataDir: string): void => {
+  try {
+    const filePath = path.join(dataDir, ADMIN_HISTORY_FILE);
+    if (!fs.existsSync(filePath)) return;
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (Array.isArray(parsed)) {
+      adminHistory.splice(0, adminHistory.length, ...parsed.slice(-MAX_ADMIN_HISTORY));
+    }
+  } catch { /* ignore */ }
+};
+
+const saveHistory = (dataDir: string): void => {
+  try {
+    fs.writeFileSync(path.join(dataDir, ADMIN_HISTORY_FILE), JSON.stringify(adminHistory), 'utf8');
+  } catch { /* ignore */ }
+};
+
+// ---------------------------------------------------------------------------
+// Player Drop tracking
+// ---------------------------------------------------------------------------
+type PlayerDropType = 'expected' | 'unexpected';
+
+interface PlayerDropEntry {
+  ts: number;
+  userId: number;
+  playerName: string;
+  type: PlayerDropType;
+  reason?: string;
+}
+
+interface EnvironmentChangeEntry {
+  ts: number;
+  type: string;
+  description: string;
+}
+
+const MAX_PLAYER_DROPS = 5000;
+const playerDrops: PlayerDropEntry[] = [];
+const environmentChanges: EnvironmentChangeEntry[] = [];
+const MAX_ENVIRONMENT_CHANGES = 500;
+
+const addPlayerDrop = (entry: Omit<PlayerDropEntry, 'ts'>): void => {
+  playerDrops.push({ ...entry, ts: Date.now() });
+  if (playerDrops.length > MAX_PLAYER_DROPS) playerDrops.shift();
+};
+
+const addEnvironmentChange = (type: string, description: string): void => {
+  environmentChanges.push({ ts: Date.now(), type, description });
+  if (environmentChanges.length > MAX_ENVIRONMENT_CHANGES) environmentChanges.shift();
+};
+
+interface OfflineInventorySnapshot {
+  profileId: number;
+  formDesc: string;
+  inventory: Record<string, unknown>;
+  updatedAt: number;
+  filePath: string;
+}
+
 interface LocaleRoutingSettings {
   defaultLanguage: string;
   countryCodeToLanguage: Record<string, string>;
@@ -125,6 +237,8 @@ interface DiscordBotSettings {
 
 const frontendMetrics: FrontendMetricEntry[] = [];
 const MAX_FRONTEND_METRICS = 1000;
+const FRONTEND_METRICS_INFO_LOG_INTERVAL_MS = 30 * 60 * 1000;
+let lastFrontendMetricsInfoLogAt = 0;
 const clientRuntimeEvents: ClientRuntimeEventEntry[] = [];
 const MAX_CLIENT_RUNTIME_EVENTS = 2000;
 const revivalEvents: RevivalEventEntry[] = [];
@@ -144,6 +258,21 @@ interface AdminCapabilities {
 }
 
 type AdminRole = 'admin' | 'moderator' | 'viewer';
+
+interface AdminUiUserProfile {
+  role: AdminRole;
+  discordId?: string;
+}
+
+interface DiscordAdminOauthConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  scope: string;
+}
+
+const ADMIN_DISCORD_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const adminDiscordOauthStates = new Map<string, number>();
 
 const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
   admin: {
@@ -184,6 +313,26 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
 const addAdminLog = (type: AdminLogEntry['type'], message: string): void => {
   adminLog.push({ ts: Date.now(), type, message });
   if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
+};
+
+const getAdminMenuDebugLogPath = (dataDir: string): string => path.join(dataDir, ADMIN_MENU_DEBUG_LOG_FILE);
+
+const appendAdminMenuDebugLog = (dataDir: string, user: string, payload: any): void => {
+  try {
+    const logPath = getAdminMenuDebugLogPath(dataDir);
+    const entry = {
+      ts: Date.now(),
+      user: String(user || ''),
+      source: String(payload?.source || ''),
+      visible: Boolean(payload?.visible),
+      previous: payload?.previous ?? null,
+      next: payload?.next ?? null,
+      clientTs: Number(payload?.ts) || null,
+    };
+    fs.appendFileSync(logPath, `${JSON.stringify(entry)}\n`, { encoding: 'utf8' });
+  } catch (error) {
+    console.error('Failed to append admin menu debug log:', error);
+  }
 };
 
 const addServerLog = (level: ServerLogLevel, message: string): void => {
@@ -401,6 +550,8 @@ const summarizeClientRuntimeEvents = (entries: ClientRuntimeEventEntry[]) => {
 // bannedUsers: null = permanent ban; number = expiresAt timestamp (timed ban)
 const bannedUsers = new Map<number, number | null>();
 const mutedUsers = new Map<number, number>(); // userId -> expiresAt (ms timestamp)
+const adminPlayerStats = new Map<number, AdminPlayerStatsEntry>();
+let lastPlayerStatsPersistAt = 0;
 
 const cleanupExpiredBans = (): void => {
   const now = Date.now();
@@ -484,6 +635,123 @@ const loadModerationState = (dataDir: string): void => {
   }
 };
 
+const savePlayerStats = (dataDir: string, force = false): void => {
+  const now = Date.now();
+  if (!force && now - lastPlayerStatsPersistAt < PLAYER_STATS_PERSIST_INTERVAL_MS) return;
+
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    const entries = Array.from(adminPlayerStats.values()).map((entry) => ({
+      userId: entry.userId,
+      firstJoinedAt: entry.firstJoinedAt,
+      lastConnectionAt: entry.lastConnectionAt,
+      totalPlayMs: Math.max(0, Math.floor(entry.totalPlayMs)),
+      activeSessionStartedAt: entry.activeSessionStartedAt,
+      lastDisplayName: entry.lastDisplayName,
+    }));
+    fs.writeFileSync(path.join(dataDir, ADMIN_PLAYER_STATS_FILE), JSON.stringify(entries), 'utf8');
+    lastPlayerStatsPersistAt = now;
+  } catch (e) {
+    console.error('Failed to persist admin player stats:', e);
+  }
+};
+
+const loadPlayerStats = (dataDir: string): void => {
+  try {
+    const statsPath = path.join(dataDir, ADMIN_PLAYER_STATS_FILE);
+    if (!fs.existsSync(statsPath)) return;
+
+    const raw = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+    if (!Array.isArray(raw)) return;
+
+    adminPlayerStats.clear();
+    raw.forEach((value) => {
+      if (!value || typeof value !== 'object') return;
+      const userId = Number((value as any).userId);
+      const firstJoinedAt = Number((value as any).firstJoinedAt);
+      const lastConnectionAt = Number((value as any).lastConnectionAt);
+      const totalPlayMs = Number((value as any).totalPlayMs);
+      const activeSessionStartedAtRaw = (value as any).activeSessionStartedAt;
+      const activeSessionStartedAt = Number.isFinite(Number(activeSessionStartedAtRaw))
+        ? Number(activeSessionStartedAtRaw)
+        : null;
+
+      if (!Number.isFinite(userId) || !Number.isFinite(firstJoinedAt)) return;
+
+      adminPlayerStats.set(Math.floor(userId), {
+        userId: Math.floor(userId),
+        firstJoinedAt: Math.floor(firstJoinedAt),
+        lastConnectionAt: Number.isFinite(lastConnectionAt) ? Math.floor(lastConnectionAt) : Math.floor(firstJoinedAt),
+        totalPlayMs: Number.isFinite(totalPlayMs) ? Math.max(0, Math.floor(totalPlayMs)) : 0,
+        activeSessionStartedAt,
+        lastDisplayName: typeof (value as any).lastDisplayName === 'string' ? (value as any).lastDisplayName.slice(0, 120) : '',
+      });
+    });
+    console.log(`Loaded ${adminPlayerStats.size} admin player stat entrie(s) from ${statsPath}`);
+  } catch (e) {
+    console.error('Failed to load admin player stats:', e);
+  }
+};
+
+const updatePlayerStatsSnapshot = (dataDir: string): void => {
+  const now = Date.now();
+  const onlineUserIds = getOnlinePlayerIds();
+  const onlineUserIdSet = new Set<number>(onlineUserIds);
+  let changed = false;
+
+  onlineUserIds.forEach((userId) => {
+    const safeUserId = Number.isFinite(userId) ? Math.floor(userId) : -1;
+    if (safeUserId < 0) return;
+
+    const actorId = safeCall(() => gScampServer.getUserActor(safeUserId), 0);
+    const actorName = actorId ? String(safeCall(() => gScampServer.getActorName(actorId), '') || '') : '';
+    const existing = adminPlayerStats.get(safeUserId);
+
+    if (!existing) {
+      adminPlayerStats.set(safeUserId, {
+        userId: safeUserId,
+        firstJoinedAt: now,
+        lastConnectionAt: now,
+        totalPlayMs: 0,
+        activeSessionStartedAt: now,
+        lastDisplayName: actorName.slice(0, 120),
+      });
+      changed = true;
+      return;
+    }
+
+    if (existing.activeSessionStartedAt === null) {
+      existing.activeSessionStartedAt = now;
+      changed = true;
+    }
+
+    if (existing.lastConnectionAt !== now) {
+      existing.lastConnectionAt = now;
+      changed = true;
+    }
+
+    if (actorName && actorName !== existing.lastDisplayName) {
+      existing.lastDisplayName = actorName.slice(0, 120);
+      changed = true;
+    }
+  });
+
+  adminPlayerStats.forEach((entry, userId) => {
+    if (!onlineUserIdSet.has(userId) && entry.activeSessionStartedAt !== null) {
+      entry.totalPlayMs += Math.max(0, now - entry.activeSessionStartedAt);
+      entry.activeSessionStartedAt = null;
+      entry.lastConnectionAt = now;
+      changed = true;
+      // Record the disconnect as an expected drop
+      addPlayerDrop({ userId, playerName: entry.lastDisplayName || `userId=${userId}`, type: 'expected' });
+    }
+  });
+
+  if (changed) {
+    savePlayerStats(dataDir);
+  }
+};
+
 const metricsAuthParse = (settings: Settings): void => {
   const authConfig = settings.allSettings?.metricsAuth as { user?: string; password?: string } | undefined;
   if (!authConfig) {
@@ -498,19 +766,111 @@ const metricsAuthParse = (settings: Settings): void => {
 }
 
 const adminAuthParse = (settings: Settings): void => {
+  adminAuthSource = 'none';
   const authConfig = settings.allSettings?.adminUiAuth as { user?: string; password?: string } | undefined;
   if (authConfig?.user && authConfig?.password) {
     adminAuth = { user: authConfig.user, password: authConfig.password };
+    adminAuthSource = 'adminUiAuth';
     return;
   }
 
   if (metricsAuth?.user && metricsAuth?.password) {
     adminAuth = metricsAuth;
+    adminAuthSource = 'metricsAuth';
     console.log('adminUiAuth is not configured, falling back to metricsAuth credentials');
     return;
   }
 
   console.log('Admin dashboard auth is not configured and metricsAuth fallback is unavailable');
+};
+
+const getAdminAuthFilePath = (dataDir: string): string => path.join(dataDir, ADMIN_AUTH_FILE);
+
+const isValidStoredAdminAuth = (value: any): value is StoredAdminAuth => {
+  return value
+    && typeof value.user === 'string'
+    && typeof value.passwordHash === 'string'
+    && value.algo === 'scrypt-v1';
+};
+
+const loadStoredAdminAuth = (dataDir: string): void => {
+  storedAdminAuth = null;
+  const authPath = getAdminAuthFilePath(dataDir);
+  if (!fs.existsSync(authPath)) return;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(authPath, 'utf8'));
+    if (isValidStoredAdminAuth(parsed)) {
+      storedAdminAuth = {
+        user: parsed.user,
+        passwordHash: parsed.passwordHash,
+        algo: parsed.algo,
+        createdAt: Number(parsed.createdAt) || Date.now(),
+        updatedAt: Number(parsed.updatedAt) || Date.now(),
+      };
+      console.log(`Loaded secure admin auth store from ${authPath}`);
+    } else {
+      console.error(`Invalid secure admin auth store format in ${authPath}`);
+    }
+  } catch (e) {
+    console.error('Failed to load secure admin auth store:', e);
+  }
+};
+
+const saveStoredAdminAuth = (dataDir: string, value: StoredAdminAuth): void => {
+  const authPath = getAdminAuthFilePath(dataDir);
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(authPath, JSON.stringify(value, null, 2), 'utf8');
+};
+
+const createScryptPasswordHash = (password: string): string => {
+  const n = 16384;
+  const r = 8;
+  const p = 1;
+  const keyLen = 64;
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, keyLen, { N: n, r, p }).toString('hex');
+  return `scrypt-v1$${n}$${r}$${p}$${salt}$${hash}`;
+};
+
+const verifyScryptPasswordHash = (password: string, encodedHash: string): boolean => {
+  const parts = String(encodedHash || '').split('$');
+  if (parts.length !== 6 || parts[0] !== 'scrypt-v1') return false;
+
+  const n = Number(parts[1]);
+  const r = Number(parts[2]);
+  const p = Number(parts[3]);
+  const salt = parts[4];
+  const expectedHex = parts[5];
+
+  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p) || !salt || !expectedHex) {
+    return false;
+  }
+
+  try {
+    const expected = Buffer.from(expectedHex, 'hex');
+    const derived = crypto.scryptSync(password, salt, expected.length, { N: n, r, p });
+    return derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+  } catch {
+    return false;
+  }
+};
+
+const hasConfiguredAdminCredentials = (): boolean => Boolean(storedAdminAuth || adminAuth);
+
+const getConfiguredAdminUser = (): string => storedAdminAuth?.user || adminAuth?.user || '';
+
+const verifyAdminCredentials = (user: string, password: string): boolean => {
+  if (storedAdminAuth) {
+    if (user !== storedAdminAuth.user) return false;
+    return verifyScryptPasswordHash(password, storedAdminAuth.passwordHash);
+  }
+
+  if (adminAuth) {
+    return user === adminAuth.user && password === adminAuth.password;
+  }
+
+  return false;
 };
 
 const getOnlinePlayerIds = (): number[] => {
@@ -686,6 +1046,58 @@ const listAdminResources = (settings: Settings, dataDir: string): AdminResourceE
   });
 };
 
+const getInventoryEntriesCount = (inventory: unknown): number => {
+  if (!inventory || typeof inventory !== 'object') return 0;
+
+  const entries = (inventory as Record<string, unknown>).entries;
+  return Array.isArray(entries) ? entries.length : 0;
+};
+
+const getOfflineInventorySnapshot = (dataDir: string, profileId: number): OfflineInventorySnapshot | null => {
+  const changeFormsDir = path.resolve(dataDir, 'changeForms');
+  const entries = safeCall(
+    () => fs.readdirSync(changeFormsDir, { withFileTypes: true }),
+    [] as fs.Dirent[],
+  );
+
+  let best: OfflineInventorySnapshot | null = null;
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.toLowerCase().endsWith('.json')) continue;
+
+    const filePath = path.join(changeFormsDir, entry.name);
+    const text = safeCall(() => fs.readFileSync(filePath, 'utf8'), '');
+    if (!text) continue;
+
+    const parsed = safeCall(() => JSON.parse(text) as Record<string, unknown>, null as Record<string, unknown> | null);
+    if (!parsed) continue;
+
+    const parsedProfileId = Number(parsed.profileId);
+    if (!Number.isFinite(parsedProfileId) || parsedProfileId !== profileId) continue;
+
+    const inventory = parsed.inv;
+    if (!inventory || typeof inventory !== 'object') continue;
+
+    const stat = safeCall(() => fs.statSync(filePath), null as fs.Stats | null);
+    const updatedAt = stat?.mtimeMs ?? 0;
+    const formDesc = typeof parsed.formDesc === 'string' ? parsed.formDesc : entry.name.replace(/\.json$/i, '').replace(/_/g, ':');
+    const snapshot: OfflineInventorySnapshot = {
+      profileId,
+      formDesc,
+      inventory: inventory as Record<string, unknown>,
+      updatedAt,
+      filePath,
+    };
+
+    if (!best || snapshot.updatedAt >= best.updatedAt) {
+      best = snapshot;
+    }
+  }
+
+  return best;
+};
+
 const cloneLocaleRoutingDefaults = (): LocaleRoutingSettings => ({
   defaultLanguage: DEFAULT_LOCALE_ROUTING.defaultLanguage,
   countryCodeToLanguage: { ...DEFAULT_LOCALE_ROUTING.countryCodeToLanguage },
@@ -812,6 +1224,20 @@ const writeServerSettingsJson = (settingsObj: Record<string, unknown>): void => 
   fs.writeFileSync(settingsPath, JSON.stringify(settingsObj, null, 2) + '\n', 'utf8');
 };
 
+const clearLegacyAdminUiAuthInServerSettings = (): boolean => {
+  try {
+    const parsed = readServerSettingsJson();
+    if (Object.prototype.hasOwnProperty.call(parsed, 'adminUiAuth')) {
+      delete (parsed as any).adminUiAuth;
+      writeServerSettingsJson(parsed);
+      return true;
+    }
+  } catch (e) {
+    console.error('Failed to remove legacy adminUiAuth from server-settings.json:', e);
+  }
+  return false;
+};
+
 const resolveLanguageByCountryCode = (
   localeRouting: LocaleRoutingSettings,
   countryCodeRaw: string,
@@ -842,6 +1268,130 @@ const mergeAdminCapabilities = (
 const normalizeAdminRole = (value: unknown): AdminRole => {
   if (value === 'admin' || value === 'moderator' || value === 'viewer') return value;
   return 'viewer';
+};
+
+const sanitizeAdminUiUsers = (
+  value: unknown,
+): Record<string, AdminUiUserProfile> => {
+  if (!value || typeof value !== 'object') return {};
+
+  const out: Record<string, AdminUiUserProfile> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([rawUser, rawProfile]) => {
+    const user = String(rawUser || '').trim();
+    if (!user) return;
+
+    const profileObj = rawProfile && typeof rawProfile === 'object'
+      ? rawProfile as Record<string, unknown>
+      : {};
+
+    const role = normalizeAdminRole(profileObj.role);
+    const discordId = String(profileObj.discordId || '').trim();
+
+    out[user] = {
+      role,
+      ...(discordId ? { discordId } : {}),
+    };
+  });
+
+  return out;
+};
+
+const sanitizeAdminUiRoles = (value: unknown): Record<string, AdminRole> => {
+  if (!value || typeof value !== 'object') return {};
+  const out: Record<string, AdminRole> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([rawUser, rawRole]) => {
+    const user = String(rawUser || '').trim();
+    if (!user) return;
+    out[user] = normalizeAdminRole(rawRole);
+  });
+  return out;
+};
+
+const resolveAdminUsersFromSettingsObject = (
+  settingsObj: Record<string, unknown>,
+): Record<string, AdminUiUserProfile> => {
+  const usersFromProfiles = sanitizeAdminUiUsers(settingsObj.adminUiUsers);
+  const usersFromRoles = sanitizeAdminUiRoles(settingsObj.adminUiRoles);
+
+  Object.entries(usersFromRoles).forEach(([user, role]) => {
+    const existing = usersFromProfiles[user];
+    usersFromProfiles[user] = {
+      role,
+      ...(existing?.discordId ? { discordId: existing.discordId } : {}),
+    };
+  });
+
+  return usersFromProfiles;
+};
+
+const applyAdminUsersToSettingsObject = (
+  settingsObj: Record<string, unknown>,
+  users: Record<string, AdminUiUserProfile>,
+): void => {
+  const normalized = sanitizeAdminUiUsers(users);
+  const normalizedRoles: Record<string, AdminRole> = {};
+  Object.entries(normalized).forEach(([user, profile]) => {
+    normalizedRoles[user] = profile.role;
+  });
+  settingsObj.adminUiUsers = normalized;
+  settingsObj.adminUiRoles = normalizedRoles;
+};
+
+const resolveMasterAdminUserFromSettingsObject = (
+  settingsObj: Record<string, unknown>,
+  fallbackUser = '',
+): string => {
+  const fromSettings = String(settingsObj.adminUiMasterUser || '').trim();
+  if (/^[a-zA-Z0-9._-]{3,32}$/.test(fromSettings)) return fromSettings;
+  const fallback = String(fallbackUser || '').trim();
+  if (/^[a-zA-Z0-9._-]{3,32}$/.test(fallback)) return fallback;
+  return '';
+};
+
+const persistMasterAdminUserInServerSettings = (userRaw: string): boolean => {
+  const user = String(userRaw || '').trim();
+  if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) return false;
+
+  try {
+    const parsed = readServerSettingsJson();
+    const usersMap = resolveAdminUsersFromSettingsObject(parsed);
+    const existing = usersMap[user];
+    usersMap[user] = {
+      role: 'admin',
+      ...(existing?.discordId ? { discordId: existing.discordId } : {}),
+    };
+
+    applyAdminUsersToSettingsObject(parsed, usersMap);
+    parsed.adminUiMasterUser = user;
+    writeServerSettingsJson(parsed);
+    return true;
+  } catch (error) {
+    console.error('Failed to persist master admin user in server-settings.json:', error);
+    return false;
+  }
+};
+
+const cleanupAdminDiscordOauthStates = (): void => {
+  const now = Date.now();
+  adminDiscordOauthStates.forEach((createdAt, state) => {
+    if (now - createdAt > ADMIN_DISCORD_OAUTH_STATE_TTL_MS) {
+      adminDiscordOauthStates.delete(state);
+    }
+  });
+};
+
+const resolveDiscordAdminOauthConfig = (settings: Settings): DiscordAdminOauthConfig => {
+  const cfg = settings.allSettings?.adminUiDiscordAuth as Record<string, unknown> | undefined;
+  const clientId = String(cfg?.clientId || process.env.SKYMP_ADMIN_DISCORD_CLIENT_ID || '').trim();
+  const clientSecret = String(cfg?.clientSecret || process.env.SKYMP_ADMIN_DISCORD_CLIENT_SECRET || '').trim();
+  const redirectUri = String(cfg?.redirectUri || process.env.SKYMP_ADMIN_DISCORD_REDIRECT_URI || '').trim();
+  const scope = String(cfg?.scope || process.env.SKYMP_ADMIN_DISCORD_SCOPE || 'identify').trim() || 'identify';
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    scope,
+  };
 };
 
 const cleanupExpiredAdminSessions = (): void => {
@@ -950,6 +1500,11 @@ const getBasicAuthUser = (ctx: any): string => {
 };
 
 const getAdminRoleForUser = (settings: Settings, user: string): AdminRole => {
+  const usersMap = sanitizeAdminUiUsers(settings.allSettings?.adminUiUsers);
+  if (user && Object.prototype.hasOwnProperty.call(usersMap, user)) {
+    return usersMap[user].role;
+  }
+
   const map = settings.allSettings?.adminUiRoles as Record<string, unknown> | undefined;
   if (user && map && Object.prototype.hasOwnProperty.call(map, user)) {
     return normalizeAdminRole(map[user]);
@@ -995,7 +1550,11 @@ const ensureAdminCapability = (
 
 const createApp = (settings: Settings, getOriginPort: () => number) => {
   const dataDir: string = settings.dataDir ?? './data';
+  loadStoredAdminAuth(dataDir);
   loadModerationState(dataDir);
+  loadPlayerStats(dataDir);
+  loadHistory(dataDir);
+  addEnvironmentChange('server-start', 'Server started');
 
   const app = new Koa();
   app.use(koaBody.default({ multipart: true }));
@@ -1083,17 +1642,197 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     if (safeMetrics.length > 0) {
       addFrontendMetrics(safeMetrics);
-      console.log(`[frontend-metrics] count=${safeMetrics.length} first=${safeMetrics[0].name}`);
+
+      const hasErrorMetrics = safeMetrics.some((metric: FrontendMetricEntry) => {
+        const name = String(metric.name || '').toLowerCase();
+        const source = String(metric.source || '').toLowerCase();
+        return name.includes('error')
+          || source.includes('error')
+          || name.includes('unhandledrejection');
+      });
+
+      if (hasErrorMetrics) {
+        console.warn(`[frontend-metrics] error entries detected count=${safeMetrics.length} first=${safeMetrics[0].name}`);
+      } else if (receivedAt - lastFrontendMetricsInfoLogAt >= FRONTEND_METRICS_INFO_LOG_INTERVAL_MS) {
+        lastFrontendMetricsInfoLogAt = receivedAt;
+        console.log('[Status] Server laeuft stabil...');
+      }
     }
 
     ctx.body = { ok: true, accepted: safeMetrics.length };
   });
 
-  if (adminAuth) {
+  if (true) {
+    router.get('/api/admin/setup/status', (ctx: any) => {
+      const hasLegacyConfig = !storedAdminAuth && Boolean(adminAuth);
+      ctx.body = {
+        ok: true,
+        needsSetup: !hasConfiguredAdminCredentials(),
+        hasLegacyConfig,
+        canMigrateLegacy: hasLegacyConfig,
+        user: getConfiguredAdminUser(),
+        passwordMinLength: ADMIN_PASSWORD_MIN_LENGTH,
+      };
+    });
+
+    router.post('/api/admin/setup/bootstrap', (ctx: any) => {
+      if (hasConfiguredAdminCredentials()) {
+        ctx.status = 409;
+        ctx.body = { ok: false, error: 'admin auth already configured' };
+        return;
+      }
+
+      const user = String(ctx.request.body?.user ?? '').trim();
+      const password = String(ctx.request.body?.password ?? '');
+      const passwordConfirm = String(ctx.request.body?.passwordConfirm ?? '');
+
+      if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        return;
+      }
+
+      if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters` };
+        return;
+      }
+
+      if (password !== passwordConfirm) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'password confirmation does not match' };
+        return;
+      }
+
+      const now = Date.now();
+      storedAdminAuth = {
+        user,
+        passwordHash: createScryptPasswordHash(password),
+        algo: 'scrypt-v1',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      try {
+        saveStoredAdminAuth(dataDir, storedAdminAuth);
+      } catch (error: any) {
+        storedAdminAuth = null;
+        ctx.status = 500;
+        ctx.body = { ok: false, error: `failed to persist admin auth store: ${error?.message ?? 'unknown error'}` };
+        return;
+      }
+
+      if (!persistMasterAdminUserInServerSettings(user)) {
+        ctx.status = 500;
+        ctx.body = { ok: false, error: 'failed to persist master admin user in server-settings.json' };
+        return;
+      }
+
+      const session = createAdminSession(user);
+      setAdminSessionCookie(ctx, session.id);
+      ctx.body = {
+        ok: true,
+        user: session.user,
+        setupComplete: true,
+        idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        remainingMs: ADMIN_SESSION_IDLE_MS,
+      };
+    });
+
+    router.post('/api/admin/setup/migrate-legacy', (ctx: any) => {
+      const hasLegacyConfig = !storedAdminAuth && Boolean(adminAuth);
+      if (!hasLegacyConfig) {
+        ctx.status = 409;
+        ctx.body = { ok: false, error: 'no legacy auth available for migration' };
+        return;
+      }
+
+      const legacyUser = String(ctx.request.body?.legacyUser ?? '').trim();
+      const legacyPassword = String(ctx.request.body?.legacyPassword ?? '');
+      const user = String(ctx.request.body?.user ?? '').trim();
+      const password = String(ctx.request.body?.password ?? '');
+      const passwordConfirm = String(ctx.request.body?.passwordConfirm ?? '');
+
+      if (!verifyAdminCredentials(legacyUser, legacyPassword)) {
+        ctx.status = 401;
+        ctx.body = { ok: false, error: 'legacy credentials are invalid' };
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        return;
+      }
+
+      if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters` };
+        return;
+      }
+
+      if (password !== passwordConfirm) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'password confirmation does not match' };
+        return;
+      }
+
+      const now = Date.now();
+      storedAdminAuth = {
+        user,
+        passwordHash: createScryptPasswordHash(password),
+        algo: 'scrypt-v1',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      try {
+        saveStoredAdminAuth(dataDir, storedAdminAuth);
+      } catch (error: any) {
+        storedAdminAuth = null;
+        ctx.status = 500;
+        ctx.body = { ok: false, error: `failed to persist admin auth store: ${error?.message ?? 'unknown error'}` };
+        return;
+      }
+
+      const removedLegacyFromSettings = adminAuthSource === 'adminUiAuth'
+        ? clearLegacyAdminUiAuthInServerSettings()
+        : false;
+
+      adminAuth = null;
+      adminAuthSource = 'none';
+
+      if (!persistMasterAdminUserInServerSettings(user)) {
+        ctx.status = 500;
+        ctx.body = { ok: false, error: 'failed to persist master admin user in server-settings.json' };
+        return;
+      }
+
+      addAdminLog('console', `Migrated legacy admin auth to secure store for user=${user}`);
+
+      const session = createAdminSession(user);
+      setAdminSessionCookie(ctx, session.id);
+      ctx.body = {
+        ok: true,
+        user: session.user,
+        migrated: true,
+        removedLegacyFromSettings,
+        idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        remainingMs: ADMIN_SESSION_IDLE_MS,
+      };
+    });
+
     router.post('/api/admin/session/login', (ctx: any) => {
       const user = String(ctx.request.body?.user ?? '').trim();
       const password = String(ctx.request.body?.password ?? '');
-      if (!adminAuth || user !== adminAuth.user || password !== adminAuth.password) {
+
+      if (!hasConfiguredAdminCredentials()) {
+        ctx.status = 503;
+        ctx.body = { ok: false, error: 'admin setup is required before login' };
+        return;
+      }
+
+      if (!verifyAdminCredentials(user, password)) {
         ctx.status = 401;
         ctx.body = { ok: false, error: 'invalid credentials' };
         return;
@@ -1107,6 +1846,118 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
         remainingMs: ADMIN_SESSION_IDLE_MS,
       };
+    });
+
+    router.get('/api/admin/session/discord/config', (ctx: any) => {
+      const oauth = resolveDiscordAdminOauthConfig(settings);
+      const enabled = oauth.clientId.length > 0 && oauth.clientSecret.length > 0;
+      ctx.body = {
+        ok: true,
+        enabled,
+      };
+    });
+
+    router.get('/api/admin/session/discord/start', (ctx: any) => {
+      const oauth = resolveDiscordAdminOauthConfig(settings);
+      if (!oauth.clientId || !oauth.clientSecret) {
+        ctx.redirect('/admin?discord=disabled');
+        return;
+      }
+
+      cleanupAdminDiscordOauthStates();
+      const state = crypto.randomBytes(20).toString('hex');
+      adminDiscordOauthStates.set(state, Date.now());
+
+      const redirectUri = oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
+      const params = new URLSearchParams({
+        client_id: oauth.clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: oauth.scope,
+        state,
+        prompt: 'select_account',
+      });
+
+      ctx.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+    });
+
+    router.get('/api/admin/session/discord/callback', async (ctx: any) => {
+      const oauth = resolveDiscordAdminOauthConfig(settings);
+      if (!oauth.clientId || !oauth.clientSecret) {
+        ctx.redirect('/admin?discord=disabled');
+        return;
+      }
+
+      cleanupAdminDiscordOauthStates();
+
+      const state = String(ctx.query?.state || '').trim();
+      const code = String(ctx.query?.code || '').trim();
+      if (!state || !code) {
+        ctx.redirect('/admin?discord=invalid-callback');
+        return;
+      }
+
+      const stateCreatedAt = adminDiscordOauthStates.get(state);
+      adminDiscordOauthStates.delete(state);
+      if (!stateCreatedAt || (Date.now() - stateCreatedAt > ADMIN_DISCORD_OAUTH_STATE_TTL_MS)) {
+        ctx.redirect('/admin?discord=invalid-state');
+        return;
+      }
+
+      const redirectUri = oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
+
+      try {
+        const tokenBody = new URLSearchParams({
+          client_id: oauth.clientId,
+          client_secret: oauth.clientSecret,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri,
+        }).toString();
+
+        const tokenRes = await Axios.post('https://discord.com/api/oauth2/token', tokenBody, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 10000,
+        });
+
+        const accessToken = String(tokenRes?.data?.access_token || '').trim();
+        if (!accessToken) {
+          ctx.redirect('/admin?discord=token-failed');
+          return;
+        }
+
+        const meRes = await Axios.get('https://discord.com/api/users/@me', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          timeout: 10000,
+        });
+
+        const discordId = String(meRes?.data?.id || '').trim();
+        if (!discordId) {
+          ctx.redirect('/admin?discord=user-failed');
+          return;
+        }
+
+        const parsed = readServerSettingsJson();
+        const usersMap = resolveAdminUsersFromSettingsObject(parsed);
+        const matched = Object.entries(usersMap).find(([, profile]) => String(profile.discordId || '').trim() === discordId);
+        if (!matched) {
+          ctx.redirect('/admin?discord=not-authorized');
+          return;
+        }
+
+        const adminUser = matched[0];
+        const session = createAdminSession(adminUser);
+        setAdminSessionCookie(ctx, session.id);
+        addAdminLog('console', `Discord login succeeded for admin user='${adminUser}'`);
+        ctx.redirect('/admin?devUi=1&admin=1');
+      } catch (error) {
+        console.error('Discord admin login failed:', error);
+        ctx.redirect('/admin?discord=oauth-error');
+      }
     });
 
     router.post('/api/admin/session/logout', (ctx: any) => {
@@ -1161,6 +2012,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const session = getAdminSessionFromCtx(ctx);
       if (!session) {
         clearAdminSessionCookie(ctx);
+        const prefilledAdminUser = getConfiguredAdminUser();
         ctx.type = 'text/html; charset=utf-8';
         ctx.body = `<!doctype html>
 <html lang="en">
@@ -1231,6 +2083,23 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       cursor: pointer;
     }
     .login-btn:disabled { opacity: .65; cursor: wait; }
+    .login-btn--discord {
+      border-color: rgba(132,153,255,.55);
+      background: linear-gradient(180deg, rgba(132,153,255,.28), rgba(132,153,255,.14));
+      color: #e7edff;
+    }
+    .login-btn--discord:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      filter: grayscale(.35);
+    }
+    .login-discord-note {
+      margin: -4px 0 0;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      display: none;
+    }
     .login-error { min-height: 18px; color: var(--danger); font-size: 13px; }
     .login-note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
   </style>
@@ -1238,50 +2107,237 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 <body>
   <div class="login-card">
     <div class="login-head">
-      <h1 class="login-title">SkyMP Admin Login</h1>
-      <p class="login-sub">Melde dich an, um das Dashboard zu oeffnen.</p>
+      <h1 id="login-title" class="login-title">SkyMP Admin Login</h1>
+      <p id="login-sub" class="login-sub">Melde dich an, um das Dashboard zu oeffnen.</p>
     </div>
     <form class="login-form" id="login-form">
       <label class="login-label">Benutzername
-        <input id="login-user" class="login-input" type="text" autocomplete="username" value="${adminAuth.user}" required />
+        <input id="login-user" class="login-input" type="text" autocomplete="username" value="${prefilledAdminUser}" required />
       </label>
       <label class="login-label">Passwort
         <input id="login-password" class="login-input" type="password" autocomplete="current-password" required />
       </label>
+      <label class="login-label" id="login-password-confirm-wrap" style="display:none;">Passwort bestaetigen
+        <input id="login-password-confirm" class="login-input" type="password" autocomplete="new-password" />
+      </label>
       <button id="login-submit" class="login-btn" type="submit">Einloggen</button>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.1);margin:2px 0;" />
+      <button id="login-discord" class="login-btn login-btn--discord" type="button">&#128640; Mit Discord einloggen</button>
+      <p id="login-discord-note" class="login-discord-note">Discord OAuth ist noch nicht konfiguriert &mdash; siehe <a href="/docs/docs_admin_discord_oauth" style="color:var(--muted);">Dokumentation</a></p>
+      <button id="login-migrate-toggle" class="login-btn" type="button" style="display:none;">Legacy auf sichere Anmeldung migrieren</button>
       <div id="login-error" class="login-error"></div>
-      <p class="login-note">Sicherheitsregel: Nach 10 Minuten ohne Mausklick auf dieser Seite wirst du automatisch ausgeloggt.</p>
+      <p class="login-note" id="login-note">Sicherheitsregel: Nach 10 Minuten ohne Mausklick auf dieser Seite wirst du automatisch ausgeloggt.</p>
     </form>
   </div>
   <script>
     const form = document.getElementById('login-form');
     const userInput = document.getElementById('login-user');
     const passInput = document.getElementById('login-password');
+    const passConfirmWrap = document.getElementById('login-password-confirm-wrap');
+    const passConfirmInput = document.getElementById('login-password-confirm');
     const submitBtn = document.getElementById('login-submit');
+    const discordBtn = document.getElementById('login-discord');
+    const migrateToggleBtn = document.getElementById('login-migrate-toggle');
     const errorBox = document.getElementById('login-error');
+    const loginTitle = document.getElementById('login-title');
+    const loginSub = document.getElementById('login-sub');
+    const loginNote = document.getElementById('login-note');
+
+    let setupMode = false;
+    let migrationMode = false;
+    let canMigrateLegacy = false;
+    let passwordMinLength = ${ADMIN_PASSWORD_MIN_LENGTH};
+    let discordLoginEnabled = false;
+
+    const discordNoteEl = document.getElementById('login-discord-note');
+    const syncDiscordButton = () => {
+      if (!discordBtn) return;
+      const hidden = setupMode || migrationMode;
+      discordBtn.style.display = hidden ? 'none' : 'block';
+      discordBtn.disabled = !discordLoginEnabled;
+      if (discordNoteEl) {
+        discordNoteEl.style.display = (!hidden && !discordLoginEnabled) ? 'block' : 'none';
+      }
+    };
+
+    const showSetupMode = () => {
+      setupMode = true;
+      if (loginTitle) loginTitle.textContent = 'SkyMP Admin Ersteinrichtung';
+      if (loginSub) loginSub.textContent = 'Lege jetzt dein erstes Admin-Konto an.';
+      if (submitBtn) submitBtn.textContent = 'Admin erstellen';
+      if (passConfirmWrap) passConfirmWrap.style.display = 'grid';
+      if (passInput) passInput.setAttribute('autocomplete', 'new-password');
+      if (loginNote) loginNote.textContent = 'Das Passwort wird verschluesselt gespeichert (scrypt).';
+      syncDiscordButton();
+    };
+
+    const showDiscordQueryMessage = () => {
+      const q = new URLSearchParams(window.location.search);
+      const state = String(q.get('discord') || '');
+      if (!state || !errorBox) return;
+
+      if (state === 'not-authorized') {
+        errorBox.textContent = 'Discord-Konto ist keinem Admin-Benutzer zugeordnet.';
+      } else if (state === 'disabled') {
+        errorBox.textContent = 'Discord-Login ist nicht konfiguriert.';
+      } else if (state === 'invalid-state' || state === 'invalid-callback') {
+        errorBox.textContent = 'Discord-Login ist abgelaufen oder ungueltig. Bitte erneut versuchen.';
+      } else {
+        errorBox.textContent = 'Discord-Login fehlgeschlagen. Bitte erneut versuchen.';
+      }
+    };
+
+    const initializeDiscordLogin = async () => {
+      try {
+        const response = await fetch('/api/admin/session/discord/config', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        discordLoginEnabled = Boolean(data?.enabled);
+      } catch {
+        discordLoginEnabled = false;
+      }
+      syncDiscordButton();
+    };
+
+    const initializeLoginMode = async () => {
+      try {
+        const response = await fetch('/api/admin/setup/status', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (typeof data?.passwordMinLength === 'number' && Number.isFinite(data.passwordMinLength)) {
+          passwordMinLength = Math.max(8, Math.floor(data.passwordMinLength));
+        }
+        if (typeof data?.user === 'string' && !userInput.value) {
+          userInput.value = data.user;
+        }
+        if (data?.needsSetup) {
+          showSetupMode();
+        } else if (data?.canMigrateLegacy) {
+          canMigrateLegacy = true;
+          if (migrateToggleBtn) {
+            migrateToggleBtn.style.display = 'block';
+          }
+        }
+      } catch {
+        // ignore setup mode fetch errors
+      }
+    };
+
+    const setMigrationMode = (enabled) => {
+      migrationMode = Boolean(enabled);
+      if (!canMigrateLegacy) return;
+
+      if (migrationMode) {
+        if (loginTitle) loginTitle.textContent = 'SkyMP Legacy Migration';
+        if (loginSub) loginSub.textContent = 'Alte Zugangsdaten bestaetigen und neues sicheres Passwort setzen.';
+        if (submitBtn) submitBtn.textContent = 'Migration ausfuehren';
+        if (migrateToggleBtn) migrateToggleBtn.textContent = 'Zurueck zum Login';
+        if (passConfirmWrap) passConfirmWrap.style.display = 'grid';
+        if (passInput) passInput.setAttribute('autocomplete', 'current-password');
+        if (loginNote) loginNote.textContent = 'Feld Passwort = altes Passwort, Feld Passwort bestaetigen = neues Passwort. Klartext-Credentials werden danach deaktiviert.';
+      } else {
+        if (loginTitle) loginTitle.textContent = 'SkyMP Admin Login';
+        if (loginSub) loginSub.textContent = 'Melde dich an, um das Dashboard zu oeffnen.';
+        if (submitBtn) submitBtn.textContent = 'Einloggen';
+        if (migrateToggleBtn) migrateToggleBtn.textContent = 'Legacy auf sichere Anmeldung migrieren';
+        if (passConfirmWrap) passConfirmWrap.style.display = 'none';
+        if (passInput) passInput.setAttribute('autocomplete', 'current-password');
+        if (loginNote) loginNote.textContent = 'Sicherheitsregel: Nach 10 Minuten ohne Mausklick auf dieser Seite wirst du automatisch ausgeloggt.';
+      }
+      if (errorBox) errorBox.textContent = '';
+      syncDiscordButton();
+    };
+
+    if (migrateToggleBtn) {
+      migrateToggleBtn.addEventListener('click', () => {
+        if (setupMode) return;
+        setMigrationMode(!migrationMode);
+      });
+    }
+
+    void initializeLoginMode();
+    void initializeDiscordLogin();
+    showDiscordQueryMessage();
+
+    if (discordBtn) {
+      discordBtn.addEventListener('click', () => {
+        if (!discordLoginEnabled) return;
+        window.location.href = '/api/admin/session/discord/start';
+      });
+    }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorBox.textContent = '';
       submitBtn.disabled = true;
       try {
-        const response = await fetch('/api/admin/session/login', {
+        const payload = {
+          user: String(userInput.value || ''),
+          password: String(passInput.value || ''),
+        };
+
+        if (setupMode || migrationMode) {
+          const confirmValue = String(passConfirmInput.value || '');
+          const passwordToValidate = migrationMode ? confirmValue : payload.password;
+          if (passwordToValidate.length < passwordMinLength) {
+            throw new Error('password too short');
+          }
+          if (setupMode && payload.password !== confirmValue) {
+            throw new Error('password confirm mismatch');
+          }
+        }
+
+        const response = await fetch(
+          setupMode
+            ? '/api/admin/setup/bootstrap'
+            : (migrationMode ? '/api/admin/setup/migrate-legacy' : '/api/admin/session/login'),
+          {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({
-            user: String(userInput.value || ''),
-            password: String(passInput.value || ''),
-          }),
+          body: JSON.stringify(setupMode
+            ? { ...payload, passwordConfirm: String(passConfirmInput.value || '') }
+            : (migrationMode
+              ? {
+                legacyUser: payload.user,
+                legacyPassword: payload.password,
+                user: payload.user,
+                password: String(passConfirmInput.value || ''),
+                passwordConfirm: String(passConfirmInput.value || ''),
+              }
+              : payload)),
         });
 
         if (!response.ok) {
-          throw new Error('invalid credentials');
+          const text = await response.text().catch(() => '');
+          throw new Error(text || 'request failed');
         }
 
         window.location.href = '/admin?devUi=1&admin=1';
-      } catch {
-        errorBox.textContent = 'Login fehlgeschlagen. Bitte Zugangsdaten pruefen.';
+      } catch (error) {
+        const msg = String(error && error.message ? error.message : '');
+        if ((setupMode || migrationMode) && msg.includes('password too short')) {
+          errorBox.textContent = 'Passwort ist zu kurz.';
+        } else if ((setupMode || migrationMode) && msg.includes('password confirm mismatch')) {
+          errorBox.textContent = 'Passwort-Bestaetigung stimmt nicht ueberein.';
+        } else if (migrationMode && msg.includes('legacy credentials are invalid')) {
+          errorBox.textContent = 'Alte Zugangsdaten sind ungueltig.';
+        } else if (setupMode) {
+          errorBox.textContent = 'Ersteinrichtung fehlgeschlagen. Eingaben pruefen.';
+        } else if (migrationMode) {
+          errorBox.textContent = 'Migration fehlgeschlagen. Daten pruefen.';
+        } else {
+          errorBox.textContent = 'Login fehlgeschlagen. Bitte Zugangsdaten pruefen.';
+        }
       } finally {
         submitBtn.disabled = false;
       }
@@ -1313,7 +2369,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 </head>
 <body>
   <div style="position:fixed;right:12px;top:10px;z-index:1300;background:rgba(10,16,24,.9);border:1px solid rgba(46,199,184,.45);border-radius:999px;padding:6px 10px;color:#c7fff7;font:600 12px/1.2 'Trebuchet MS','Segoe UI',Tahoma,sans-serif;">
-    Session: <span id="admin-session-timer">10:00</span>
+    Auto-Logout in: <span id="admin-session-timer">10:00</span>
     <button id="admin-session-logout" style="margin-left:8px;border:1px solid rgba(255,124,124,.55);background:rgba(255,124,124,.15);color:#ffd8d8;border-radius:999px;padding:2px 8px;cursor:pointer;">Logout</button>
   </div>
   <div id="root"></div>
@@ -1328,6 +2384,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const logoutBtn = document.getElementById('admin-session-logout');
       const idleTimeoutMs = ${ADMIN_SESSION_IDLE_MS};
       let deadlineAt = Date.now() + idleTimeoutMs;
+      let touchInFlight = false;
+      let lastTouchAt = 0;
 
       const formatMs = (ms) => {
         const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -1345,6 +2403,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
 
       const touchSession = async () => {
+        const now = Date.now();
+        if (touchInFlight || (now - lastTouchAt) < 2000) return;
+        touchInFlight = true;
+        lastTouchAt = now;
+
         try {
           const response = await fetch('/api/admin/session/touch', {
             method: 'POST',
@@ -1356,6 +2419,29 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
             window.location.href = '/admin?loggedOut=1';
             return;
           }
+          const data = await response.json();
+          const remainingMs = Number(data?.remainingMs);
+          deadlineAt = Date.now() + (Number.isFinite(remainingMs) ? remainingMs : idleTimeoutMs);
+        } catch {
+          window.location.href = '/admin?loggedOut=1';
+        } finally {
+          touchInFlight = false;
+        }
+      };
+
+      const initializeSession = async () => {
+        try {
+          const response = await fetch('/api/admin/session', {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+          });
+
+          if (!response.ok) {
+            window.location.href = '/admin?loggedOut=1';
+            return;
+          }
+
           const data = await response.json();
           const remainingMs = Number(data?.remainingMs);
           deadlineAt = Date.now() + (Number.isFinite(remainingMs) ? remainingMs : idleTimeoutMs);
@@ -1384,6 +2470,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
 
       setInterval(updateTimer, 1000);
+      void initializeSession();
       updateTimer();
     })();
   </script>
@@ -1405,7 +2492,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     router.use('/api/admin', async (ctx: any, next: any) => {
-      if (ctx.path.startsWith('/api/admin/session/')) {
+      if (ctx.path.startsWith('/api/admin/session/') || ctx.path.startsWith('/api/admin/setup/')) {
         await next();
         return;
       }
@@ -1439,6 +2526,40 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
+    router.post('/api/admin/server/control', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      const action = String(ctx.request.body?.action ?? '').trim().toLowerCase();
+      if (action !== 'stop' && action !== 'restart') {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid action' };
+        return;
+      }
+
+      if (action === 'restart') {
+        try {
+          const child = spawn(process.execPath, process.argv.slice(1), {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          child.unref();
+        } catch (error: any) {
+          ctx.status = 500;
+          ctx.body = { ok: false, error: `failed to spawn restart process: ${error?.message ?? 'unknown error'}` };
+          return;
+        }
+      }
+
+      addAdminLog('console', `Server ${action} requested from admin dashboard`);
+      ctx.body = { ok: true, action, queued: true };
+
+      setTimeout(() => {
+        process.exit(0);
+      }, 200);
+    });
+
     router.get('/api/admin/capabilities', (ctx: any) => {
       const { user, role, capabilities } = getAdminContext(settings, ctx);
       ctx.body = {
@@ -1448,9 +2569,311 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
+    router.get('/api/admin/admin-users', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+
+      try {
+        const parsed = readServerSettingsJson();
+        const usersMap = resolveAdminUsersFromSettingsObject(parsed);
+        const configuredUser = getConfiguredAdminUser();
+        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, configuredUser);
+        if (masterUser && !usersMap[masterUser]) {
+          usersMap[masterUser] = { role: 'admin' };
+        }
+
+        const currentUser = String(getBasicAuthUser(ctx) || '');
+        const totalPermissions = Object.keys(ADMIN_ROLE_DEFAULT_CAPABILITIES.admin).length;
+        const entries = Object.entries(usersMap)
+          .map(([user, profile]) => {
+            const role = normalizeAdminRole(profile.role);
+            const capabilities = getAdminCapabilitiesForRole(settings, role);
+            const permissionsCount = Object.values(capabilities).filter(Boolean).length;
+            return {
+              user,
+              role,
+              discordId: profile.discordId || '',
+              permissionsCount,
+              permissionsLabel: permissionsCount >= totalPermissions
+                ? 'all permissions'
+                : `${permissionsCount} permissions`,
+              auth: {
+                password: user === masterUser,
+                discord: Boolean(profile.discordId),
+              },
+              isCurrentUser: currentUser.length > 0 && user === currentUser,
+              isPrimary: user === masterUser,
+            };
+          })
+          .sort((a, b) => {
+            if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+            return a.user.localeCompare(b.user, 'en', { sensitivity: 'base' });
+          });
+
+        ctx.body = {
+          ok: true,
+          entries,
+          currentUser,
+          primaryUser: masterUser,
+        };
+      } catch (error) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    router.post('/api/admin/admin-users', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      const user = String(ctx.request.body?.user ?? '').trim();
+      const role = normalizeAdminRole(ctx.request.body?.role);
+      const discordId = String(ctx.request.body?.discordId ?? '').trim();
+
+      if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        return;
+      }
+
+      try {
+        const parsed = readServerSettingsJson();
+        const usersMap = resolveAdminUsersFromSettingsObject(parsed);
+        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        usersMap[user] = {
+          role: user === masterUser ? 'admin' : role,
+          ...(discordId ? { discordId } : {}),
+        };
+
+        applyAdminUsersToSettingsObject(parsed, usersMap);
+        writeServerSettingsJson(parsed);
+
+        if (settings.allSettings && typeof settings.allSettings === 'object') {
+          (settings.allSettings as any).adminUiUsers = parsed.adminUiUsers;
+          (settings.allSettings as any).adminUiRoles = parsed.adminUiRoles;
+        }
+
+        const effectiveRole = usersMap[user].role;
+        addAdminLog('console', `Updated admin user '${user}' with role=${effectiveRole}`);
+        ctx.body = { ok: true, user, role: effectiveRole, discordId };
+      } catch (error) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    router.delete('/api/admin/admin-users/:user', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      const user = String(ctx.params.user ?? '').trim();
+      if (!user) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'user is required' };
+        return;
+      }
+
+      try {
+        const parsed = readServerSettingsJson();
+        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        if (user === masterUser) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'cannot delete primary admin user' };
+          return;
+        }
+
+        const usersMap = resolveAdminUsersFromSettingsObject(parsed);
+        if (!Object.prototype.hasOwnProperty.call(usersMap, user)) {
+          ctx.status = 404;
+          ctx.body = { ok: false, error: 'admin user not found' };
+          return;
+        }
+
+        delete usersMap[user];
+        applyAdminUsersToSettingsObject(parsed, usersMap);
+        writeServerSettingsJson(parsed);
+
+        if (settings.allSettings && typeof settings.allSettings === 'object') {
+          (settings.allSettings as any).adminUiUsers = parsed.adminUiUsers;
+          (settings.allSettings as any).adminUiRoles = parsed.adminUiRoles;
+        }
+
+        addAdminLog('console', `Deleted admin user '${user}'`);
+        ctx.body = { ok: true, user };
+      } catch (error) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    router.post('/api/admin/cfg/server-settings', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      try {
+        const parsed = readServerSettingsJson() as Record<string, any>;
+        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        const updates = ctx.request.body || {};
+
+        // Validate and apply updates to server-settings.json
+        if (typeof updates.serverName === 'string') {
+          parsed.serverName = updates.serverName.trim() || 'Skymp Server';
+        }
+        if (typeof updates.port === 'number' && updates.port > 0 && updates.port < 65536) {
+          parsed.port = Math.floor(updates.port);
+        }
+        if (typeof updates.maxPlayers === 'number' && updates.maxPlayers > 0) {
+          parsed.maxPlayers = Math.floor(updates.maxPlayers);
+        }
+        if (typeof updates.defaultLanguage === 'string') {
+          parsed.defaultLanguage = updates.defaultLanguage;
+        }
+
+        // Discord OAuth config
+        if (typeof updates.adminUiDiscordAuth_clientId === 'string') {
+          if (!parsed.adminUiDiscordAuth) {
+            parsed.adminUiDiscordAuth = {};
+          }
+          (parsed.adminUiDiscordAuth as Record<string, any>).clientId = updates.adminUiDiscordAuth_clientId.trim();
+        }
+        if (typeof updates.adminUiDiscordAuth_clientSecret === 'string') {
+          if (!parsed.adminUiDiscordAuth) {
+            parsed.adminUiDiscordAuth = {};
+          }
+          (parsed.adminUiDiscordAuth as Record<string, any>).clientSecret = updates.adminUiDiscordAuth_clientSecret.trim();
+        }
+        if (typeof updates.adminUiDiscordAuth_redirectUri === 'string') {
+          if (!parsed.adminUiDiscordAuth) {
+            parsed.adminUiDiscordAuth = {};
+          }
+          (parsed.adminUiDiscordAuth as Record<string, any>).redirectUri = updates.adminUiDiscordAuth_redirectUri.trim();
+        }
+
+        // Ensure master admin is preserved
+        if (masterUser) {
+          if (!parsed.adminUiUsers) {
+            parsed.adminUiUsers = {};
+          }
+          if (!(parsed.adminUiUsers as Record<string, any>)[masterUser]) {
+            (parsed.adminUiUsers as Record<string, any>)[masterUser] = { role: 'admin' };
+          }
+        }
+
+        // Write back to file
+        writeServerSettingsJson(parsed);
+
+        // Update in-memory settings
+        if (settings.allSettings && typeof settings.allSettings === 'object') {
+          (settings.allSettings as any).serverName = parsed.serverName;
+          (settings.allSettings as any).port = parsed.port;
+          (settings.allSettings as any).maxPlayers = parsed.maxPlayers;
+          (settings.allSettings as any).defaultLanguage = parsed.defaultLanguage;
+          (settings.allSettings as any).adminUiDiscordAuth = parsed.adminUiDiscordAuth;
+        }
+
+        const { user: adminUser } = getAdminContext(settings, ctx);
+        addAdminLog('console', `Updated server settings by admin '${adminUser}'`);
+
+        ctx.body = { ok: true, message: 'Settings updated successfully' };
+      } catch (error) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    router.post('/api/admin/whitelist/add', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      try {
+        const identifier = String(ctx.request.body?.identifier ?? '').trim();
+        if (!identifier) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'identifier is required' };
+          return;
+        }
+
+        // Parse identifier: "type:value" format
+        const colonIndex = identifier.indexOf(':');
+        if (colonIndex < 1 || colonIndex >= identifier.length - 1) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'identifier must be in format "type:value" (e.g., discord:123456)' };
+          return;
+        }
+
+        const type = identifier.slice(0, colonIndex).toLowerCase().trim();
+        const value = identifier.slice(colonIndex + 1).trim();
+
+        if (!value) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: 'identifier value cannot be empty' };
+          return;
+        }
+
+        // Supported types
+        const supportedTypes = ['discord', 'steam', 'license', 'licenseea', 'live', 'xblive', 'fal'];
+        if (!supportedTypes.includes(type)) {
+          ctx.status = 400;
+          ctx.body = { ok: false, error: `unsupported identifier type: ${type}. Supported: ${supportedTypes.join(', ')}` };
+          return;
+        }
+
+        const parsed = readServerSettingsJson() as Record<string, any>;
+        const joinAccess = ensureJoinAccessSettingsInObject(parsed) as Record<string, any>;
+
+        // Add to appropriate list based on type
+        if (type === 'discord') {
+          const approvedDiscordIds = joinAccess.approvedDiscordIds || [];
+          if (!approvedDiscordIds.includes(value)) {
+            approvedDiscordIds.push(value);
+            joinAccess.approvedDiscordIds = approvedDiscordIds;
+          }
+        } else {
+          // All other types go to approvedLicenses
+          const approvedLicenses = joinAccess.approvedLicenses || [];
+          const entry = `${type}:${value}`;
+          if (!approvedLicenses.includes(entry)) {
+            approvedLicenses.push(entry);
+            joinAccess.approvedLicenses = approvedLicenses;
+          }
+        }
+
+        writeServerSettingsJson(parsed);
+
+        if (settings.allSettings && typeof settings.allSettings === 'object') {
+          (settings.allSettings as any).joinAccess = joinAccess;
+        }
+
+        const { user: adminUser } = getAdminContext(settings, ctx);
+        addAdminLog('console', `Added whitelist entry '${identifier}' by admin '${adminUser}'`);
+
+        ctx.body = { ok: true, message: 'Whitelist entry added successfully', identifier };
+      } catch (error) {
+        ctx.status = 500;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
     router.get('/api/admin/players', (ctx: any) => {
+      updatePlayerStatsSnapshot(dataDir);
+      const now = Date.now();
+
       const players = getOnlinePlayerIds().map((userId) => {
         const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
+        const stats = adminPlayerStats.get(userId);
+        const sessionPlayMs = stats?.activeSessionStartedAt ? Math.max(0, now - stats.activeSessionStartedAt) : 0;
+        const playTimeSec = Math.floor(((stats?.totalPlayMs ?? 0) + sessionPlayMs) / 1000);
+
         return {
           userId,
           actorId,
@@ -1458,9 +2881,67 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           ip: safeCall(() => gScampServer.getUserIp(userId), ''),
           pos: actorId ? safeCall(() => gScampServer.getActorPos(actorId), []) : [],
           cellOrWorld: actorId ? safeCall(() => gScampServer.getActorCellOrWorld(actorId), 0) : 0,
+          firstJoinedAt: stats?.firstJoinedAt ?? null,
+          lastConnectionAt: stats?.lastConnectionAt ?? now,
+          playTimeSec,
         };
       });
       ctx.body = players;
+    });
+
+    router.get('/api/admin/players/:userId/inventory', (ctx: any) => {
+      const userId = Number(ctx.params.userId);
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+
+      const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
+      const onlineInventory = actorId
+        ? safeCall(() => gScampServer.get(actorId, 'inventory'), null as unknown)
+        : null;
+      const onlineProfileId = actorId
+        ? safeCall(() => Number(gScampServer.get(actorId, 'profileId')), NaN)
+        : NaN;
+
+      if (onlineInventory && typeof onlineInventory === 'object') {
+        ctx.body = {
+          ok: true,
+          userId,
+          actorId,
+          profileId: Number.isFinite(onlineProfileId) ? onlineProfileId : null,
+          source: 'online',
+          entryCount: getInventoryEntriesCount(onlineInventory),
+          inventory: onlineInventory,
+        };
+        return;
+      }
+
+      const requestedProfileId = Number(ctx.query?.profileId);
+      const candidateProfileId = Number.isFinite(requestedProfileId)
+        ? requestedProfileId
+        : (Number.isFinite(onlineProfileId) ? onlineProfileId : userId);
+
+      const offlineSnapshot = getOfflineInventorySnapshot(dataDir, candidateProfileId);
+      if (!offlineSnapshot) {
+        ctx.status = 404;
+        ctx.body = { ok: false, error: 'inventory snapshot not found' };
+        return;
+      }
+
+      ctx.body = {
+        ok: true,
+        userId,
+        actorId,
+        profileId: offlineSnapshot.profileId,
+        source: 'offline-file',
+        formDesc: offlineSnapshot.formDesc,
+        updatedAt: offlineSnapshot.updatedAt,
+        filePath: path.relative(process.cwd(), offlineSnapshot.filePath),
+        entryCount: getInventoryEntriesCount(offlineSnapshot.inventory),
+        inventory: offlineSnapshot.inventory,
+      };
     });
 
     router.post('/api/admin/players/:userId/kick', (ctx: any) => {
@@ -1472,9 +2953,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
       const reason = String(ctx.request.body?.reason ?? '').trim();
+      const { user: kickAuthor } = getAdminContext(settings, ctx);
+      const kickPlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       safeCall(() => gScampServer.kick(userId), undefined);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       addAdminLog('kick', `Kicked userId=${userId}${reasonSuffix}`);
+      addAdminHistory({ type: 'kick', playerName: kickPlayerName, userId, reason, author: kickAuthor });
+      saveHistory(dataDir);
       ctx.body = { ok: true, userId };
     });
 
@@ -1493,10 +2978,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const expiresAt = isPermanent ? null : Date.now() + durationMinutes * 60 * 1000;
       bannedUsers.set(userId, expiresAt);
       saveBans(dataDir);
+      const { user: banAuthor } = getAdminContext(settings, ctx);
+      const banPlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       safeCall(() => gScampServer.kick(userId), undefined);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       const durationNote = isPermanent ? ' (permanent)' : ` for ${durationMinutes}m`;
       addAdminLog('ban', `Banned userId=${userId}${durationNote}${reasonSuffix}`);
+      addAdminHistory({ type: 'ban', playerName: banPlayerName, userId, reason, author: banAuthor });
+      saveHistory(dataDir);
       ctx.body = { ok: true, userId, banned: true, permanent: isPermanent, expiresAt, durationMinutes: isPermanent ? null : durationMinutes };
     });
 
@@ -1586,8 +3075,12 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const expiresAt = Date.now() + durationMinutes * 60 * 1000;
       mutedUsers.set(userId, expiresAt);
       saveMutes(dataDir);
+      const { user: muteAuthor } = getAdminContext(settings, ctx);
+      const mutePlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       addAdminLog('mute', `Muted userId=${userId} for ${durationMinutes}m${reasonSuffix}`);
+      addAdminHistory({ type: 'mute', playerName: mutePlayerName, userId, reason, author: muteAuthor });
+      saveHistory(dataDir);
       ctx.body = { ok: true, userId, muted: true, expiresAt, durationMinutes };
     });
 
@@ -1839,6 +3332,118 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         .slice(0, limit);
     });
 
+    router.get('/api/admin/player-drops', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      const hoursRaw = Number(ctx.query?.hours);
+      const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 168;
+      const crashLimitRaw = Number(ctx.query?.crashLimit);
+      const crashLimit = Number.isFinite(crashLimitRaw) && crashLimitRaw > 0 ? Math.min(Math.floor(crashLimitRaw), 500) : 50;
+      const sortMode = (ctx.query?.sort as string) === 'alphabetical' ? 'alphabetical' : 'count';
+
+      const since = Date.now() - hours * 60 * 60 * 1000;
+      const periodStart = Math.min(since, processStartedAt);
+
+      const windowDrops = playerDrops.filter((d) => d.ts >= since);
+      const expected = windowDrops.filter((d) => d.type === 'expected');
+      const unexpected = windowDrops.filter((d) => d.type === 'unexpected');
+
+      // Resource kicks: drops with a reason starting with 'resource:'
+      const resourceKickMap = new Map<string, number>();
+      windowDrops.filter((d) => d.reason?.startsWith('resource:')).forEach((d) => {
+        const res = d.reason!.slice('resource:'.length).trim() || 'unknown';
+        resourceKickMap.set(res, (resourceKickMap.get(res) ?? 0) + 1);
+      });
+      const resourceKicks = Array.from(resourceKickMap.entries())
+        .map(([resource, count]) => ({ resource, count }))
+        .sort((a, b) => b.count - a.count);
+
+      // Crash reasons: from unexpected drops with a reason
+      const crashMap = new Map<string, number>();
+      unexpected.filter((d) => d.reason).forEach((d) => {
+        const reason = d.reason!.slice(0, 120);
+        crashMap.set(reason, (crashMap.get(reason) ?? 0) + 1);
+      });
+      let crashReasons = Array.from(crashMap.entries()).map(([reason, count]) => ({ reason, count }));
+      if (sortMode === 'alphabetical') {
+        crashReasons.sort((a, b) => a.reason.localeCompare(b.reason));
+      } else {
+        crashReasons.sort((a, b) => b.count - a.count);
+      }
+      crashReasons = crashReasons.slice(0, crashLimit);
+
+      const windowEnvChanges = environmentChanges.filter((e) => e.ts >= since);
+
+      ctx.body = {
+        expected,
+        unexpected,
+        periodStart,
+        periodEnd: Date.now(),
+        resourceKicks,
+        environmentChanges: windowEnvChanges,
+        crashReasons,
+      };
+    });
+
+    router.get('/api/admin/history', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      const typeFilter = (ctx.query?.type as string | undefined) || '';
+      const searchMode = (ctx.query?.searchMode as string | undefined) || 'actionId';
+      const searchQuery = String(ctx.query?.search ?? '').trim().toLowerCase();
+      const authorFilter = String(ctx.query?.author ?? '').trim().toLowerCase();
+      const limitRaw = Number(ctx.query?.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), MAX_ADMIN_HISTORY) : 200;
+
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const totalWarns = adminHistory.filter((e) => e.type === 'warn').length;
+      const totalBans = adminHistory.filter((e) => e.type === 'ban').length;
+      const newWarns7d = adminHistory.filter((e) => e.type === 'warn' && e.ts >= sevenDaysAgo).length;
+      const newBans7d = adminHistory.filter((e) => e.type === 'ban' && e.ts >= sevenDaysAgo).length;
+      const admins = [...new Set(adminHistory.map((e) => e.author))].filter(Boolean);
+
+      let entries = adminHistory.slice();
+      if (typeFilter && ['warn', 'ban', 'kick', 'mute'].includes(typeFilter)) {
+        entries = entries.filter((e) => e.type === typeFilter);
+      }
+      if (searchQuery) {
+        if (searchMode === 'actionId') {
+          entries = entries.filter((e) => e.id.toLowerCase().includes(searchQuery));
+        } else if (searchMode === 'player') {
+          entries = entries.filter((e) => e.playerName.toLowerCase().includes(searchQuery) || String(e.userId).includes(searchQuery));
+        } else if (searchMode === 'reason') {
+          entries = entries.filter((e) => e.reason.toLowerCase().includes(searchQuery));
+        }
+      }
+      if (authorFilter && authorFilter !== 'any') {
+        entries = entries.filter((e) => e.author.toLowerCase() === authorFilter);
+      }
+
+      entries = entries.slice().sort((a, b) => b.ts - a.ts).slice(0, limit);
+
+      ctx.body = { entries, totalWarns, newWarns7d, totalBans, newBans7d, admins };
+    });
+
+    router.post('/api/admin/menu-debug', (ctx: any) => {
+      const { user } = getAdminContext(settings, ctx);
+      appendAdminMenuDebugLog(dataDir, user, ctx.request.body ?? {});
+      const logPath = getAdminMenuDebugLogPath(dataDir);
+      ctx.body = {
+        ok: true,
+        path: path.relative(process.cwd(), logPath),
+      };
+    });
+
+    router.get('/api/admin/menu-debug', (ctx: any) => {
+      const logPath = getAdminMenuDebugLogPath(dataDir);
+      const exists = fs.existsSync(logPath);
+      const size = exists ? safeCall(() => fs.statSync(logPath).size, 0) : 0;
+      ctx.body = {
+        ok: true,
+        path: path.relative(process.cwd(), logPath),
+        exists,
+        size,
+      };
+    });
+
     router.get('/api/admin/frontend-metrics', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
@@ -2017,6 +3622,14 @@ export const pushClientRuntimeEvents = (entries: Array<{
 
 export const pushServerLogChunk = (level: ServerLogLevel, chunk: string): void => {
   pushServerLogChunkInternal(level, chunk);
+};
+
+export const pushPlayerDrop = (entry: { userId: number; playerName: string; type: 'expected' | 'unexpected'; reason?: string }): void => {
+  addPlayerDrop(entry);
+};
+
+export const pushEnvironmentChange = (type: string, description: string): void => {
+  addEnvironmentChange(type, description);
 };
 
 export const main = (settings: Settings): void => {

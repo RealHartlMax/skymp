@@ -17,6 +17,8 @@ These properties can be modified by a script with `mp.set`.
 - appearance
 - isOpen
 - isDisabled
+- isDead
+- canRespawn
 
 ### Readonly properties
 
@@ -28,3 +30,7 @@ These properties can NOT be modified by a script with `mp.set`.
 - equipment
 - isOnline
 - neighbors ([0xff000000, 0xff000001, ...])
+
+## Related docs
+
+- For detailed revive/respawn flow and behavior, see [Respawn Control System](docs_respawn_control_system.md).

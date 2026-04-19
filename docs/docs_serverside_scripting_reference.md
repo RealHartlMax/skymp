@@ -11,7 +11,7 @@ Creates a new property that would be attached to all instances of `MpActor` and 
 /* Definition */
 interface MakePropertyOptions {
   // If set to false, `updateOwner` would never be invoked
-  // Player's client wouldn't see it's own value of this property
+  // Player's client wouldn't see its own value of this property
   // Reasonable for passwords and other secret values
   isVisibleByOwner: boolean;
 
@@ -34,7 +34,7 @@ interface Mp {
 mp.makeProperty("playerLevel", {
     isVisibleByOwner: true,
     isVisibleByNeighbors: false,
-    updateOwner: "ctx.sp.Game.setPlayerLevel(ctx.value)"
+    updateOwner: "ctx.sp.Game.setPlayerLevel(ctx.value)",
     updateNeighbor: ""
 });
 ```
@@ -42,6 +42,8 @@ mp.makeProperty("playerLevel", {
 ## mp.makeEventSource()
 
 Creates a new event source allowing you to catch specific game situations and pass them to a server as events. See [Events System](docs_events_system.md) for more information.
+
+Custom event names should start with underscore (for example `_onLocalDeath`).
 
 ```typescript
 /* Definition */
@@ -64,8 +66,21 @@ mp.makeEventSource("_onLocalDeath", `
       }
     });
   `);
-);
 mp._onLocalDeath = function(pcFormId) { /* ... */ };
+```
+
+### Handling custom events
+
+```typescript
+mp.makeEventSource("_onPlayerPulse", `
+  ctx.sp.once("update", () => {
+    ctx.sendEvent({ ok: true });
+  });
+`);
+
+mp._onPlayerPulse = function (pcFormId, payload) {
+  console.log("pulse", pcFormId, payload);
+};
 ```
 
 ## mp.get()
@@ -76,7 +91,7 @@ Returns the actual value of a specified property. If there is no value, then `un
 /* Definition */
 interface Mp {
   // ...
-  get(formId: number, propertyName: string): void;
+  get(formId: number, propertyName: string): any;
   // ...
 }
 
@@ -115,3 +130,13 @@ clear(): void;
 // Usage
 mp.clear();
 ```
+
+## Frequently used built-in properties
+
+Some commonly used built-in properties accessed via `mp.get` / `mp.set`:
+
+- `isDead` - actor death state (read/write)
+- `canRespawn` - controls auto-respawn behavior (read/write)
+- `pos`, `angle`, `worldOrCellDesc` - spatial state
+
+For a broader list, see [Properties System](docs_properties_system.md).

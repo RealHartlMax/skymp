@@ -11,7 +11,10 @@ Please note that currently .bsa archives are used only on the client-side. If yo
 
 ## UI
 
-`ui` subdirectory is used for storing your server's user interfaces. It should contain `index.html` and other bundled files.
+`ui` assets are served over the HTTP UI listener (`uiPort`).
+
+- In production builds, frontend artifacts are typically deployed to the server UI bundle location.
+- In local frontend development, `/ui/*` requests can be proxied to webpack dev server (`localhost:1234`) when detected.
 
 ## Manifest
 
@@ -20,3 +23,20 @@ The server generates `manifest.json` during startup. Do not modify that file, co
 `"versionMajor"` is a major version of the Manifest, currently, `1`.
 `"mods"` is an array of objects with fields `"crc32"`, `"filename"` and `"size"`.
 `"loadOrder"` is a load order of mods (taken from `server-settings.json` directly).
+
+## Runtime-generated admin/state files
+
+Depending on enabled features and admin usage, the server may create additional files in `dataDir`, for example:
+
+- `admin-auth.json` - secure admin credential store
+- `admin-bans.json` - persisted ban entries
+- `admin-mutes.json` - persisted mute entries
+- `admin-history.json` - moderation action history
+- `admin-player-stats.json` - tracked player stats used by admin views
+- `admin-menu-debug.log` - optional admin menu debug log output
+
+These files are managed by the server runtime and should not be edited manually while server is running.
+
+## changeForms
+
+`changeForms` stores serialized actor/object state snapshots. Some admin features (for example offline inventory snapshots) read data from this directory.

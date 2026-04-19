@@ -18,7 +18,7 @@ You can find instructions on setting up the project locally below. To get a loca
 
 These tools required regardless of your system:
 
-* 64-bit [NodeJS](https://nodejs.org/en/download/) 17.x *(may also work for older versions)*
+* 64-bit [NodeJS](https://nodejs.org/en/download/) 18+ (current LTS recommended)
 * [Yarn](https://yarnpkg.com/getting-started/install): `npm install --global yarn`
 * [CMake 3.19](https://cmake.org/download/) or higher
 
@@ -183,6 +183,13 @@ The frontend code is located in `skymp5-front` directory and uses **React 18** w
    yarn install
    ```
 
+   If your lockfile and dependency tree are already healthy, you can also use:
+   ```sh
+   npm ci
+   ```
+
+   If `npm ci` fails because of lockfile drift, regenerate with `npm install` and commit the resulting lockfile updates.
+
 ### Development Server
 
 To run the development server with hot module reloading:
@@ -191,6 +198,16 @@ npm run watch
 ```
 
 The application will be available at `http://localhost:3000` (or the configured port).
+
+Other useful modes:
+
+```sh
+# fixed local port (1234)
+npm run watch:fixed
+
+# LAN testing (binds to 0.0.0.0)
+npm run dev:lan
+```
 
 ### Building for Production
 
@@ -248,25 +265,46 @@ npm run test
 
 #### Run Specific Tests
 
-Test for locale key consistency (ensures `en.json`, `ru.json`, `de.json` have matching structure):
+Test for locale key consistency (ensures `en.json`, `ru.json`, `de.json`, `es.json` have matching structure):
 ```sh
 npm run test:i18n
+```
+
+Run frontend unit tests:
+```sh
+npm run test:unit
+```
+
+Run API integration tests:
+```sh
+npm run test:api
+```
+
+Run E2E smoke tests:
+```sh
+npm run test:e2e
+```
+
+Preview UI components in Storybook:
+```sh
+npm run storybook
 ```
 
 There is currently no dedicated `test:coverage` frontend script in `skymp5-front/package.json`.
 
 ### Localization (i18n)
 
-The project supports multiple languages: **English (en)**, **Russian (ru)**, and **German (de)**.
+The project supports multiple languages: **English (en)**, **Russian (ru)**, **German (de)**, and **Spanish (es)**.
 
 Locale files are located in `src/locales/`:
 - `src/locales/en.json`
 - `src/locales/ru.json`
 - `src/locales/de.json`
+- `src/locales/es.json`
 
-All three files must have the **same key structure**. When adding new UI strings:
+All four files must have the **same key structure**. When adding new UI strings:
 
-1. Add the key-value pair to all three locale files with the same structure
+1. Add the key-value pair to all four locale files with the same structure
 2. Run the locale test to verify:
    ```sh
    npm run test:i18n

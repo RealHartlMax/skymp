@@ -30,6 +30,34 @@ This roadmap tracks the development of the admin dashboard, launcher UI, testing
 | Component test coverage expansion | Critical shared UI components have SSR/unit coverage and at least one interaction-oriented test for each high-risk control |
 | Dependency and lockfile recovery | `npm ci`, `npm run lint`, and `npm run build` succeed on a clean clone with committed lockfile state |
 
+## txAdmin Parity Snapshot (Adoption Matrix)
+
+This section compares txAdmin concepts with current SkyMP implementation status.
+
+| txAdmin concept | SkyMP status | Current mapping in SkyMP | Notes |
+| --- | --- | --- | --- |
+| Top navigation + side navigation cohesion | ✅ Works now | Topbar and sidebar are both driven by `activeTab`; section highlight derives from tab | Prevents UI desync between navigation zones |
+| Dashboard overview cards | ✅ Works now | Online, banned, muted, respawn KPIs in main summary cards | Already live in admin shell |
+| Live player list with moderation actions | ✅ Works now | Kick, ban/unban, mute/unmute, message actions in Players tab | Warn flow still missing |
+| Live console view + command sender | ✅ Works now | Console tab + `/api/admin/console` + log view/search | Resource control commands not yet wired |
+| Server logs and runtime metrics pages | ✅ Works now | Logs + metrics + client runtime event summaries | Good baseline for txAdmin-style monitoring |
+| CFG editor in panel | ✅ Works now | `GET/POST /api/admin/cfg/server-settings` + structured form sections | Validation exists; policy scoping still pending |
+| Whitelist/respawn operations panel | ✅ Partial (usable) | Respawn/revive/events are implemented; whitelist is config-driven today | Direct whitelist user workflow not yet a dedicated page |
+| Permission-gated UI/actions | ✅ Partial (usable) | Role capability model (`admin/moderator/viewer`) and endpoint checks | Full txAdmin-grade policy editor/audit UI pending |
+| Server start/stop/restart buttons | ⚠️ Dummy in UI | Buttons are intentionally disabled and show unavailable status | Backend control endpoints and safe process manager needed |
+| Resource start/stop/restart manager | ⚠️ Dummy/placeholder | Resources tab currently inventory-oriented (`.esm`/`.pex`) | Needs runtime resource control backend to be real |
+| Scheduler (timed restart with warnings) | ⚠️ Dummy/planned | No first-class scheduler page/actions yet | Requires backend scheduler state + job APIs |
+| Diagnostics report bundle | 📋 Planned | No txAdmin-like diagnostics exporter UI yet | Could reuse current logs/metrics as data sources |
+| Deep player profile (history, notes, identifiers) | 🔄 In progress | Basic player moderation exists | Missing full profile modal with history/notes/ID drilldown |
+| WebSocket-first real-time updates | 📋 Planned | Polling in use; websocket roadmap exists | Needed for txAdmin-like live feel at scale |
+
+### Recommended Next Adoption Steps
+
+1. Replace sidebar server control dummy buttons with real guarded backend actions (`start/stop/restart`) plus confirmation dialogs.
+2. Expand Players into a txAdmin-style player profile modal (notes/history/identifiers/warn templates).
+3. Add a first scheduler page for planned restarts and warning announcements.
+4. Introduce WebSocket push for dashboard status/player/events to reduce polling lag and API load.
+
 ## Frontend Application Features
 
 | Feature | Status | Details |

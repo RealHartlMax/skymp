@@ -10,6 +10,7 @@ import './styles.scss';
 
 type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics' | 'respawn' | 'events' | 'cfg';
 type TopSection = 'players' | 'history' | 'playerDrops' | 'whitelist' | 'admins' | 'settings' | 'system';
+type ActiveMenuSurface = 'sidebar' | 'topbar';
 type AdminRole = 'admin' | 'moderator' | 'viewer';
 type ServerLogLevel = 'info' | 'error';
 
@@ -33,6 +34,33 @@ interface AdminPlayer {
   actorName: string;
   ip: string;
   pos: PlayerPos | number[];
+  firstJoinedAt?: number | null;
+  lastConnectionAt?: number | null;
+  playTimeSec?: number;
+}
+
+interface AdminPlayerInventoryEntry {
+  baseId?: number;
+  count?: number;
+  worn?: boolean;
+  wornLeft?: boolean;
+  [key: string]: unknown;
+}
+
+interface AdminPlayerInventorySnapshot {
+  ok: boolean;
+  userId: number;
+  actorId: number;
+  profileId: number | null;
+  source: 'online' | 'offline-file';
+  formDesc?: string;
+  updatedAt?: number;
+  filePath?: string;
+  entryCount: number;
+  inventory: {
+    entries?: AdminPlayerInventoryEntry[];
+    [key: string]: unknown;
+  };
 }
 
 interface LogEntry {
@@ -41,6 +69,55 @@ interface LogEntry {
   message: string;
   level?: ServerLogLevel;
 }
+
+type AdminHistoryActionType = 'warn' | 'ban' | 'kick' | 'mute';
+
+interface AdminHistoryEntry {
+  id: string;
+  type: AdminHistoryActionType;
+  playerName: string;
+  userId: number;
+  reason: string;
+  author: string;
+  ts: number;
+}
+
+interface AdminHistoryData {
+  entries: AdminHistoryEntry[];
+  totalWarns: number;
+  newWarns7d: number;
+  totalBans: number;
+  newBans7d: number;
+  admins: string[];
+}
+
+interface PlayerDropEntry {
+  ts: number;
+  userId: number;
+  playerName: string;
+  type: 'expected' | 'unexpected';
+  reason?: string;
+}
+
+interface PlayerDropsData {
+  expected: PlayerDropEntry[];
+  unexpected: PlayerDropEntry[];
+  periodStart: number;
+  periodEnd: number;
+  resourceKicks: Array<{ resource: string; count: number }>;
+  environmentChanges: Array<{ ts: number; type: string; description: string }>;
+  crashReasons: Array<{ reason: string; count: number }>;
+}
+
+const EMPTY_PLAYER_DROPS_DATA: PlayerDropsData = {
+  expected: [],
+  unexpected: [],
+  periodStart: Date.now(),
+  periodEnd: Date.now(),
+  resourceKicks: [],
+  environmentChanges: [],
+  crashReasons: [],
+};
 
 interface MutedUserEntry {
   userId: number;
@@ -174,6 +251,48 @@ interface CfgFormState {
   starterInventory: StarterInventoryRow[];
 }
 
+interface TopbarWhitelistSnapshot {
+  mode: JoinAccessForm['mode'];
+  rejectionMessage: string;
+  approvedLicensesCount: number;
+  approvedDiscordIdsCount: number;
+  discordRoleIdsCount: number;
+  approvedLicenses: string[];
+  approvedDiscordIds: string[];
+}
+
+interface TopbarAdminSnapshot {
+  user: string;
+  role: AdminRole;
+  capabilities: AdminCapabilities;
+}
+
+interface TopbarAdminUserEntry {
+  user: string;
+  role: AdminRole;
+  discordId: string;
+  permissionsCount: number;
+  permissionsLabel: string;
+  auth: {
+    password: boolean;
+    discord: boolean;
+  };
+  isCurrentUser: boolean;
+  isPrimary: boolean;
+}
+
+interface TopbarAdminsData {
+  entries: TopbarAdminUserEntry[];
+  currentUser: string;
+  primaryUser: string;
+}
+
+interface TopbarAdminFormState {
+  user: string;
+  role: AdminRole;
+  discordId: string;
+}
+
 type CfgEditorTab = 'general' | 'access' | 'inventory' | 'json';
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
@@ -206,11 +325,58 @@ const EMPTY_CLIENT_RUNTIME_SUMMARY: ClientRuntimeEventsSummary = {
   events: [],
 };
 
+const EMPTY_TOPBAR_WHITELIST: TopbarWhitelistSnapshot = {
+  mode: 'none',
+  rejectionMessage: '',
+  approvedLicensesCount: 0,
+  approvedDiscordIdsCount: 0,
+  discordRoleIdsCount: 0,
+  approvedLicenses: [],
+  approvedDiscordIds: [],
+};
+
+const EMPTY_TOPBAR_ADMIN: TopbarAdminSnapshot = {
+  user: '',
+  role: 'viewer',
+  capabilities: DEFAULT_CAPABILITIES,
+};
+
+const EMPTY_TOPBAR_ADMINS_DATA: TopbarAdminsData = {
+  entries: [],
+  currentUser: '',
+  primaryUser: '',
+};
+
+const EMPTY_TOPBAR_ADMIN_FORM: TopbarAdminFormState = {
+  user: '',
+  role: 'moderator',
+  discordId: '',
+};
+
 const REFRESH_INTERVAL_MS = 5000;
 const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
+const ADMIN_MENU_DEBUG_KEY = 'skymp.adminDashboard.menuDebug';
+
+interface MenuDebugPayload {
+  source: string;
+  previous: {
+    surface: ActiveMenuSurface;
+    tab: Tab;
+    topSection: TopSection;
+  };
+  next: {
+    surface: ActiveMenuSurface;
+    tab: Tab;
+    topSection: TopSection;
+  };
+  visible: boolean;
+  ts: number;
+}
 
 interface PersistedAdminDashboardState {
+  activeMenuSurface?: ActiveMenuSurface;
   activeTab?: Tab;
+  activeTopSection?: TopSection;
   playerSearch?: string;
   consoleSearch?: string;
   logTypeFilter?: '' | 'kick' | 'ban' | 'mute' | 'console' | 'server';
@@ -362,6 +528,17 @@ const asRole = (value: unknown): AdminRole => {
 const AdminDashboard = () => {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
+  const [menuDebugEnabled] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const debugFromQuery = params.get('adminMenuDebug') === '1';
+      const debugFromStorage = window.localStorage.getItem(ADMIN_MENU_DEBUG_KEY) === '1';
+      return debugFromQuery || debugFromStorage;
+    } catch {
+      return false;
+    }
+  });
+  const [activeMenuSurface, setActiveMenuSurface] = useState<ActiveMenuSurface>('sidebar');
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [activeTopSection, setActiveTopSection] = useState<TopSection>('settings');
   const [status, setStatus] = useState<AdminStatus | null>(null);
@@ -385,8 +562,6 @@ const AdminDashboard = () => {
   const [cfgEditorText, setCfgEditorText] = useState('');
   const [cfgEditorStatus, setCfgEditorStatus] = useState('');
   const [cfgEditorLoading, setCfgEditorLoading] = useState(false);
-  const [cfgEditorSaving, setCfgEditorSaving] = useState(false);
-  const [cfgEditorTab, setCfgEditorTab] = useState<CfgEditorTab>('general');
   const [cfgForm, setCfgForm] = useState<CfgFormState>(DEFAULT_CFG_FORM);
   const [inventoryCategory, setInventoryCategory] = useState<ItemCategory>('weapons');
   const [inventoryItemCode, setInventoryItemCode] = useState('000139B5');
@@ -412,18 +587,105 @@ const AdminDashboard = () => {
   const [clientRuntimeSummary, setClientRuntimeSummary] = useState<ClientRuntimeEventsSummary>(EMPTY_CLIENT_RUNTIME_SUMMARY);
   const [downedPlayers, setDownedPlayers] = useState<DownedPlayerEntry[]>([]);
   const [revivalEvents, setRevivalEvents] = useState<RevivalEventEntry[]>([]);
+  const [topbarHistoryData, setTopbarHistoryData] = useState<AdminHistoryData>({ entries: [], totalWarns: 0, newWarns7d: 0, totalBans: 0, newBans7d: 0, admins: [] });
+  const [historySearch, setHistorySearch] = useState('');
+  const [historySearchMode, setHistorySearchMode] = useState<'actionId' | 'player' | 'reason'>('actionId');
+  const [historyActionType, setHistoryActionType] = useState<'any' | AdminHistoryActionType>('any');
+  const [historyAdmin, setHistoryAdmin] = useState('any');
+  const [topbarPlayerDropsData, setTopbarPlayerDropsData] = useState<PlayerDropsData>(EMPTY_PLAYER_DROPS_DATA);
+  const [dropsHoursWindow, setDropsHoursWindow] = useState(168);
+  const [crashReasonsSortMode, setCrashReasonsSortMode] = useState<'count' | 'alphabetical'>('count');
+  const [crashReasonsLimit, setCrashReasonsLimit] = useState(50);
+  const [topbarWhitelistSnapshot, setTopbarWhitelistSnapshot] = useState<TopbarWhitelistSnapshot>(EMPTY_TOPBAR_WHITELIST);
+  const [topbarAdminSnapshot, setTopbarAdminSnapshot] = useState<TopbarAdminSnapshot>(EMPTY_TOPBAR_ADMIN);
+  const [topbarAdminsData, setTopbarAdminsData] = useState<TopbarAdminsData>(EMPTY_TOPBAR_ADMINS_DATA);
+  const [topbarAdminModalOpen, setTopbarAdminModalOpen] = useState(false);
+  const [topbarAdminEditingUser, setTopbarAdminEditingUser] = useState<string | null>(null);
+  const [topbarAdminForm, setTopbarAdminForm] = useState<TopbarAdminFormState>(EMPTY_TOPBAR_ADMIN_FORM);
+  const [topbarAdminSaving, setTopbarAdminSaving] = useState(false);
+  const [topbarWhitelistModalOpen, setTopbarWhitelistModalOpen] = useState(false);
+  const [topbarWhitelistModalIdentifier, setTopbarWhitelistModalIdentifier] = useState('');
+  const [topbarWhitelistModalSaving, setTopbarWhitelistModalSaving] = useState(false);
+  const [topbarSystemStatus, setTopbarSystemStatus] = useState<AdminStatus | null>(null);
+  const [systemDropdownOpen, setSystemDropdownOpen] = useState(false);
+  const [systemSectionActive, setSystemSectionActive] = useState(false);
+  const [activeSystemSubsection, setActiveSystemSubsection] = useState<'masterActions' | 'diagnostics' | 'consoleLog' | 'actionLog'>('masterActions');
+  const [topbarWhitelistSearch, setTopbarWhitelistSearch] = useState('');
+  const [topbarPlayersSearch, setTopbarPlayersSearch] = useState('');
+  const [cfgEditorTab, setCfgEditorTab] = useState<CfgEditorTab>('general');
+  const [cfgEditorSaving, setCfgEditorSaving] = useState(false);
+  const [topbarPlayersSearchMode, setTopbarPlayersSearchMode] = useState<'name' | 'id'>('name');
+  const [topbarPlayersFilter, setTopbarPlayersFilter] = useState<'none' | 'online'>('none');
   const [eventTypeFilter, setEventTypeFilter] = useState<'' | RevivalEventEntry['type']>('');
   const [eventLimit, setEventLimit] = useState(100);
   const [sendMsgTargetId, setSendMsgTargetId] = useState<number | null>(null);
   const [sendMsgTargetName, setSendMsgTargetName] = useState('');
   const [sendMsgText, setSendMsgText] = useState('');
   const [sendMsgSending, setSendMsgSending] = useState(false);
-  const [sidebarActionSending, setSidebarActionSending] = useState<'kick-all' | 'announcement' | null>(null);
+  const [inventoryTargetUserId, setInventoryTargetUserId] = useState<number | null>(null);
+  const [inventoryTargetName, setInventoryTargetName] = useState('');
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState('');
+  const [playerInventory, setPlayerInventory] = useState<AdminPlayerInventorySnapshot | null>(null);
+  const [sidebarActionSending, setSidebarActionSending] = useState<'kick-all' | 'announcement' | 'server-stop' | 'server-restart' | null>(null);
   const [muteDurationMinutes, setMuteDurationMinutes] = useState(10);
   const [moderationReason, setModerationReason] = useState('');
   const [nowTs, setNowTs] = useState(() => Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+  const menuDebugPrevRef = useRef<{ surface: ActiveMenuSurface; tab: Tab; topSection: TopSection } | null>(null);
+
+  const emitMenuDebug = useCallback((payload: MenuDebugPayload) => {
+    if (!menuDebugEnabled) return;
+
+    const stamp = new Date(payload.ts).toISOString();
+    console.info(
+      `[AdminMenuDebug ${stamp}] ${payload.source} | ${payload.previous.surface}/${payload.previous.tab}/${payload.previous.topSection} -> ${payload.next.surface}/${payload.next.tab}/${payload.next.topSection} | visible=${payload.visible}`,
+    );
+    window.dispatchEvent(new CustomEvent('adminMenuDebug', { detail: payload }));
+
+    void fetch('/api/admin/menu-debug', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {
+      // keep UI stable even when debug transport fails
+    });
+  }, [menuDebugEnabled]);
+
+  useEffect(() => {
+    if (!menuDebugEnabled) return;
+    try {
+      window.localStorage.setItem(ADMIN_MENU_DEBUG_KEY, '1');
+    } catch {
+      // ignore storage write failures
+    }
+
+    const startupPayload: MenuDebugPayload = {
+      source: 'debug-enabled',
+      previous: { surface: activeMenuSurface, tab: activeTab, topSection: activeTopSection },
+      next: { surface: activeMenuSurface, tab: activeTab, topSection: activeTopSection },
+      visible,
+      ts: Date.now(),
+    };
+    emitMenuDebug(startupPayload);
+
+    void fetch('/api/admin/menu-debug', {
+      method: 'GET',
+      credentials: 'same-origin',
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const info = await response.json().catch(() => null);
+        if (info?.path) {
+          console.info(`[AdminMenuDebug] log file path: ${info.path} (exists=${Boolean(info.exists)}, size=${Number(info.size) || 0})`);
+        }
+      })
+      .catch(() => {
+        // ignore debug status read failures
+      });
+  }, [emitMenuDebug, menuDebugEnabled]);
 
   useEffect(() => {
     try {
@@ -431,8 +693,15 @@ const AdminDashboard = () => {
       if (!raw) return;
       const persisted = JSON.parse(raw) as PersistedAdminDashboardState;
 
+      if (persisted.activeMenuSurface === 'sidebar' || persisted.activeMenuSurface === 'topbar') {
+        setActiveMenuSurface(persisted.activeMenuSurface);
+      }
+
       if (persisted.activeTab && ['overview', 'players', 'console', 'logs', 'metrics', 'respawn', 'events', 'cfg'].includes(persisted.activeTab)) {
         setActiveTab(persisted.activeTab);
+      }
+      if (persisted.activeTopSection && ['players', 'history', 'playerDrops', 'whitelist', 'admins', 'settings', 'system'].includes(persisted.activeTopSection)) {
+        setActiveTopSection(persisted.activeTopSection);
       }
       if (typeof persisted.playerSearch === 'string') setPlayerSearch(persisted.playerSearch);
       if (typeof persisted.consoleSearch === 'string') setConsoleSearch(persisted.consoleSearch);
@@ -468,7 +737,9 @@ const AdminDashboard = () => {
   useEffect(() => {
     try {
       const stateToPersist: PersistedAdminDashboardState = {
+        activeMenuSurface,
         activeTab,
+        activeTopSection,
         playerSearch,
         consoleSearch,
         logTypeFilter,
@@ -488,7 +759,32 @@ const AdminDashboard = () => {
     } catch {
       // ignore storage write failures
     }
-  }, [activeTab, cfgEditorText, consoleHistory, consoleSearch, eventLimit, eventTypeFilter, logLevelFilter, logLimit, logSinceMinutes, logTextFilter, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
+  }, [activeMenuSurface, activeTab, activeTopSection, cfgEditorText, consoleHistory, consoleSearch, eventLimit, eventTypeFilter, logLevelFilter, logLimit, logSinceMinutes, logTextFilter, logTypeFilter, metricLimit, metricNameFilter, metricSourceFilter, playerSearch]);
+
+  useEffect(() => {
+    const current = { surface: activeMenuSurface, tab: activeTab, topSection: activeTopSection };
+    const previous = menuDebugPrevRef.current;
+
+    if (!previous) {
+      menuDebugPrevRef.current = current;
+      return;
+    }
+
+    if (
+      previous.surface !== current.surface
+      || previous.tab !== current.tab
+      || previous.topSection !== current.topSection
+    ) {
+      emitMenuDebug({
+        source: 'state-change',
+        previous,
+        next: current,
+        visible,
+        ts: Date.now(),
+      });
+      menuDebugPrevRef.current = current;
+    }
+  }, [activeMenuSurface, activeTab, activeTopSection, emitMenuDebug, visible]);
 
   const setForbiddenAwareStatus = useCallback((res: Response, successText: string) => {
     if (res.ok) {
@@ -819,6 +1115,151 @@ const AdminDashboard = () => {
       },
       starterInventory,
     };
+  }, []);
+
+  const fetchTopbarHistory = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/history?limit=200');
+      if (!res.ok) {
+        setTopbarHistoryData({ entries: [], totalWarns: 0, newWarns7d: 0, totalBans: 0, newBans7d: 0, admins: [] });
+        return;
+      }
+
+      const payload = await res.json() as Partial<AdminHistoryData>;
+      setTopbarHistoryData({
+        entries: Array.isArray(payload.entries) ? payload.entries : [],
+        totalWarns: Number(payload.totalWarns ?? 0),
+        newWarns7d: Number(payload.newWarns7d ?? 0),
+        totalBans: Number(payload.totalBans ?? 0),
+        newBans7d: Number(payload.newBans7d ?? 0),
+        admins: Array.isArray(payload.admins) ? payload.admins : [],
+      });
+    } catch {
+      setTopbarHistoryData({ entries: [], totalWarns: 0, newWarns7d: 0, totalBans: 0, newBans7d: 0, admins: [] });
+    }
+  }, []);
+
+  const fetchTopbarPlayerDrops = useCallback(async (hours = 168, crashLimit = 50, sort: 'count' | 'alphabetical' = 'count') => {
+    try {
+      const res = await fetch(`/api/admin/player-drops?hours=${hours}&crashLimit=${crashLimit}&sort=${sort}`);
+      if (!res.ok) {
+        setTopbarPlayerDropsData(EMPTY_PLAYER_DROPS_DATA);
+        return;
+      }
+      const payload = await res.json() as Partial<PlayerDropsData>;
+      setTopbarPlayerDropsData({
+        expected: Array.isArray(payload.expected) ? payload.expected : [],
+        unexpected: Array.isArray(payload.unexpected) ? payload.unexpected : [],
+        periodStart: Number(payload.periodStart ?? Date.now()),
+        periodEnd: Number(payload.periodEnd ?? Date.now()),
+        resourceKicks: Array.isArray(payload.resourceKicks) ? payload.resourceKicks : [],
+        environmentChanges: Array.isArray(payload.environmentChanges) ? payload.environmentChanges : [],
+        crashReasons: Array.isArray(payload.crashReasons) ? payload.crashReasons : [],
+      });
+    } catch {
+      setTopbarPlayerDropsData(EMPTY_PLAYER_DROPS_DATA);
+    }
+  }, []);
+
+  const fetchTopbarCfgSnapshots = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/cfg/server-settings');
+      if (!res.ok) {
+        setTopbarWhitelistSnapshot(EMPTY_TOPBAR_WHITELIST);
+        return;
+      }
+
+      const payload = await res.json();
+      const jsonText = typeof payload?.json === 'string' ? payload.json : JSON.stringify(payload ?? {}, null, 2);
+      const cfg = mapJsonToCfgForm(jsonText);
+
+      setTopbarWhitelistSnapshot({
+        mode: cfg.joinAccess.mode,
+        rejectionMessage: cfg.joinAccess.rejectionMessage,
+        approvedLicensesCount: parseCommaList(cfg.joinAccess.approvedLicenses).length,
+        approvedDiscordIdsCount: parseCommaList(cfg.joinAccess.approvedDiscordIds).length,
+        discordRoleIdsCount: parseCommaList(cfg.joinAccess.discordRoleIds).length,
+        approvedLicenses: parseCommaList(cfg.joinAccess.approvedLicenses),
+        approvedDiscordIds: parseCommaList(cfg.joinAccess.approvedDiscordIds),
+      });
+    } catch {
+      setTopbarWhitelistSnapshot(EMPTY_TOPBAR_WHITELIST);
+    }
+  }, [mapJsonToCfgForm]);
+
+  const fetchTopbarAdminSnapshot = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/capabilities');
+      if (!res.ok) {
+        setTopbarAdminSnapshot(EMPTY_TOPBAR_ADMIN);
+        return;
+      }
+
+      const payload = await res.json();
+      setTopbarAdminSnapshot({
+        user: typeof payload?.user === 'string' ? payload.user : '',
+        role: asRole(payload?.role),
+        capabilities: {
+          canKick: typeof payload?.canKick === 'boolean' ? payload.canKick : DEFAULT_CAPABILITIES.canKick,
+          canBan: typeof payload?.canBan === 'boolean' ? payload.canBan : DEFAULT_CAPABILITIES.canBan,
+          canUnban: typeof payload?.canUnban === 'boolean' ? payload.canUnban : DEFAULT_CAPABILITIES.canUnban,
+          canConsole: typeof payload?.canConsole === 'boolean' ? payload.canConsole : DEFAULT_CAPABILITIES.canConsole,
+          canViewLogs: typeof payload?.canViewLogs === 'boolean' ? payload.canViewLogs : DEFAULT_CAPABILITIES.canViewLogs,
+          canMessage: typeof payload?.canMessage === 'boolean' ? payload.canMessage : DEFAULT_CAPABILITIES.canMessage,
+          canMute: typeof payload?.canMute === 'boolean' ? payload.canMute : DEFAULT_CAPABILITIES.canMute,
+          canUnmute: typeof payload?.canUnmute === 'boolean' ? payload.canUnmute : DEFAULT_CAPABILITIES.canUnmute,
+          canManageRespawn: typeof payload?.canManageRespawn === 'boolean' ? payload.canManageRespawn : DEFAULT_CAPABILITIES.canManageRespawn,
+        },
+      });
+    } catch {
+      setTopbarAdminSnapshot(EMPTY_TOPBAR_ADMIN);
+    }
+  }, []);
+
+  const fetchTopbarAdmins = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/admin-users');
+      if (!res.ok) {
+        setTopbarAdminsData(EMPTY_TOPBAR_ADMINS_DATA);
+        return;
+      }
+      const payload = await res.json();
+      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+      setTopbarAdminsData({
+        entries: entries.map((entry: any) => ({
+          user: String(entry?.user || ''),
+          role: asRole(entry?.role),
+          discordId: String(entry?.discordId || ''),
+          permissionsCount: Number(entry?.permissionsCount || 0),
+          permissionsLabel: String(entry?.permissionsLabel || ''),
+          auth: {
+            password: Boolean(entry?.auth?.password),
+            discord: Boolean(entry?.auth?.discord),
+          },
+          isCurrentUser: Boolean(entry?.isCurrentUser),
+          isPrimary: Boolean(entry?.isPrimary),
+        })),
+        currentUser: String(payload?.currentUser || ''),
+        primaryUser: String(payload?.primaryUser || ''),
+      });
+    } catch {
+      setTopbarAdminsData(EMPTY_TOPBAR_ADMINS_DATA);
+    }
+  }, []);
+
+  const fetchTopbarSystemStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/status');
+      if (!res.ok) {
+        setTopbarSystemStatus(null);
+        return;
+      }
+
+      const payload = await res.json();
+      setTopbarSystemStatus(payload as AdminStatus);
+    } catch {
+      setTopbarSystemStatus(null);
+    }
   }, []);
 
   const mergeCfgFormIntoJson = useCallback((rawJsonText: string, form: CfgFormState): string => {
@@ -1160,6 +1601,30 @@ const AdminDashboard = () => {
     }
   };
 
+  const showPlayerInventory = async (userId: number, actorName: string) => {
+    setInventoryTargetUserId(userId);
+    setInventoryTargetName(actorName || String(userId));
+    setInventoryError('');
+    setPlayerInventory(null);
+    setInventoryLoading(true);
+
+    try {
+      const res = await fetch(`/api/admin/players/${userId}/inventory`);
+      const payload = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        const errorText = typeof payload.error === 'string' ? payload.error : t('adminDashboard.apiError');
+        setInventoryError(errorText);
+        return;
+      }
+
+      setPlayerInventory(payload as AdminPlayerInventorySnapshot);
+    } catch {
+      setInventoryError(t('adminDashboard.apiError'));
+    } finally {
+      setInventoryLoading(false);
+    }
+  };
+
   const kickAllPlayers = async () => {
     if (!capabilities.canKick || players.length === 0) return;
     if (!window.confirm(`${t('adminDashboard.kickAllConfirm')} (${players.length})?`)) return;
@@ -1176,6 +1641,46 @@ const AdminDashboard = () => {
       if (res.ok) {
         await fetchData();
       }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setSidebarActionSending(null);
+    }
+  };
+
+  const runServerControl = async (action: 'stop' | 'restart') => {
+    if (!capabilities.canConsole) {
+      setStatusMsg(t('adminDashboard.noPermission'));
+      return;
+    }
+
+    const confirmMessage = action === 'stop'
+      ? t('adminDashboard.stopServer')
+      : t('adminDashboard.restartServer');
+
+    if (!window.confirm(`${confirmMessage}?`)) return;
+
+    setSidebarActionSending(action === 'stop' ? 'server-stop' : 'server-restart');
+    try {
+      const res = await fetch('/api/admin/server/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+
+      if (res.status === 403) {
+        setStatusMsg(t('adminDashboard.noPermission'));
+        return;
+      }
+
+      if (!res.ok) {
+        setStatusMsg(t('adminDashboard.apiError'));
+        return;
+      }
+
+      setStatusMsg(action === 'stop'
+        ? t('adminDashboard.stopServer')
+        : t('adminDashboard.restartServer'));
     } catch {
       setStatusMsg(t('adminDashboard.apiError'));
     } finally {
@@ -1342,6 +1847,17 @@ const AdminDashboard = () => {
     setClientRuntimeSummary(EMPTY_CLIENT_RUNTIME_SUMMARY);
     setDownedPlayers([]);
     setRevivalEvents([]);
+    setTopbarHistoryData({ entries: [], totalWarns: 0, newWarns7d: 0, totalBans: 0, newBans7d: 0, admins: [] });
+    setTopbarPlayerDropsData(EMPTY_PLAYER_DROPS_DATA);
+    setTopbarWhitelistSnapshot(EMPTY_TOPBAR_WHITELIST);
+    setTopbarWhitelistSearch('');
+    setTopbarAdminSnapshot(EMPTY_TOPBAR_ADMIN);
+    setTopbarAdminsData(EMPTY_TOPBAR_ADMINS_DATA);
+    setTopbarAdminModalOpen(false);
+    setTopbarAdminEditingUser(null);
+    setTopbarAdminForm(EMPTY_TOPBAR_ADMIN_FORM);
+    setTopbarAdminSaving(false);
+    setTopbarSystemStatus(null);
     setSendMsgTargetId(null);
     setSendMsgText('');
     setModerationReason('');
@@ -1395,6 +1911,8 @@ const AdminDashboard = () => {
   }, [consoleLines, serverConsoleEntries]);
 
   useEffect(() => {
+    if (!visible || activeMenuSurface !== 'sidebar') return;
+
     if (activeTab === 'console') void fetchServerConsole();
     if (activeTab === 'logs') void fetchLogs();
     if (activeTab === 'metrics') void fetchFrontendMetrics();
@@ -1402,68 +1920,124 @@ const AdminDashboard = () => {
     if (activeTab === 'respawn') void fetchDownedPlayers();
     if (activeTab === 'events') void fetchRevivalEvents();
     if (activeTab === 'cfg') void loadCfgEditor();
-  }, [activeTab, fetchClientRuntimeEvents, fetchDownedPlayers, fetchFrontendMetrics, fetchLogs, fetchRevivalEvents, fetchServerConsole, loadCfgEditor]);
+  }, [activeMenuSurface, activeTab, fetchClientRuntimeEvents, fetchDownedPlayers, fetchFrontendMetrics, fetchLogs, fetchRevivalEvents, fetchServerConsole, loadCfgEditor, visible]);
 
   useEffect(() => {
-    if (!visible || activeTab !== 'console') return;
+    if (!visible || activeMenuSurface !== 'topbar') return;
+
+    if (activeTopSection === 'history') {
+      void fetchTopbarHistory();
+      return;
+    }
+
+    if (activeTopSection === 'playerDrops') {
+      void fetchTopbarPlayerDrops(dropsHoursWindow, crashReasonsLimit, crashReasonsSortMode);
+      return;
+    }
+
+    if (activeTopSection === 'whitelist' || activeTopSection === 'settings') {
+      void fetchTopbarCfgSnapshots();
+      return;
+    }
+
+    if (activeTopSection === 'admins') {
+      void Promise.all([fetchTopbarAdminSnapshot(), fetchTopbarAdmins()]);
+      return;
+    }
+
+    if (activeTopSection === 'system') {
+      void fetchTopbarSystemStatus();
+    }
+  }, [activeMenuSurface, activeTopSection, crashReasonsLimit, crashReasonsSortMode, dropsHoursWindow, fetchTopbarAdminSnapshot, fetchTopbarAdmins, fetchTopbarCfgSnapshots, fetchTopbarHistory, fetchTopbarPlayerDrops, fetchTopbarSystemStatus, visible]);
+
+  useEffect(() => {
+    if (!visible || activeMenuSurface !== 'topbar') return;
+    const id = setInterval(() => {
+      if (activeTopSection === 'history') {
+        void fetchTopbarHistory();
+      }
+      if (activeTopSection === 'playerDrops') {
+        void fetchTopbarPlayerDrops(dropsHoursWindow, crashReasonsLimit, crashReasonsSortMode);
+        setNowTs(Date.now());
+      }
+      if (activeTopSection === 'whitelist' || activeTopSection === 'settings') {
+        void fetchTopbarCfgSnapshots();
+      }
+      if (activeTopSection === 'admins') {
+        void Promise.all([fetchTopbarAdminSnapshot(), fetchTopbarAdmins()]);
+      }
+      if (activeTopSection === 'system') {
+        void fetchTopbarSystemStatus();
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [activeMenuSurface, activeTopSection, crashReasonsLimit, crashReasonsSortMode, dropsHoursWindow, fetchTopbarAdminSnapshot, fetchTopbarAdmins, fetchTopbarCfgSnapshots, fetchTopbarHistory, fetchTopbarPlayerDrops, fetchTopbarSystemStatus, visible]);
+
+  useEffect(() => {
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'console') return;
     const id = setInterval(() => {
       void fetchServerConsole();
     }, 2000);
     return () => clearInterval(id);
-  }, [activeTab, fetchServerConsole, visible]);
+  }, [activeMenuSurface, activeTab, fetchServerConsole, visible]);
 
   useEffect(() => {
-    if (!visible || activeTab !== 'logs') return;
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'logs') return;
     const id = setInterval(() => {
       void fetchLogs();
     }, 2000);
     return () => clearInterval(id);
-  }, [activeTab, fetchLogs, visible]);
+  }, [activeMenuSurface, activeTab, fetchLogs, visible]);
 
   useEffect(() => {
-    if (!visible || activeTab !== 'respawn') return;
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'respawn') return;
     const id = setInterval(() => {
       void fetchDownedPlayers();
       setNowTs(Date.now());
     }, 2000);
     return () => clearInterval(id);
-  }, [activeTab, fetchDownedPlayers, visible]);
+  }, [activeMenuSurface, activeTab, fetchDownedPlayers, visible]);
 
   useEffect(() => {
-    if (!visible || activeTab !== 'events') return;
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'events') return;
     const id = setInterval(() => {
       void fetchRevivalEvents();
     }, 2000);
     return () => clearInterval(id);
-  }, [activeTab, fetchRevivalEvents, visible]);
+  }, [activeMenuSurface, activeTab, fetchRevivalEvents, visible]);
 
   useEffect(() => {
     setLogBeforeTs(null);
   }, [logLevelFilter, logTypeFilter, logLimit, logSinceMinutes]);
 
   useEffect(() => {
-    if (activeTab === 'players' && (capabilities.canBan || capabilities.canUnban || capabilities.canMute || capabilities.canUnmute)) {
+    if (
+      visible
+      && activeMenuSurface === 'sidebar'
+      && activeTab === 'players'
+      && (capabilities.canBan || capabilities.canUnban || capabilities.canMute || capabilities.canUnmute)
+    ) {
       void fetchBans();
       void fetchMutes();
     }
-  }, [activeTab, capabilities.canBan, capabilities.canMute, capabilities.canUnban, capabilities.canUnmute, fetchBans, fetchMutes]);
+  }, [activeMenuSurface, activeTab, capabilities.canBan, capabilities.canMute, capabilities.canUnban, capabilities.canUnmute, fetchBans, fetchMutes, visible]);
 
   useEffect(() => {
-    if (!visible || activeTab !== 'players' || !(capabilities.canMute || capabilities.canUnmute)) return;
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'players' || !(capabilities.canMute || capabilities.canUnmute)) return;
     const id = setInterval(() => {
       void fetchMutes();
     }, 15000);
     return () => clearInterval(id);
-  }, [activeTab, capabilities.canMute, capabilities.canUnmute, fetchMutes, visible]);
+  }, [activeMenuSurface, activeTab, capabilities.canMute, capabilities.canUnmute, fetchMutes, visible]);
 
   const hasTimedBans = bannedUsers.some((b) => !b.permanent);
   useEffect(() => {
-    if (!visible || activeTab !== 'players' || (mutedUsers.length === 0 && !hasTimedBans)) return;
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'players' || (mutedUsers.length === 0 && !hasTimedBans)) return;
     const id = setInterval(() => {
       setNowTs(Date.now());
     }, 1000);
     return () => clearInterval(id);
-  }, [activeTab, hasTimedBans, mutedUsers.length, visible]);
+  }, [activeMenuSurface, activeTab, hasTimedBans, mutedUsers.length, visible]);
 
   const metricSourceOptions = useMemo(() => metricSummary.sources.map((item) => item.name), [metricSummary.sources]);
   const filteredCatalogItems = useMemo(
@@ -1495,6 +2069,84 @@ const AdminDashboard = () => {
   }, [filteredCatalogItems]);
 
   const filteredPlayers = filterAdminPlayers(players, playerSearch);
+  const filteredTopbarPlayers = useMemo(() => {
+    const needle = topbarPlayersSearch.trim().toLowerCase();
+    const source = topbarPlayersFilter === 'online' ? players : players;
+    if (!needle) return source;
+
+    if (topbarPlayersSearchMode === 'id') {
+      return source.filter((player) => String(player.userId).includes(needle));
+    }
+
+    return source.filter((player) => {
+      const name = String(player.actorName || '').toLowerCase();
+      return name.includes(needle);
+    });
+  }, [players, topbarPlayersFilter, topbarPlayersSearch, topbarPlayersSearchMode]);
+  const nowMinus24h = useMemo(() => Date.now() - 24 * 60 * 60 * 1000, [lastUpdated]);
+  const topbarNewPlayers24h = useMemo(
+    () => filteredTopbarPlayers.filter((player) => Number.isFinite(player.firstJoinedAt) && Number(player.firstJoinedAt) >= nowMinus24h).length,
+    [filteredTopbarPlayers, nowMinus24h],
+  );
+
+  const filteredHistory = useMemo(() => {
+    const needle = historySearch.trim().toLowerCase();
+    let result = topbarHistoryData.entries;
+    if (historyActionType !== 'any') {
+      result = result.filter((e) => e.type === historyActionType);
+    }
+    if (historyAdmin !== 'any') {
+      result = result.filter((e) => e.author.toLowerCase() === historyAdmin.toLowerCase());
+    }
+    if (needle) {
+      if (historySearchMode === 'actionId') {
+        result = result.filter((e) => e.id.toLowerCase().includes(needle));
+      } else if (historySearchMode === 'player') {
+        result = result.filter((e) => e.playerName.toLowerCase().includes(needle) || String(e.userId).includes(needle));
+      } else if (historySearchMode === 'reason') {
+        result = result.filter((e) => e.reason.toLowerCase().includes(needle));
+      }
+    }
+    return result;
+  }, [topbarHistoryData.entries, historySearch, historySearchMode, historyActionType, historyAdmin]);
+  const whitelistModeLabel = useMemo(() => {
+    if (topbarWhitelistSnapshot.mode === 'approvedLicense') return t('adminDashboard.cfgJoinMode_approvedLicense', { defaultValue: 'Approved License' });
+    if (topbarWhitelistSnapshot.mode === 'discordMember') return t('adminDashboard.cfgJoinMode_discordMember', { defaultValue: 'Discord Member' });
+    if (topbarWhitelistSnapshot.mode === 'discordRoles') return t('adminDashboard.cfgJoinMode_discordRoles', { defaultValue: 'Discord Roles' });
+    return t('adminDashboard.cfgJoinMode_none', { defaultValue: 'Disabled' });
+  }, [t, topbarWhitelistSnapshot.mode]);
+  const whitelistApprovedEntries = useMemo(() => {
+    const merged = [
+      ...topbarWhitelistSnapshot.approvedLicenses.map((value, index) => ({
+        id: `license-${index}-${value}`,
+        source: 'license' as const,
+        value,
+      })),
+      ...topbarWhitelistSnapshot.approvedDiscordIds.map((value, index) => ({
+        id: `discord-${index}-${value}`,
+        source: 'discord' as const,
+        value,
+      })),
+    ];
+
+    const needle = topbarWhitelistSearch.trim().toLowerCase();
+    if (!needle) return merged;
+    return merged.filter((entry) => entry.value.toLowerCase().includes(needle));
+  }, [topbarWhitelistSearch, topbarWhitelistSnapshot.approvedDiscordIds, topbarWhitelistSnapshot.approvedLicenses]);
+  const whitelistPendingJoinCount = useMemo(
+    () => topbarWhitelistSnapshot.approvedLicensesCount + topbarWhitelistSnapshot.approvedDiscordIdsCount,
+    [topbarWhitelistSnapshot.approvedDiscordIdsCount, topbarWhitelistSnapshot.approvedLicensesCount],
+  );
+  const whitelistNotInApprovedLicenseMode = topbarWhitelistSnapshot.mode !== 'approvedLicense';
+  const formatPeriodTs = useCallback((ts: number) => {
+    const date = new Date(ts);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mon = String(date.getMonth() + 1).padStart(2, '0');
+    const yy = String(date.getFullYear()).slice(-2);
+    return `${hh}:${mm} - ${dd}.${mon}.${yy}`;
+  }, []);
   const oldestLogTs = logEntries.length > 0 ? logEntries[logEntries.length - 1].ts : null;
   const activeMutedUsers = useMemo(
     () => mutedUsers
@@ -1530,8 +2182,123 @@ const AdminDashboard = () => {
     setLogBeforeTs(null);
   };
 
+  const openTopbarAdminCreateModal = () => {
+    setTopbarAdminEditingUser(null);
+    setTopbarAdminForm(EMPTY_TOPBAR_ADMIN_FORM);
+    setTopbarAdminModalOpen(true);
+  };
+
+  const openTopbarAdminEditModal = (entry: TopbarAdminUserEntry) => {
+    setTopbarAdminEditingUser(entry.user);
+    setTopbarAdminForm({
+      user: entry.user,
+      role: entry.role,
+      discordId: entry.discordId,
+    });
+    setTopbarAdminModalOpen(true);
+  };
+
+  const saveTopbarAdminUser = async () => {
+    const user = topbarAdminForm.user.trim();
+    if (!user) {
+      setStatusMsg(t('adminDashboard.topAdmins_userRequired', { defaultValue: 'Username is required.' }));
+      return;
+    }
+
+    setTopbarAdminSaving(true);
+    try {
+      const res = await fetch('/api/admin/admin-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user,
+          role: topbarAdminForm.role,
+          discordId: topbarAdminForm.discordId.trim(),
+        }),
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (payload?.error) {
+          setStatusMsg(String(payload.error));
+        } else {
+          setForbiddenAwareStatus(res, '');
+        }
+        return;
+      }
+
+      setStatusMsg(topbarAdminEditingUser
+        ? t('adminDashboard.topAdmins_updated', { defaultValue: 'Admin updated.' })
+        : t('adminDashboard.topAdmins_added', { defaultValue: 'Admin added.' }));
+      setTopbarAdminModalOpen(false);
+      await Promise.all([fetchTopbarAdminSnapshot(), fetchTopbarAdmins()]);
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setTopbarAdminSaving(false);
+    }
+  };
+
+  const saveTopbarWhitelistEntry = async () => {
+    const identifier = topbarWhitelistModalIdentifier.trim();
+    if (!identifier) {
+      setStatusMsg(t('adminDashboard.topWhitelist_identifierRequired', { defaultValue: 'Identifier is required.' }));
+      return;
+    }
+
+    setTopbarWhitelistModalSaving(true);
+    try {
+      const res = await fetch('/api/admin/whitelist/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier }),
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (payload?.error) {
+          setStatusMsg(String(payload.error));
+        } else {
+          setForbiddenAwareStatus(res, '');
+        }
+        return;
+      }
+
+      setStatusMsg(t('adminDashboard.topWhitelist_added', { defaultValue: 'Player added to whitelist.' }));
+      setTopbarWhitelistModalOpen(false);
+      await fetchTopbarCfgSnapshots();
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setTopbarWhitelistModalSaving(false);
+    }
+  };
+
+  const deleteTopbarAdminUser = async (user: string) => {
+    if (!window.confirm(`${t('adminDashboard.topAdmins_deleteConfirm', { defaultValue: 'Delete admin user' })}: ${user}?`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/admin-users/${encodeURIComponent(user)}`, { method: 'DELETE' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (payload?.error) {
+          setStatusMsg(String(payload.error));
+        } else {
+          setForbiddenAwareStatus(res, '');
+        }
+        return;
+      }
+      setStatusMsg(t('adminDashboard.topAdmins_deleted', { defaultValue: 'Admin deleted.' }));
+      await Promise.all([fetchTopbarAdminSnapshot(), fetchTopbarAdmins()]);
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    }
+  };
+
   const resetDashboardPreferences = () => {
+    setActiveMenuSurface('sidebar');
     setActiveTab('overview');
+    setActiveTopSection('settings');
     setPlayerSearch('');
     setConsoleSearch('');
     setLogTypeFilter('');
@@ -1566,27 +2333,6 @@ const AdminDashboard = () => {
     { key: 'events', label: t('adminDashboard.tabEvents') },
   ];
 
-  const defaultTabByTopSection: Record<TopSection, Tab> = {
-    players: 'players',
-    history: 'logs',
-    playerDrops: 'events',
-    whitelist: 'respawn',
-    admins: 'console',
-    settings: 'overview',
-    system: 'metrics',
-  };
-
-  const topSectionByTab: Record<Tab, TopSection> = {
-    overview: 'settings',
-    players: 'players',
-    console: 'admins',
-    logs: 'history',
-    metrics: 'system',
-    respawn: 'whitelist',
-    events: 'playerDrops',
-    cfg: 'settings',
-  };
-
   const topNavItems: Array<{ key: TopSection; label: string }> = [
     { key: 'players', label: t('adminDashboard.topTx_players') },
     { key: 'history', label: t('adminDashboard.topTx_history') },
@@ -1594,7 +2340,6 @@ const AdminDashboard = () => {
     { key: 'whitelist', label: t('adminDashboard.topTx_whitelist') },
     { key: 'admins', label: t('adminDashboard.topTx_admins') },
     { key: 'settings', label: t('adminDashboard.topTx_settings') },
-    { key: 'system', label: t('adminDashboard.topTx_system') },
   ];
 
   const capabilityRows: Array<{ key: keyof AdminCapabilities; label: string }> = [
@@ -1611,6 +2356,7 @@ const AdminDashboard = () => {
 
   const sideNavItems: Array<{ key: Tab; label: string }> = [
     { key: 'overview', label: t('adminDashboard.sideTx_dashboard') },
+    { key: 'players', label: t('adminDashboard.sideTx_players', { defaultValue: 'Players' }) },
     { key: 'console', label: t('adminDashboard.sideTx_liveConsole') },
     { key: 'metrics', label: t('adminDashboard.sideTx_resources') },
     { key: 'logs', label: t('adminDashboard.sideTx_serverLog') },
@@ -1619,12 +2365,12 @@ const AdminDashboard = () => {
     { key: 'events', label: t('adminDashboard.sideTx_revivalJournal') },
   ];
 
-  useEffect(() => {
-    setActiveTopSection(topSectionByTab[activeTab]);
-  }, [activeTab]);
-
-  const currentTabLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? t('adminDashboard.title');
+  const currentSidebarLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? t('adminDashboard.title');
   const currentTopSectionLabel = topNavItems.find((item) => item.key === activeTopSection)?.label ?? t('adminDashboard.subtitle');
+  const currentMainTitle = activeMenuSurface === 'topbar' ? currentTopSectionLabel : currentSidebarLabel;
+  const currentMainSubtitle = activeMenuSurface === 'topbar'
+    ? t('adminDashboard.topbarSectionSubtitle', { defaultValue: 'Topbar Section' })
+    : t('adminDashboard.sidebarSectionSubtitle', { defaultValue: 'Sidebar Section' });
   const playerRatio = status && status.maxPlayers > 0
     ? status.online / status.maxPlayers
     : 0;
@@ -1651,6 +2397,10 @@ const AdminDashboard = () => {
     },
   ];
   const visibleRailPlayers = filteredPlayers.slice(0, 12);
+  const selectedInventoryEntries = useMemo(() => {
+    const rawEntries = playerInventory?.inventory?.entries;
+    return Array.isArray(rawEntries) ? rawEntries : [];
+  }, [playerInventory]);
   const normalizedConsoleSearch = consoleSearch.trim().toLowerCase();
   const filteredServerConsoleEntries = useMemo(
     () => normalizedConsoleSearch.length === 0
@@ -1666,6 +2416,12 @@ const AdminDashboard = () => {
     [logEntries, normalizedLogTextFilter],
   );
   const hasActiveLogFilters = Boolean(logTypeFilter || logLevelFilter || logSinceMinutes || normalizedLogTextFilter);
+  const topbarSystemHealthState = useMemo(() => {
+    if (!topbarSystemStatus) return 'unknown' as const;
+    if (topbarSystemStatus.online >= topbarSystemStatus.maxPlayers && topbarSystemStatus.maxPlayers > 0) return 'critical' as const;
+    if (topbarSystemStatus.online >= Math.max(1, Math.floor(topbarSystemStatus.maxPlayers * 0.9))) return 'warn' as const;
+    return 'ok' as const;
+  }, [topbarSystemStatus]);
 
   if (!visible) return <></>;
 
@@ -1690,16 +2446,84 @@ const AdminDashboard = () => {
                 data-testid={`admin-top-tab-${key}`}
                 role="tab"
                 aria-selected={activeTopSection === key}
-                aria-controls={`admin-panel-${defaultTabByTopSection[key]}`}
+                aria-controls={`admin-top-panel-${key}`}
                 className={`admin-dashboard__topnav-item${activeTopSection === key ? ' admin-dashboard__topnav-item--active' : ''}`}
                 onClick={() => {
+                  emitMenuDebug({
+                    source: `topbar-click:${key}`,
+                    previous: { surface: activeMenuSurface, tab: activeTab, topSection: activeTopSection },
+                    next: { surface: 'topbar', tab: activeTab, topSection: key },
+                    visible,
+                    ts: Date.now(),
+                  });
                   setActiveTopSection(key);
-                  setActiveTab(defaultTabByTopSection[key]);
+                  setActiveMenuSurface('topbar');
+                  setSystemSectionActive(false);
                 }}
               >
                 {label}
               </button>
             ))}
+
+            {/* System Dropdown Menu */}
+            <div className="admin-dashboard__topnav-dropdown">
+              <button
+                type="button"
+                className={`admin-dashboard__topnav-item admin-dashboard__topnav-item--dropdown${systemDropdownOpen ? ' admin-dashboard__topnav-item--active' : ''}`}
+                onClick={() => setSystemDropdownOpen(!systemDropdownOpen)}
+              >
+                {t('adminDashboard.topTx_system', { defaultValue: 'System' })}
+                <span className="admin-dashboard__dropdown-arrow">▾</span>
+              </button>
+              {systemDropdownOpen && (
+                <div className="admin-dashboard__topnav-dropdown-menu">
+                  <button
+                    type="button"
+                    className={`admin-dashboard__dropdown-item${activeSystemSubsection === 'masterActions' ? ' admin-dashboard__dropdown-item--active' : ''}`}
+                    onClick={() => {
+                      setActiveSystemSubsection('masterActions');
+                      setSystemSectionActive(true);
+                      setSystemDropdownOpen(false);
+                    }}
+                  >
+                    {t('adminDashboard.system_masterActions', { defaultValue: 'Master Actions' })}
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-dashboard__dropdown-item${activeSystemSubsection === 'diagnostics' ? ' admin-dashboard__dropdown-item--active' : ''}`}
+                    onClick={() => {
+                      setActiveSystemSubsection('diagnostics');
+                      setSystemSectionActive(true);
+                      setSystemDropdownOpen(false);
+                    }}
+                  >
+                    {t('adminDashboard.system_diagnostics', { defaultValue: 'Diagnostics' })}
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-dashboard__dropdown-item${activeSystemSubsection === 'consoleLog' ? ' admin-dashboard__dropdown-item--active' : ''}`}
+                    onClick={() => {
+                      setActiveSystemSubsection('consoleLog');
+                      setSystemSectionActive(true);
+                      setSystemDropdownOpen(false);
+                    }}
+                  >
+                    {t('adminDashboard.system_consoleLog', { defaultValue: 'Console Log' })}
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-dashboard__dropdown-item${activeSystemSubsection === 'actionLog' ? ' admin-dashboard__dropdown-item--active' : ''}`}
+                    onClick={() => {
+                      setActiveSystemSubsection('actionLog');
+                      setSystemSectionActive(true);
+                      setSystemDropdownOpen(false);
+                    }}
+                  >
+                    {t('adminDashboard.system_actionLog', { defaultValue: 'Action Log' })}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="admin-dashboard__topbar-meta">
@@ -1729,7 +2553,17 @@ const AdminDashboard = () => {
                     id={`admin-tab-${item.key}`}
                     data-testid={`admin-tab-${item.key}`}
                     className={`admin-dashboard__nav-item${activeTab === item.key ? ' admin-dashboard__nav-item--active' : ''}`}
-                    onClick={() => setActiveTab(item.key)}
+                    onClick={() => {
+                      emitMenuDebug({
+                        source: `sidebar-click:${item.key}`,
+                        previous: { surface: activeMenuSurface, tab: activeTab, topSection: activeTopSection },
+                        next: { surface: 'sidebar', tab: item.key, topSection: activeTopSection },
+                        visible,
+                        ts: Date.now(),
+                      });
+                      setActiveTab(item.key);
+                      setActiveMenuSurface('sidebar');
+                    }}
                   >
                     {item.label}
                   </button>
@@ -1766,17 +2600,21 @@ const AdminDashboard = () => {
               <div className="admin-dashboard__sidebar-actions-grid">
                 <button
                   type="button"
-                  className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--disabled"
-                  onClick={() => setStatusMsg(t('adminDashboard.serverControlUnavailable'))}
+                  className="admin-dashboard__sidebar-action"
+                  disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                  onClick={() => { void runServerControl('stop'); }}
                 >
-                  {status ? t('adminDashboard.stopServer') : t('adminDashboard.startServer')}
+                  {sidebarActionSending === 'server-stop'
+                    ? t('adminDashboard.loading')
+                    : (status ? t('adminDashboard.stopServer') : t('adminDashboard.startServer'))}
                 </button>
                 <button
                   type="button"
-                  className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--disabled"
-                  onClick={() => setStatusMsg(t('adminDashboard.serverControlUnavailable'))}
+                  className="admin-dashboard__sidebar-action"
+                  disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                  onClick={() => { void runServerControl('restart'); }}
                 >
-                  {t('adminDashboard.restartServer')}
+                  {sidebarActionSending === 'server-restart' ? t('adminDashboard.loading') : t('adminDashboard.restartServer')}
                 </button>
                 <button
                   type="button"
@@ -1809,29 +2647,861 @@ const AdminDashboard = () => {
           <main className="admin-dashboard__main">
             <div className="admin-dashboard__main-header">
               <div>
-                <h2 className="admin-dashboard__main-title">{currentTabLabel}</h2>
-                <p className="admin-dashboard__main-subtitle">{currentTopSectionLabel}</p>
+                <h2 className="admin-dashboard__main-title">{currentMainTitle}</h2>
+                <p className="admin-dashboard__main-subtitle">{currentMainSubtitle}</p>
               </div>
               <div className="admin-dashboard__main-meta">
                 {lastUpdated && <span className="admin-dashboard__updated">{t('adminDashboard.updated')}: {lastUpdated}</span>}
               </div>
             </div>
 
-            <div className="admin-dashboard__summary-grid">
-              {summaryCards.map((card) => (
-                <div key={card.label} className={`admin-dashboard__summary-card${card.tone === 'warn' ? ' admin-dashboard__summary-card--warn' : ''}`}>
-                  <div className="admin-dashboard__summary-label">{card.label}</div>
-                  <div className={`admin-dashboard__summary-value${card.tone === 'accent' ? ' admin-dashboard__summary-value--accent' : ''}${card.tone === 'warn' ? ' admin-dashboard__summary-value--warn' : ''}`}>{card.value}</div>
+            {/* System Dropdown Subsections */}
+            {systemSectionActive && (
+              <section
+                className="admin-dashboard__system-hub"
+                id="admin-top-panel-system"
+                role="tabpanel"
+                aria-labelledby="admin-top-tab-system"
+                aria-label={t('adminDashboard.systemHubTitle', { defaultValue: 'System Hub' })}
+              >
+                <div className="admin-dashboard__system-hub-header">
+                  <h3 className="admin-dashboard__system-hub-title">
+                    {activeSystemSubsection === 'masterActions' && t('adminDashboard.system_masterActions', { defaultValue: 'Master Actions' })}
+                    {activeSystemSubsection === 'diagnostics' && t('adminDashboard.system_diagnostics', { defaultValue: 'Diagnostics' })}
+                    {activeSystemSubsection === 'consoleLog' && t('adminDashboard.system_consoleLog', { defaultValue: 'Console Log' })}
+                    {activeSystemSubsection === 'actionLog' && t('adminDashboard.system_actionLog', { defaultValue: 'Action Log' })}
+                  </h3>
+                  <span className={`admin-dashboard__system-health-pill admin-dashboard__system-health-pill--${topbarSystemHealthState}`}>
+                    {t(`adminDashboard.systemHealth_${topbarSystemHealthState}`, { defaultValue: topbarSystemHealthState })}
+                  </span>
                 </div>
-              ))}
-            </div>
+
+                {/* Master Actions Subsection */}
+                {activeSystemSubsection === 'masterActions' && (
+                  <div className="admin-dashboard__system-hub-grid">
+                    <article className="admin-dashboard__system-card">
+                      <h4>{t('adminDashboard.systemCard_process', { defaultValue: 'Process Control' })}</h4>
+                      <p>{t('adminDashboard.systemCard_processDesc', { defaultValue: 'Restart, stop and supervise the running server process.' })}</p>
+                      <div className="admin-dashboard__system-card-actions">
+                        <button
+                          type="button"
+                          className="admin-dashboard__sidebar-action"
+                          disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          onClick={() => { void runServerControl('restart'); }}
+                        >
+                          {t('adminDashboard.restartServer')}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-dashboard__sidebar-action"
+                          disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          onClick={() => { void runServerControl('stop'); }}
+                        >
+                          {t('adminDashboard.stopServer')}
+                        </button>
+                      </div>
+                    </article>
+                  </div>
+                )}
+
+                {/* Diagnostics Subsection */}
+                {activeSystemSubsection === 'diagnostics' && (
+                  <div className="admin-dashboard__system-hub-grid">
+                    <article className="admin-dashboard__system-card">
+                      <h4>{t('adminDashboard.systemCard_observability', { defaultValue: 'Observability' })}</h4>
+                      <p>{t('adminDashboard.systemCard_observabilityDesc', { defaultValue: 'Inspect runtime logs, metrics and live console output.' })}</p>
+                      <div className="admin-dashboard__system-card-meta">{t('adminDashboard.online')}: {topbarSystemStatus ? `${topbarSystemStatus.online}/${topbarSystemStatus.maxPlayers}` : '-'}</div>
+                      <div className="admin-dashboard__system-card-meta">{t('adminDashboard.uptime')}: {topbarSystemStatus ? formatAdminUptime(topbarSystemStatus.uptimeSec) : '-'}</div>
+                    </article>
+                  </div>
+                )}
+
+                {/* Console Log Subsection */}
+                {activeSystemSubsection === 'consoleLog' && (
+                  <div className="admin-dashboard__system-hub-grid">
+                    <article className="admin-dashboard__system-card">
+                      <h4>{t('adminDashboard.system_consoleLog', { defaultValue: 'Console Log' })}</h4>
+                      <p>{t('adminDashboard.system_consoleLogDesc', { defaultValue: 'Real-time server console output and debug logs.' })}</p>
+                      <div className="admin-dashboard__system-card-meta">
+                        {serverConsoleEntries.length > 0 ? `${serverConsoleEntries.length} entries` : 'No logs available'}
+                      </div>
+                    </article>
+                  </div>
+                )}
+
+                {/* Action Log Subsection */}
+                {activeSystemSubsection === 'actionLog' && (
+                  <div className="admin-dashboard__system-hub-grid">
+                    <article className="admin-dashboard__system-card">
+                      <h4>{t('adminDashboard.system_actionLog', { defaultValue: 'Action Log' })}</h4>
+                      <p>{t('adminDashboard.system_actionLogDesc', { defaultValue: 'Audit trail of all administrative actions and changes.' })}</p>
+                      <div className="admin-dashboard__system-card-meta">
+                        {serverConsoleEntries.length > 0 ? `${serverConsoleEntries.length} actions logged` : 'No actions logged'}
+                      </div>
+                    </article>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeMenuSurface === 'topbar' && activeTopSection === 'system' && (
+              <section
+                className="admin-dashboard__system-hub"
+                id="admin-top-panel-system"
+                role="tabpanel"
+                aria-labelledby="admin-top-tab-system"
+                aria-label={t('adminDashboard.systemHubTitle', { defaultValue: 'System Hub' })}
+              >
+                <div className="admin-dashboard__system-hub-header">
+                  <h3 className="admin-dashboard__system-hub-title">{t('adminDashboard.systemHubTitle', { defaultValue: 'System Hub' })}</h3>
+                  <span className={`admin-dashboard__system-health-pill admin-dashboard__system-health-pill--${topbarSystemHealthState}`}>
+                    {t(`adminDashboard.systemHealth_${topbarSystemHealthState}`, { defaultValue: topbarSystemHealthState })}
+                  </span>
+                </div>
+
+                <div className="admin-dashboard__system-hub-grid">
+                  <article className="admin-dashboard__system-card">
+                    <h4>{t('adminDashboard.systemCard_process', { defaultValue: 'Process Control' })}</h4>
+                    <p>{t('adminDashboard.systemCard_processDesc', { defaultValue: 'Restart, stop and supervise the running server process.' })}</p>
+                    <div className="admin-dashboard__system-card-actions">
+                      <button
+                        type="button"
+                        className="admin-dashboard__sidebar-action"
+                        disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                        onClick={() => { void runServerControl('restart'); }}
+                      >
+                        {t('adminDashboard.restartServer')}
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-dashboard__sidebar-action"
+                        disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                        onClick={() => { void runServerControl('stop'); }}
+                      >
+                        {t('adminDashboard.stopServer')}
+                      </button>
+                    </div>
+                  </article>
+
+                  <article className="admin-dashboard__system-card">
+                    <h4>{t('adminDashboard.systemCard_observability', { defaultValue: 'Observability' })}</h4>
+                    <p>{t('adminDashboard.systemCard_observabilityDesc', { defaultValue: 'Inspect runtime logs, metrics and live console output.' })}</p>
+                    <div className="admin-dashboard__system-card-meta">{t('adminDashboard.online')}: {topbarSystemStatus ? `${topbarSystemStatus.online}/${topbarSystemStatus.maxPlayers}` : '-'}</div>
+                    <div className="admin-dashboard__system-card-meta">{t('adminDashboard.uptime')}: {topbarSystemStatus ? formatAdminUptime(topbarSystemStatus.uptimeSec) : '-'}</div>
+                  </article>
+
+                  <article className="admin-dashboard__system-card">
+                    <h4>{t('adminDashboard.systemCard_configuration', { defaultValue: 'Configuration' })}</h4>
+                    <p>{t('adminDashboard.systemCard_configurationDesc', { defaultValue: 'Open the CFG editor and apply controlled server setting changes.' })}</p>
+                    <div className="admin-dashboard__system-card-meta">{t('adminDashboard.systemCard_configurationMeta', { defaultValue: 'Configuration topics run in the dedicated Settings topbar page.' })}</div>
+                  </article>
+                </div>
+              </section>
+            )}
+
+            {activeMenuSurface === 'topbar' && activeTopSection !== 'system' && (
+              <section className="admin-dashboard__system-hub" id={`admin-top-panel-${activeTopSection}`} role="tabpanel" aria-labelledby={`admin-top-tab-${activeTopSection}`}>
+                <div className="admin-dashboard__system-hub-header">
+                  <h3 className="admin-dashboard__system-hub-title">{currentTopSectionLabel}</h3>
+                  <span className="admin-dashboard__system-health-pill admin-dashboard__system-health-pill--ok">
+                    {t('adminDashboard.topbarPageLive', { defaultValue: 'Live' })}
+                  </span>
+                </div>
+
+                <div className="admin-dashboard__system-hub-grid">
+                  {activeTopSection === 'players' && (
+                    <section className="admin-dashboard__tx-players" aria-label={t('adminDashboard.topTx_players')}>
+                      <div className="admin-dashboard__tx-players-cards">
+                        <article className="admin-dashboard__tx-players-card">
+                          <div className="admin-dashboard__tx-players-card-title">{t('adminDashboard.topPlayers_total', { defaultValue: 'Total Players' })}</div>
+                          <div className="admin-dashboard__tx-players-card-value">{players.length}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-players-card">
+                          <div className="admin-dashboard__tx-players-card-title">{t('adminDashboard.topPlayers_last24h', { defaultValue: 'Players Last 24h' })}</div>
+                          <div className="admin-dashboard__tx-players-card-value">{filteredTopbarPlayers.length}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-players-card">
+                          <div className="admin-dashboard__tx-players-card-title">{t('adminDashboard.topPlayers_new24h', { defaultValue: 'New Players Last 24h' })}</div>
+                          <div className="admin-dashboard__tx-players-card-value">+{topbarNewPlayers24h}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-players-card">
+                          <div className="admin-dashboard__tx-players-card-title">{t('adminDashboard.topPlayers_new7d', { defaultValue: 'New Players Last 7d' })}</div>
+                          <div className="admin-dashboard__tx-players-card-value">+0</div>
+                        </article>
+                      </div>
+
+                      <div className="admin-dashboard__tx-players-toolbar">
+                        <div className="admin-dashboard__tx-players-toolbar-top">
+                          <input
+                            className="admin-dashboard__tx-players-search"
+                            type="text"
+                            placeholder={t('adminDashboard.topPlayersSearchPlaceholder', { defaultValue: 'Enter a player name' })}
+                            aria-label={t('adminDashboard.topPlayersSearchPlaceholder', { defaultValue: 'Enter a player name' })}
+                            value={topbarPlayersSearch}
+                            onChange={(e) => setTopbarPlayersSearch(e.target.value)}
+                          />
+                          <select
+                            className="admin-dashboard__tx-players-select"
+                            value={topbarPlayersSearchMode}
+                            onChange={(e) => setTopbarPlayersSearchMode(e.target.value as 'name' | 'id')}
+                            aria-label={t('adminDashboard.topPlayersSearchBy', { defaultValue: 'Search by' })}
+                          >
+                            <option value="name">{t('adminDashboard.topPlayersSearchByName', { defaultValue: 'Search by Name' })}</option>
+                            <option value="id">{t('adminDashboard.topPlayersSearchById', { defaultValue: 'Search by ID' })}</option>
+                          </select>
+                          <select
+                            className="admin-dashboard__tx-players-select"
+                            value={topbarPlayersFilter}
+                            onChange={(e) => setTopbarPlayersFilter(e.target.value as 'none' | 'online')}
+                            aria-label={t('adminDashboard.topPlayersFilter', { defaultValue: 'Filter' })}
+                          >
+                            <option value="none">{t('adminDashboard.topPlayersFilterNone', { defaultValue: 'No filters' })}</option>
+                            <option value="online">{t('adminDashboard.topPlayersFilterOnline', { defaultValue: 'Only online' })}</option>
+                          </select>
+                          <button type="button" className="admin-dashboard__tx-players-more">
+                            {t('adminDashboard.topPlayersMore', { defaultValue: 'More' })}
+                          </button>
+                        </div>
+                        <p className="admin-dashboard__tx-players-help">{t('adminDashboard.topPlayersHelp', { defaultValue: 'Search players by their last display name.' })}</p>
+                      </div>
+
+                      <div className="admin-dashboard__tx-players-table-wrap">
+                        <table className="admin-dashboard__tx-players-table">
+                          <thead>
+                            <tr>
+                              <th>{t('adminDashboard.topPlayersDisplayName', { defaultValue: 'Display Name' })}</th>
+                              <th>{t('adminDashboard.topPlayersPlayTime', { defaultValue: 'Play Time' })}</th>
+                              <th>{t('adminDashboard.topPlayersFirstJoined', { defaultValue: 'First Joined' })}</th>
+                              <th>{t('adminDashboard.topPlayersLastConnection', { defaultValue: 'Last Connection' })}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredTopbarPlayers.map((player) => (
+                              <tr key={`topbar-player-row-${player.userId}`}>
+                                <td>{player.actorName || `userId=${player.userId}`}</td>
+                                <td>{formatAdminUptime(Math.max(0, Math.floor(Number(player.playTimeSec || 0))))}</td>
+                                <td>{Number.isFinite(player.firstJoinedAt) ? formatAdminTime(Number(player.firstJoinedAt)) : '-'}</td>
+                                <td>{Number.isFinite(player.lastConnectionAt) ? formatAdminTime(Number(player.lastConnectionAt)) : '-'}</td>
+                              </tr>
+                            ))}
+                            {filteredTopbarPlayers.length === 0 && (
+                              <tr>
+                                <td colSpan={4}>{t('adminDashboard.noPlayers')}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+
+                  {activeTopSection === 'history' && (
+                    <section className="admin-dashboard__tx-history" aria-label={t('adminDashboard.topTx_history', { defaultValue: 'History' })}>
+                      <div className="admin-dashboard__tx-history-cards">
+                        <article className="admin-dashboard__tx-history-card">
+                          <div className="admin-dashboard__tx-history-card-icon">&#9651;</div>
+                          <div className="admin-dashboard__tx-history-card-title">{t('adminDashboard.topHistory_totalWarns', { defaultValue: 'Total Warns' })}</div>
+                          <div className="admin-dashboard__tx-history-card-value">{topbarHistoryData.totalWarns}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-history-card">
+                          <div className="admin-dashboard__tx-history-card-icon">&#9651;</div>
+                          <div className="admin-dashboard__tx-history-card-title">{t('adminDashboard.topHistory_newWarns7d', { defaultValue: 'New Warns Last 7d' })}</div>
+                          <div className="admin-dashboard__tx-history-card-value">+{topbarHistoryData.newWarns7d}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-history-card">
+                          <div className="admin-dashboard__tx-history-card-icon">&#128296;</div>
+                          <div className="admin-dashboard__tx-history-card-title">{t('adminDashboard.topHistory_totalBans', { defaultValue: 'Total Bans' })}</div>
+                          <div className="admin-dashboard__tx-history-card-value">{topbarHistoryData.totalBans}</div>
+                        </article>
+                        <article className="admin-dashboard__tx-history-card">
+                          <div className="admin-dashboard__tx-history-card-icon">&#128296;</div>
+                          <div className="admin-dashboard__tx-history-card-title">{t('adminDashboard.topHistory_newBans7d', { defaultValue: 'New Bans Last 7d' })}</div>
+                          <div className="admin-dashboard__tx-history-card-value">+{topbarHistoryData.newBans7d}</div>
+                        </article>
+                      </div>
+
+                      <div className="admin-dashboard__tx-history-toolbar">
+                        <div className="admin-dashboard__tx-history-toolbar-top">
+                          <input
+                            className="admin-dashboard__tx-history-search"
+                            type="text"
+                            placeholder={historySearchMode === 'actionId' ? 'XXXX-XXXX' : historySearchMode === 'player' ? t('adminDashboard.topHistory_searchPlayer', { defaultValue: 'Player name or ID' }) : t('adminDashboard.topHistory_searchReason', { defaultValue: 'Reason text' })}
+                            value={historySearch}
+                            onChange={(e) => setHistorySearch(e.target.value)}
+                            aria-label={t('adminDashboard.topHistory_search', { defaultValue: 'Search' })}
+                          />
+                          <select
+                            className="admin-dashboard__tx-history-select"
+                            value={historySearchMode}
+                            onChange={(e) => setHistorySearchMode(e.target.value as 'actionId' | 'player' | 'reason')}
+                            aria-label={t('adminDashboard.topHistory_searchBy', { defaultValue: 'Search by' })}
+                          >
+                            <option value="actionId">{t('adminDashboard.topHistory_byActionId', { defaultValue: 'Search by Action ID' })}</option>
+                            <option value="player">{t('adminDashboard.topHistory_byPlayer', { defaultValue: 'Search by Player' })}</option>
+                            <option value="reason">{t('adminDashboard.topHistory_byReason', { defaultValue: 'Search by Reason' })}</option>
+                          </select>
+                          <select
+                            className="admin-dashboard__tx-history-select"
+                            value={historyActionType}
+                            onChange={(e) => setHistoryActionType(e.target.value as 'any' | AdminHistoryActionType)}
+                            aria-label={t('adminDashboard.topHistory_filterType', { defaultValue: 'Filter by type' })}
+                          >
+                            <option value="any">{t('adminDashboard.topHistory_anyType', { defaultValue: 'Any type' })}</option>
+                            <option value="warn">{t('adminDashboard.topHistory_typeWarn', { defaultValue: 'Warn' })}</option>
+                            <option value="ban">{t('adminDashboard.topHistory_typeBan', { defaultValue: 'Ban' })}</option>
+                            <option value="kick">{t('adminDashboard.topHistory_typeKick', { defaultValue: 'Kick' })}</option>
+                            <option value="mute">{t('adminDashboard.topHistory_typeMute', { defaultValue: 'Mute' })}</option>
+                          </select>
+                          <select
+                            className="admin-dashboard__tx-history-select"
+                            value={historyAdmin}
+                            onChange={(e) => setHistoryAdmin(e.target.value)}
+                            aria-label={t('adminDashboard.topHistory_filterAdmin', { defaultValue: 'Filter by admin' })}
+                          >
+                            <option value="any">{t('adminDashboard.topHistory_byAnyAdmin', { defaultValue: 'By any admin' })}</option>
+                            {topbarHistoryData.admins.map((admin) => (
+                              <option key={`history-admin-${admin}`} value={admin}>{admin}</option>
+                            ))}
+                          </select>
+                          <button type="button" className="admin-dashboard__tx-history-more" onClick={() => { setHistorySearch(''); setHistoryActionType('any'); setHistoryAdmin('any'); }}>
+                            {t('adminDashboard.topHistoryMore', { defaultValue: 'More ▼' })}
+                          </button>
+                        </div>
+                        <p className="admin-dashboard__tx-history-help">{t('adminDashboard.topHistory_help', { defaultValue: 'Search actions by their ID.' })}</p>
+                      </div>
+
+                      <div className="admin-dashboard__tx-history-table-wrap">
+                        <table className="admin-dashboard__tx-history-table">
+                          <thead>
+                            <tr>
+                              <th>{t('adminDashboard.topHistory_colAction', { defaultValue: 'Action' })}</th>
+                              <th>{t('adminDashboard.topHistory_colPlayer', { defaultValue: 'Player' })}</th>
+                              <th>{t('adminDashboard.topHistory_colReason', { defaultValue: 'Reason' })}</th>
+                              <th>{t('adminDashboard.topHistory_colAuthor', { defaultValue: 'Author' })}</th>
+                              <th>{t('adminDashboard.topHistory_colDateTime', { defaultValue: 'Date Time ▼' })}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredHistory.map((entry) => (
+                              <tr key={`history-row-${entry.id}`}>
+                                <td><span className={`admin-dashboard__tx-history-badge admin-dashboard__tx-history-badge--${entry.type}`}>{entry.type.toUpperCase()}</span></td>
+                                <td>{entry.playerName}</td>
+                                <td>{entry.reason || '-'}</td>
+                                <td>{entry.author || '-'}</td>
+                                <td>{formatAdminTime(entry.ts)}</td>
+                              </tr>
+                            ))}
+                            {filteredHistory.length === 0 && (
+                              <tr>
+                                <td colSpan={5}>{t('adminDashboard.topHistory_noActions', { defaultValue: 'No actions found.' })}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+
+                  {activeTopSection === 'playerDrops' && (
+                    <section className="admin-dashboard__tx-drops">
+                      <div className="admin-dashboard__tx-drops-header">
+                        <span className="admin-dashboard__tx-drops-header-label">{t('adminDashboard.topDrops_hours', { defaultValue: 'Hours' })}</span>
+                        <select
+                          className="admin-dashboard__tx-drops-select"
+                          value={dropsHoursWindow}
+                          onChange={(e) => {
+                            const hours = Number(e.target.value);
+                            setDropsHoursWindow(hours);
+                            void fetchTopbarPlayerDrops(hours, crashReasonsLimit, crashReasonsSortMode);
+                          }}
+                          aria-label={t('adminDashboard.topDrops_hours', { defaultValue: 'Hours' })}
+                        >
+                          <option value={6}>6 Hours</option>
+                          <option value={24}>24 Hours</option>
+                          <option value={168}>7 Days</option>
+                          <option value={720}>30 Days</option>
+                        </select>
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section">
+                        <div className="admin-dashboard__tx-drops-section-header">
+                          <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">⬇</span>
+                          <span>{t('adminDashboard.topDrops_expected', { defaultValue: 'Expected Player Drops' })}</span>
+                        </div>
+                        {topbarPlayerDropsData.expected.length === 0 ? (
+                          <div className="admin-dashboard__tx-drops-empty">{t('adminDashboard.topDrops_noExpected', { defaultValue: 'No players disconnected from your server recently.' })}</div>
+                        ) : (
+                          <table className="admin-dashboard__tx-drops-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topDrops_colPlayer', { defaultValue: 'Player' })}</th>
+                                <th>{t('adminDashboard.topDrops_colReason', { defaultValue: 'Reason' })}</th>
+                                <th>{t('adminDashboard.topDrops_colTime', { defaultValue: 'Date Time ▼' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarPlayerDropsData.expected.map((entry) => (
+                                <tr key={`expected-drop-${entry.ts}-${entry.userId}`}>
+                                  <td>{entry.playerName} ({entry.userId})</td>
+                                  <td>{entry.reason || '-'}</td>
+                                  <td>{formatAdminTime(entry.ts)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section">
+                        <div className="admin-dashboard__tx-drops-section-header">
+                          <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">⚠</span>
+                          <span>{t('adminDashboard.topDrops_unexpected', { defaultValue: 'Unexpected Player Drops' })}</span>
+                        </div>
+                        {topbarPlayerDropsData.unexpected.length === 0 ? (
+                          <div className="admin-dashboard__tx-drops-empty">{t('adminDashboard.topDrops_noUnexpected', { defaultValue: 'No unexpected player drops within this time window.' })}</div>
+                        ) : (
+                          <table className="admin-dashboard__tx-drops-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topDrops_colPlayer', { defaultValue: 'Player' })}</th>
+                                <th>{t('adminDashboard.topDrops_colReason', { defaultValue: 'Reason' })}</th>
+                                <th>{t('adminDashboard.topDrops_colTime', { defaultValue: 'Date Time ▼' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarPlayerDropsData.unexpected.map((entry) => (
+                                <tr key={`unexpected-drop-${entry.ts}-${entry.userId}`}>
+                                  <td>{entry.playerName} ({entry.userId})</td>
+                                  <td>{entry.reason || '-'}</td>
+                                  <td>{formatAdminTime(entry.ts)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section admin-dashboard__tx-drops-section--period">
+                        <div className="admin-dashboard__tx-drops-section-header">
+                          <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">🕒</span>
+                          <span>{t('adminDashboard.topDrops_periodOverview', { defaultValue: 'Period Overview' })}</span>
+                        </div>
+                        <div className="admin-dashboard__tx-drops-period-text">
+                          {t('adminDashboard.topDrops_periodText', {
+                            defaultValue: 'Period from {{from}} to {{to}}.',
+                            from: formatPeriodTs(topbarPlayerDropsData.periodStart),
+                            to: formatPeriodTs(topbarPlayerDropsData.periodEnd),
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section">
+                        <div className="admin-dashboard__tx-drops-section-header">
+                          <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">🧱</span>
+                          <span>{t('adminDashboard.topDrops_resourceKicks', { defaultValue: 'Resource Kicks' })}</span>
+                        </div>
+                        {topbarPlayerDropsData.resourceKicks.length === 0 ? (
+                          <div className="admin-dashboard__tx-drops-empty">{t('adminDashboard.topDrops_noResourceKicks', { defaultValue: 'No players kicked by resources within this time window.' })}</div>
+                        ) : (
+                          <table className="admin-dashboard__tx-drops-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topDrops_colResource', { defaultValue: 'Resource' })}</th>
+                                <th>{t('adminDashboard.topDrops_colCount', { defaultValue: 'Count' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarPlayerDropsData.resourceKicks.map((entry) => (
+                                <tr key={`resource-kick-${entry.resource}`}>
+                                  <td>{entry.resource}</td>
+                                  <td>{entry.count}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section">
+                        <div className="admin-dashboard__tx-drops-section-header">
+                          <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">🌍</span>
+                          <span>{t('adminDashboard.topDrops_environmentChanges', { defaultValue: 'Environment Changes' })}</span>
+                        </div>
+                        {topbarPlayerDropsData.environmentChanges.length === 0 ? (
+                          <div className="admin-dashboard__tx-drops-empty">{t('adminDashboard.topDrops_noEnvironment', { defaultValue: 'No environmental changes within this time window.' })}</div>
+                        ) : (
+                          <table className="admin-dashboard__tx-drops-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topDrops_colType', { defaultValue: 'Type' })}</th>
+                                <th>{t('adminDashboard.topDrops_colDescription', { defaultValue: 'Description' })}</th>
+                                <th>{t('adminDashboard.topDrops_colTime', { defaultValue: 'Date Time ▼' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarPlayerDropsData.environmentChanges.map((entry) => (
+                                <tr key={`env-change-${entry.ts}-${entry.type}`}>
+                                  <td>{entry.type}</td>
+                                  <td>{entry.description}</td>
+                                  <td>{formatAdminTime(entry.ts)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+
+                      <div className="admin-dashboard__tx-drops-section">
+                        <div className="admin-dashboard__tx-drops-section-header admin-dashboard__tx-drops-section-header--inline">
+                          <span className="admin-dashboard__tx-drops-header-inline-title">
+                            <span className="admin-dashboard__tx-drops-header-icon" aria-hidden="true">⚙</span>
+                            <span>{t('adminDashboard.topDrops_crashReasons', { defaultValue: 'Crash Reasons' })}</span>
+                          </span>
+                          <div className="admin-dashboard__tx-drops-controls">
+                            <select
+                              className="admin-dashboard__tx-drops-select"
+                              value={crashReasonsLimit}
+                              onChange={(e) => {
+                                const nextLimit = Number(e.target.value);
+                                setCrashReasonsLimit(nextLimit);
+                                void fetchTopbarPlayerDrops(dropsHoursWindow, nextLimit, crashReasonsSortMode);
+                              }}
+                              aria-label={t('adminDashboard.topDrops_topLimit', { defaultValue: 'Top limit' })}
+                            >
+                              <option value={25}>Top ~25</option>
+                              <option value={50}>Top ~50</option>
+                              <option value={100}>Top ~100</option>
+                              <option value={200}>Top ~200</option>
+                            </select>
+                            <select
+                              className="admin-dashboard__tx-drops-select"
+                              value={crashReasonsSortMode}
+                              onChange={(e) => {
+                                const sort = e.target.value as 'count' | 'alphabetical';
+                                setCrashReasonsSortMode(sort);
+                                void fetchTopbarPlayerDrops(dropsHoursWindow, crashReasonsLimit, sort);
+                              }}
+                              aria-label={t('adminDashboard.topDrops_sortMode', { defaultValue: 'Sort mode' })}
+                            >
+                              <option value="count">{t('adminDashboard.topDrops_sortByCount', { defaultValue: 'Sort by Count' })}</option>
+                              <option value="alphabetical">{t('adminDashboard.topDrops_sortByAlphabetical', { defaultValue: 'Alphabetical' })}</option>
+                            </select>
+                          </div>
+                        </div>
+                        {topbarPlayerDropsData.crashReasons.length === 0 ? (
+                          <div className="admin-dashboard__tx-drops-empty">{t('adminDashboard.topDrops_noCrashReasons', { defaultValue: 'No crash reasons within this time window.' })}</div>
+                        ) : (
+                          <table className="admin-dashboard__tx-drops-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topDrops_colReason', { defaultValue: 'Reason' })}</th>
+                                <th>{t('adminDashboard.topDrops_colCount', { defaultValue: 'Count' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarPlayerDropsData.crashReasons.map((entry) => (
+                                <tr key={`crash-reason-${entry.reason}`}>
+                                  <td>{entry.reason}</td>
+                                  <td>{entry.count}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </section>
+                  )}
+
+                  {activeTopSection === 'whitelist' && (
+                    <section className="admin-dashboard__tx-whitelist">
+                      {whitelistNotInApprovedLicenseMode && (
+                        <div className="admin-dashboard__tx-whitelist-warning">
+                          <div className="admin-dashboard__tx-whitelist-warning-title">{t('adminDashboard.topWhitelist_warningTitle', { defaultValue: 'Warning: The server is not in the "Approved License" whitelist mode.' })}</div>
+                          <div>{t('adminDashboard.topWhitelist_warningText1', { defaultValue: 'This means that any changes made in this page will not reflect in the ability of players to connect to the server while the whitelist is in another mode or disabled.' })}</div>
+                          <div>{t('adminDashboard.topWhitelist_warningText2', { defaultValue: 'This can be changed in the page Settings > Player Manager.' })}</div>
+                        </div>
+                      )}
+
+                      <div className="admin-dashboard__tx-whitelist-grid">
+                        <article className="admin-dashboard__tx-whitelist-panel">
+                          <div className="admin-dashboard__tx-whitelist-panel-head">
+                            <div>
+                              <h4>{t('adminDashboard.topWhitelist_requestsTitle', { defaultValue: 'Whitelist Requests' })}: 0</h4>
+                              <p>{t('adminDashboard.topWhitelist_requestsDesc', { defaultValue: 'Players that tried to join the server but were not whitelisted.' })}</p>
+                            </div>
+                            <div className="admin-dashboard__tx-whitelist-search-wrap">
+                              <input
+                                type="text"
+                                className="admin-dashboard__tx-whitelist-search"
+                                value={topbarWhitelistSearch}
+                                onChange={(e) => setTopbarWhitelistSearch(e.target.value)}
+                                placeholder={t('adminDashboard.topWhitelist_searchPlaceholder', { defaultValue: 'player name, R1234' })}
+                              />
+                              <button type="button" className="admin-dashboard__tx-whitelist-search-btn">{t('adminDashboard.search', { defaultValue: 'Search' })}</button>
+                            </div>
+                          </div>
+                          <div className="admin-dashboard__tx-whitelist-panel-body admin-dashboard__tx-whitelist-panel-body--empty">
+                            {t('adminDashboard.topWhitelist_noPlayers', { defaultValue: 'no players here yet' })}
+                          </div>
+                          <div className="admin-dashboard__tx-whitelist-panel-foot">
+                            <button type="button" className="admin-dashboard__tx-whitelist-deny" disabled>{t('adminDashboard.topWhitelist_denyAll', { defaultValue: 'Deny All' })}</button>
+                            <div className="admin-dashboard__tx-whitelist-pagination">
+                              <button type="button" disabled>{t('adminDashboard.previous', { defaultValue: 'Previous' })}</button>
+                              <span>1</span>
+                              <button type="button" disabled>{t('adminDashboard.next', { defaultValue: 'Next' })}</button>
+                            </div>
+                          </div>
+                        </article>
+
+                        <article className="admin-dashboard__tx-whitelist-panel">
+                          <div className="admin-dashboard__tx-whitelist-panel-head">
+                            <div>
+                              <h4>{t('adminDashboard.topWhitelist_approvedTitle', { defaultValue: 'Approved Whitelists Pending Join' })}: {whitelistPendingJoinCount}</h4>
+                              <p>{t('adminDashboard.topWhitelist_approvedDesc', { defaultValue: 'Players that are already approved, but haven\'t joined the server yet.' })}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="admin-dashboard__tx-whitelist-approve"
+                              onClick={() => {
+                                setTopbarWhitelistModalIdentifier('');
+                                setTopbarWhitelistModalOpen(true);
+                              }}
+                            >
+                              + {t('adminDashboard.topWhitelist_addApproval', { defaultValue: 'Add Approval' })}
+                            </button>
+                          </div>
+                          <div className="admin-dashboard__tx-whitelist-panel-body">
+                            {whitelistApprovedEntries.length === 0 ? (
+                              <div className="admin-dashboard__tx-whitelist-panel-body--empty">{t('adminDashboard.topWhitelist_noPlayers', { defaultValue: 'no players here yet' })}</div>
+                            ) : (
+                              <table className="admin-dashboard__tx-whitelist-table">
+                                <thead>
+                                  <tr>
+                                    <th>{t('adminDashboard.topWhitelist_colSource', { defaultValue: 'Source' })}</th>
+                                    <th>{t('adminDashboard.topWhitelist_colValue', { defaultValue: 'Identifier' })}</th>
+                                    <th>{t('adminDashboard.topWhitelist_colMode', { defaultValue: 'Mode' })}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {whitelistApprovedEntries.slice(0, 50).map((entry) => (
+                                    <tr key={entry.id}>
+                                      <td>{entry.source}</td>
+                                      <td>{entry.value}</td>
+                                      <td>{whitelistModeLabel}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </article>
+                      </div>
+
+                      {/* Whitelist Add Modal */}
+                      {topbarWhitelistModalOpen && (
+                        <div className="admin-dashboard__tx-whitelist-modal-backdrop" onClick={() => !topbarWhitelistModalSaving && setTopbarWhitelistModalOpen(false)}>
+                          <div className="admin-dashboard__tx-whitelist-modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="admin-dashboard__tx-whitelist-modal-head">
+                              <h5>{t('adminDashboard.topWhitelist_addPlayer', { defaultValue: 'Whitelist player' })}</h5>
+                              <button type="button" onClick={() => setTopbarWhitelistModalOpen(false)} disabled={topbarWhitelistModalSaving}>×</button>
+                            </div>
+
+                            <div className="admin-dashboard__tx-whitelist-modal-body">
+                              <p>{t('adminDashboard.topWhitelist_addPlayerDescription', { defaultValue: 'Type in the Player Identifier you want to whitelist.' })}</p>
+                              <p className="admin-dashboard__tx-whitelist-modal-hint">{t('adminDashboard.topWhitelist_identifierTypes', { defaultValue: 'This can be any of the following: discord, steam, license, licenseea, live, xblive, fal.' })}</p>
+                              <label>
+                                <input
+                                  type="text"
+                                  value={topbarWhitelistModalIdentifier}
+                                  onChange={(e) => setTopbarWhitelistModalIdentifier(e.target.value)}
+                                  placeholder={t('adminDashboard.topWhitelist_identifierPlaceholder', { defaultValue: 'discord:272600190639848628' })}
+                                  disabled={topbarWhitelistModalSaving}
+                                  autoFocus
+                                />
+                              </label>
+                            </div>
+
+                            <div className="admin-dashboard__tx-whitelist-modal-foot">
+                              <button type="button" onClick={() => setTopbarWhitelistModalOpen(false)} disabled={topbarWhitelistModalSaving}>{t('adminDashboard.cancel', { defaultValue: 'Cancel' })}</button>
+                              <button 
+                                type="button" 
+                                className="admin-dashboard__tx-whitelist-submit" 
+                                onClick={() => saveTopbarWhitelistEntry()} 
+                                disabled={topbarWhitelistModalSaving || !topbarWhitelistModalIdentifier.trim()}
+                              >
+                                {topbarWhitelistModalSaving
+                                  ? t('adminDashboard.saving', { defaultValue: 'Saving...' })
+                                  : t('adminDashboard.submit', { defaultValue: 'Submit' })}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  )}
+
+                  {activeTopSection === 'admins' && (
+                    <section className="admin-dashboard__tx-admins">
+                      <article className="admin-dashboard__tx-admins-panel">
+                        <div className="admin-dashboard__tx-admins-head">
+                          <h4>{t('adminDashboard.topAdmins_allAdmins', { defaultValue: 'All Admins' })} ({topbarAdminsData.entries.length})</h4>
+                          <button type="button" className="admin-dashboard__tx-admins-add" onClick={openTopbarAdminCreateModal}>+ {t('adminDashboard.topAdmins_add', { defaultValue: 'Add' })}</button>
+                        </div>
+
+                        <div className="admin-dashboard__tx-admins-table-wrap">
+                          <table className="admin-dashboard__tx-admins-table">
+                            <thead>
+                              <tr>
+                                <th>{t('adminDashboard.topAdmins_colUsername', { defaultValue: 'Username' })}</th>
+                                <th>{t('adminDashboard.topAdmins_colAuth', { defaultValue: 'Auth' })}</th>
+                                <th>{t('adminDashboard.topAdmins_colPermissions', { defaultValue: 'Permissions' })}</th>
+                                <th>{t('adminDashboard.topAdmins_colActions', { defaultValue: 'Actions' })}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {topbarAdminsData.entries.map((entry) => (
+                                <tr key={`top-admin-row-${entry.user}`} className={entry.isPrimary ? 'admin-dashboard__tx-admins-row--master' : ''}>
+                                  <td>
+                                    <span className="admin-dashboard__tx-admins-user-cell">
+                                      {entry.isPrimary && (
+                                        <span className="admin-dashboard__tx-admins-master-badge" title={t('adminDashboard.topAdmins_masterTooltip', { defaultValue: 'Master Admin – cannot be deleted or demoted' })}>&#128081;</span>
+                                      )}
+                                      {entry.user}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className="admin-dashboard__tx-admins-auth-icons">
+                                      {entry.auth.password && <span className="admin-dashboard__tx-admins-auth admin-dashboard__tx-admins-auth--password" title="Password login">🔑</span>}
+                                      {entry.auth.discord && <span className="admin-dashboard__tx-admins-auth admin-dashboard__tx-admins-auth--discord" title="Discord ID">☍</span>}
+                                    </span>
+                                  </td>
+                                  <td>{entry.isPrimary
+                                    ? <span className="admin-dashboard__tx-admins-master-label">{t('adminDashboard.topAdmins_masterAccount', { defaultValue: 'Master Admin' })}</span>
+                                    : entry.permissionsLabel}</td>
+                                  <td>
+                                    <div className="admin-dashboard__tx-admins-actions">
+                                      {entry.isCurrentUser ? (
+                                        <span className="admin-dashboard__tx-admins-your-account">{t('adminDashboard.topAdmins_yourAccount', { defaultValue: 'Your Account' })}</span>
+                                      ) : (
+                                        <>
+                                          <button type="button" className="admin-dashboard__tx-admins-edit" onClick={() => openTopbarAdminEditModal(entry)}>{t('adminDashboard.edit', { defaultValue: 'Edit' })}</button>
+                                          <button type="button" className="admin-dashboard__tx-admins-delete" onClick={() => { void deleteTopbarAdminUser(entry.user); }}>{t('adminDashboard.delete', { defaultValue: 'Delete' })}</button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </article>
+
+                      {topbarAdminModalOpen && (
+                        <div className="admin-dashboard__tx-admins-modal-backdrop" onClick={() => !topbarAdminSaving && setTopbarAdminModalOpen(false)}>
+                          <div className="admin-dashboard__tx-admins-modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="admin-dashboard__tx-admins-modal-head">
+                              <h5>{topbarAdminEditingUser
+                                ? t('adminDashboard.topAdmins_editAdmin', { defaultValue: 'Edit Admin' })
+                                : t('adminDashboard.topAdmins_newAdmin', { defaultValue: 'New Admin' })}
+                              </h5>
+                              <button type="button" onClick={() => setTopbarAdminModalOpen(false)} disabled={topbarAdminSaving}>×</button>
+                            </div>
+
+                            <div className="admin-dashboard__tx-admins-modal-body">
+                              <label>
+                                <span>{t('adminDashboard.topAdmins_colUsername', { defaultValue: 'Username' })}</span>
+                                <input
+                                  type="text"
+                                  value={topbarAdminForm.user}
+                                  disabled={Boolean(topbarAdminEditingUser)}
+                                  onChange={(e) => setTopbarAdminForm((prev) => ({ ...prev, user: e.target.value }))}
+                                  placeholder="username"
+                                />
+                              </label>
+                              <label>
+                                <span>{t('adminDashboard.topAdmins_discordId', { defaultValue: 'Discord ID (optional)' })}</span>
+                                <input
+                                  type="text"
+                                  value={topbarAdminForm.discordId}
+                                  onChange={(e) => setTopbarAdminForm((prev) => ({ ...prev, discordId: e.target.value }))}
+                                  placeholder="123456789012345678"
+                                />
+                              </label>
+                              <label>
+                                <span>{t('adminDashboard.role', { defaultValue: 'Role' })}</span>
+                                <select
+                                  value={topbarAdminForm.role}
+                                  onChange={(e) => setTopbarAdminForm((prev) => ({ ...prev, role: e.target.value as AdminRole }))}
+                                >
+                                  <option value="admin">{t('adminDashboard.role_admin')}</option>
+                                  <option value="moderator">{t('adminDashboard.role_moderator')}</option>
+                                  <option value="viewer">{t('adminDashboard.role_viewer')}</option>
+                                </select>
+                              </label>
+                              <p className="admin-dashboard__tx-admins-modal-note">
+                                {t('adminDashboard.topAdmins_discordLoginNote', { defaultValue: 'Discord IDs can use the Discord button on the regular admin login page once OAuth is configured.' })}
+                              </p>
+                            </div>
+
+                            <div className="admin-dashboard__tx-admins-modal-foot">
+                              <button type="button" onClick={() => setTopbarAdminModalOpen(false)} disabled={topbarAdminSaving}>{t('adminDashboard.cancel', { defaultValue: 'Cancel' })}</button>
+                              <button type="button" className="admin-dashboard__tx-admins-save" onClick={() => { void saveTopbarAdminUser(); }} disabled={topbarAdminSaving}>
+                                {topbarAdminSaving
+                                  ? t('adminDashboard.saving', { defaultValue: 'Saving...' })
+                                  : t('adminDashboard.save', { defaultValue: 'Save' })}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  )}
+
+                  {activeTopSection === 'settings' && (
+                    <section className="admin-dashboard__panel" id="admin-top-panel-settings-redirect" role="region" aria-label={t('adminDashboard.settings', { defaultValue: 'Settings' })}>
+                      <div className="admin-dashboard__panel-toolbar">
+                        <div className="admin-dashboard__panel-toolbar-left">
+                          <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.settings', { defaultValue: 'Settings' })}</span>
+                        </div>
+                      </div>
+                      <p className="admin-dashboard__cfg-status">
+                        {t('adminDashboard.settingsUnifiedEditorHint', { defaultValue: 'Settings are managed in the unified Configuration Editor.' })}
+                      </p>
+                      <button
+                        type="button"
+                        className="admin-dashboard__log-btn admin-dashboard__log-btn--primary"
+                        onClick={() => {
+                          setActiveMenuSurface('sidebar');
+                          setActiveTab('cfg');
+                          setCfgEditorTab('general');
+                        }}
+                      >
+                        {t('adminDashboard.openCfgEditor', { defaultValue: 'Open Configuration Editor' })}
+                      </button>
+                    </section>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {activeMenuSurface === 'sidebar' && (
+              <div className="admin-dashboard__summary-grid">
+                {summaryCards.map((card) => (
+                  <div key={card.label} className={`admin-dashboard__summary-card${card.tone === 'warn' ? ' admin-dashboard__summary-card--warn' : ''}`}>
+                    <div className="admin-dashboard__summary-label">{card.label}</div>
+                    <div className={`admin-dashboard__summary-value${card.tone === 'accent' ? ' admin-dashboard__summary-value--accent' : ''}${card.tone === 'warn' ? ' admin-dashboard__summary-value--warn' : ''}`}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {loading && <div className="admin-dashboard__loading">{t('adminDashboard.loading')}</div>}
 
             {!loading && (
               <>
 
-            {activeTab === 'overview' && status && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'overview' && status && (
               <div className="admin-dashboard__panel" id="admin-panel-overview" role="tabpanel" aria-labelledby="admin-tab-overview">
                 <div className="admin-dashboard__overview-info">
                   {[
@@ -1868,7 +3538,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {activeTab === 'players' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'players' && (
               <div className="admin-dashboard__panel" id="admin-panel-players" data-testid="admin-panel-players" role="tabpanel" aria-labelledby="admin-tab-players">
                 <div className="admin-dashboard__panel-toolbar">
                   <div className="admin-dashboard__panel-toolbar-left">
@@ -2014,6 +3684,13 @@ const AdminDashboard = () => {
                                 >
                                   {t('adminDashboard.messageBtn')}
                                 </button>
+                                <button
+                                  type="button"
+                                  className="admin-dashboard__msg-btn"
+                                  onClick={() => void showPlayerInventory(player.userId, player.actorName)}
+                                >
+                                  {t('adminDashboard.inventoryBtn', { defaultValue: 'Inventory' })}
+                                </button>
                             </td>
                           </tr>
                         )})}
@@ -2085,11 +3762,77 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
+                {inventoryTargetUserId !== null && (
+                  <div className="admin-dashboard__bans-section">
+                    <h3 className="admin-dashboard__section-subtitle">
+                      {t('adminDashboard.inventoryTitle', { defaultValue: 'Inventory' })}: {inventoryTargetName}
+                    </h3>
+
+                    {inventoryLoading && <p className="admin-dashboard__bans-empty">{t('adminDashboard.loading')}</p>}
+
+                    {!inventoryLoading && inventoryError && (
+                      <p className="admin-dashboard__bans-empty">{inventoryError}</p>
+                    )}
+
+                    {!inventoryLoading && !inventoryError && playerInventory && (
+                      <>
+                        <div className="admin-dashboard__inventory-meta">
+                          <span>{t('adminDashboard.inventorySource', { defaultValue: 'Source' })}: {playerInventory.source}</span>
+                          {typeof playerInventory.profileId === 'number' && (
+                            <span>{t('adminDashboard.inventoryProfileId', { defaultValue: 'Profile ID' })}: {playerInventory.profileId}</span>
+                          )}
+                          {playerInventory.formDesc && (
+                            <span>{t('adminDashboard.inventoryFormDesc', { defaultValue: 'Form' })}: {playerInventory.formDesc}</span>
+                          )}
+                          {typeof playerInventory.updatedAt === 'number' && (
+                            <span>{t('adminDashboard.inventoryUpdatedAt', { defaultValue: 'Updated' })}: {formatAdminTime(playerInventory.updatedAt)}</span>
+                          )}
+                        </div>
+
+                        {selectedInventoryEntries.length === 0 ? (
+                          <p className="admin-dashboard__bans-empty">{t('adminDashboard.inventoryEmpty', { defaultValue: 'No inventory entries' })}</p>
+                        ) : (
+                          <div className="admin-dashboard__table-wrapper">
+                            <table className="admin-dashboard__table">
+                              <thead>
+                                <tr>
+                                  <th scope="col">{t('adminDashboard.cfgCode')}</th>
+                                  <th scope="col">{t('adminDashboard.cfgItem')}</th>
+                                  <th scope="col">{t('adminDashboard.cfgCount')}</th>
+                                  <th scope="col">{t('adminDashboard.cfgFlags')}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedInventoryEntries.map((entry, index) => {
+                                  const baseId = typeof entry.baseId === 'number' ? entry.baseId : 0;
+                                  const itemName = baseId ? (catalogNameByBaseId.get(baseId) ?? '-') : '-';
+                                  const flags = [entry.worn ? t('adminDashboard.cfgWorn') : '', entry.wornLeft ? t('adminDashboard.cfgWornLeft') : '']
+                                    .filter(Boolean)
+                                    .join(', ');
+
+                                  return (
+                                    <tr key={`${baseId}-${index}`}>
+                                      <td>{baseId ? toCodeHex(baseId) : '-'}</td>
+                                      <td>{itemName}</td>
+                                      <td>{typeof entry.count === 'number' ? entry.count : '-'}</td>
+                                      <td>{flags || '-'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {statusMsg && <div className="admin-dashboard__status-msg" data-testid="admin-status-msg" role="status" aria-live="polite">{statusMsg}</div>}
               </div>
             )}
 
-            {activeTab === 'players' && sendMsgTargetId !== null && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'players' && sendMsgTargetId !== null && (
               <div className="admin-dashboard__msg-form" data-testid="admin-message-form">
                 <h3 className="admin-dashboard__section-subtitle">
                   {t('adminDashboard.sendMessageTitle')}: {sendMsgTargetName}
@@ -2130,14 +3873,14 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
-            {activeTab === 'console' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'console' && (
               <div className="admin-dashboard__panel" id="admin-panel-console" role="tabpanel" aria-labelledby="admin-tab-console">
                 <div className="admin-dashboard__console-filter-row">
                   <input
                     className="admin-dashboard__search-input"
                     type="text"
-                    placeholder={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'In Konsolen-Logs suchen…' })}
-                    aria-label={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'In Konsolen-Logs suchen…' })}
+                    placeholder={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'Search console logs…' })}
+                    aria-label={t('adminDashboard.consoleSearchPlaceholder', { defaultValue: 'Search console logs…' })}
                     value={consoleSearch}
                     onChange={(e) => setConsoleSearch(e.target.value)}
                   />
@@ -2147,7 +3890,7 @@ const AdminDashboard = () => {
                     onClick={() => setConsoleSearch('')}
                     disabled={consoleSearch.trim().length === 0}
                   >
-                    {t('adminDashboard.clearSearch', { defaultValue: 'Suche löschen' })}
+                    {t('adminDashboard.clearSearch', { defaultValue: 'Clear search' })}
                   </button>
                 </div>
 
@@ -2200,7 +3943,7 @@ const AdminDashboard = () => {
                   <span className="admin-dashboard__console-history-label">{t('adminDashboard.consoleHistory')}</span>
                   {consoleSearch.trim().length > 0 && (
                     <span className="admin-dashboard__console-history-empty">
-                      {t('adminDashboard.consoleFilteredCount', { defaultValue: '{{shown}} von {{total}} Einträgen sichtbar', shown: filteredServerConsoleEntries.length, total: serverConsoleEntries.length })}
+                      {t('adminDashboard.consoleFilteredCount', { defaultValue: '{{shown}} of {{total}} entries visible', shown: filteredServerConsoleEntries.length, total: serverConsoleEntries.length })}
                     </span>
                   )}
                   <button
@@ -2250,7 +3993,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {activeTab === 'logs' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'logs' && (
               <div className="admin-dashboard__panel" id="admin-panel-logs" role="tabpanel" aria-labelledby="admin-tab-logs">
                 {!capabilities.canViewLogs && (
                   <p className="admin-dashboard__no-players">{t('adminDashboard.logsDisabled')}</p>
@@ -2282,7 +4025,7 @@ const AdminDashboard = () => {
                           }}
                           disabled={!hasActiveLogFilters && logBeforeTs === null}
                         >
-                          {t('adminDashboard.clearFilters', { defaultValue: 'Filter zurücksetzen' })}
+                          {t('adminDashboard.clearFilters', { defaultValue: 'Clear filters' })}
                         </button>
                       </div>
                     </div>
@@ -2290,8 +4033,8 @@ const AdminDashboard = () => {
                       <input
                         className="admin-dashboard__search-input admin-dashboard__search-input--reason"
                         type="text"
-                        placeholder={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'In Logs suchen…' })}
-                        aria-label={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'In Logs suchen…' })}
+                        placeholder={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'Search logs…' })}
+                        aria-label={t('adminDashboard.logSearchPlaceholder', { defaultValue: 'Search logs…' })}
                         value={logTextFilter}
                         onChange={(e) => setLogTextFilter(e.target.value)}
                       />
@@ -2356,7 +4099,7 @@ const AdminDashboard = () => {
 
                     {hasActiveLogFilters && (
                       <div className="admin-dashboard__log-active-filters">
-                        {t('adminDashboard.activeFiltersHint', { defaultValue: 'Aktive Filter beeinflussen die Ergebnisliste.' })}
+                        {t('adminDashboard.activeFiltersHint', { defaultValue: 'Active filters are affecting the results.' })}
                       </div>
                     )}
 
@@ -2385,7 +4128,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {activeTab === 'metrics' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'metrics' && (
               <div className="admin-dashboard__panel" id="admin-panel-metrics" role="tabpanel" aria-labelledby="admin-tab-metrics">
                 {!capabilities.canViewLogs && (
                   <p className="admin-dashboard__no-players">{t('adminDashboard.metricsDisabled')}</p>
@@ -2538,7 +4281,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {activeTab === 'cfg' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'cfg' && (
               <div className="admin-dashboard__panel" id="admin-panel-cfg" role="tabpanel" aria-labelledby="admin-tab-cfg">
                 <div className="admin-dashboard__panel-toolbar">
                   <div className="admin-dashboard__panel-toolbar-left">
@@ -3030,7 +4773,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {activeTab === 'respawn' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'respawn' && (
               <>
                 {!capabilities.canManageRespawn && (
                   <p className="admin-dashboard__no-players">{t('adminDashboard.noPermission')}</p>
@@ -3050,7 +4793,7 @@ const AdminDashboard = () => {
               </>
             )}
 
-            {activeTab === 'events' && (
+            {activeMenuSurface === 'sidebar' && activeTab === 'events' && (
               <>
                 {!capabilities.canViewLogs && (
                   <p className="admin-dashboard__no-players">{t('adminDashboard.logsDisabled')}</p>
@@ -3101,7 +4844,10 @@ const AdminDashboard = () => {
                       key={player.userId}
                       type="button"
                       className="admin-dashboard__player-rail-item"
-                      onClick={() => setActiveTab('players')}
+                      onClick={() => {
+                        setActiveTab('players');
+                        setActiveMenuSurface('sidebar');
+                      }}
                     >
                       <span className="admin-dashboard__player-rail-name">{player.actorName || `userId=${player.userId}`}</span>
                       <span className="admin-dashboard__player-rail-meta">ID {player.userId}</span>

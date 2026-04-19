@@ -33,7 +33,7 @@ Now you can change the text's size, rotation, font, depth, effects, and origin.
 
 Should you wish to utilize a custom font, ensure to upload the font in a .sprite version to the "/Data/Platform/Fonts/" directory. When calling the font, reference it by name without the extension.
 
-Please refer to the [Special docs page](../../skyrim_platform/texts.md "Special docs page") for detailed instructions on how to convert any font to .sprite.
+Please refer to the [Special docs page](../skyrim_platform/texts.md) for detailed instructions on how to convert any font to .sprite.
 
 ```js
 // this is a javascript example

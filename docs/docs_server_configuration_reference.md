@@ -73,6 +73,8 @@ Credentials for the web admin dashboard (`/admin`).
 
 If omitted, the server falls back to `metricsAuth` credentials. If neither is configured, admin dashboard login is unavailable.
 
+Note: this key is treated as a legacy bootstrap source and may be removed from `server-settings.json` by newer admin flows.
+
 ```json5
 {
   // ...
@@ -367,12 +369,41 @@ A boolean setting that enables to turn on or turn off hot reload for compiled Pa
 
 ## locale
 
-The name of a localizaiton file in `data/localization` that would be used by `M.GetText` Papyrus function (without extension).
+The name of a localization file in `data/localization` that would be used by `M.GetText` Papyrus function (without extension).
 
 ```json5
 {
   // ...
   "locale": "ru-RU"
+  // ...
+}
+```
+
+## localeRouting
+
+Controls frontend language routing based on country code (used by admin/client locale resolution routes).
+
+- `defaultLanguage`: fallback language when no mapping matches.
+- `countryCodeToLanguage`: map of ISO country codes to language codes.
+
+If omitted or invalid, safe defaults are applied (`defaultLanguage: "en"` and built-in mappings for `de`, `en`, `es`, `ru`).
+
+```json5
+{
+  // ...
+  "localeRouting": {
+    "defaultLanguage": "en",
+    "countryCodeToLanguage": {
+      "DE": "de",
+      "AT": "de",
+      "CH": "de",
+      "US": "en",
+      "GB": "en",
+      "ES": "es",
+      "MX": "es",
+      "RU": "ru"
+    }
+  }
   // ...
 }
 ```
@@ -569,3 +600,8 @@ A boolean setting that controls hot-reloading behavior for connected clients.
   "enableGamemodeDataUpdatesBroadcast": false
   // ...
 }
+```
+
+## supervisor (planned)
+
+`supervisor`-style process lifecycle controls are tracked in roadmap discussions, but there is currently no stable `server-settings.json` field documented for this in the runtime configuration reference.

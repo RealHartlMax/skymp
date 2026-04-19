@@ -18,10 +18,10 @@ on("update", () => {
 });
 ```
 
-One of the mods built on Skyrim Platform is skymp client.\
-Yes, client of Skyrim Multiplayer is technically a mod for Skyrim Special Edition implemented using Skyrim Platform.
+One of the mods built on Skyrim Platform is SkyMP client.\
+Yes, the client of Skyrim Multiplayer is technically a mod for Skyrim Special Edition implemented using Skyrim Platform.
 
-Here you will find documentaiton aimed for you to create your own mods using Skyrim Platform.
+Here you will find documentation aimed at helping you create your own mods using Skyrim Platform.
 
 The documentation is versioned up-to-date with SkyrimPlatform itself. If you read this page on GitHub, it's probably docs on latest SP revision. We release SkyrimPlatform updates from time to time. See [here](https://github.com/skyrim-multiplayer/skymp/tree/main/docs/release/dev) what is included in the upcoming SP update.
 
