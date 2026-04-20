@@ -2459,6 +2459,197 @@ $admin-line: #2c4552;
     }
 
     // ---- Overview ----
+    &__overview-hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+
+      @media (max-width: 1280px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    &__overview-card {
+      background: linear-gradient(180deg, rgba(28, 44, 57, 0.74) 0%, rgba(16, 24, 33, 0.85) 100%);
+      border: 1px solid rgba($admin-line, 0.85);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 180px;
+    }
+
+    &__overview-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+
+      h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        color: #d8e8ef;
+        letter-spacing: 0.02em;
+      }
+    }
+
+    &__overview-kpi {
+      min-width: 32px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba($admin-accent, 0.42);
+      background: rgba($admin-accent, 0.2);
+      color: #cbfff0;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    &__overview-empty {
+      margin: 0;
+      color: $admin-muted;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: center;
+      padding: 20px 10px;
+    }
+
+    &__overview-split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+
+      div {
+        border: 1px solid rgba($admin-line, 0.7);
+        border-radius: 8px;
+        padding: 8px;
+        background: rgba(7, 12, 18, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      strong {
+        color: #f4f9ff;
+        font-size: 16px;
+      }
+    }
+
+    &__overview-split-label {
+      color: $admin-muted;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    &__overview-crash-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    &__overview-crash-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba($admin-line, 0.6);
+      border-radius: 8px;
+      padding: 7px 9px;
+      background: rgba(8, 14, 21, 0.42);
+
+      span {
+        color: #d4dfe5;
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      strong {
+        color: #ffd26d;
+        font-size: 12px;
+      }
+    }
+
+    &__overview-stat-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px dashed rgba($admin-line, 0.5);
+      padding-bottom: 6px;
+
+      span {
+        color: $admin-muted;
+        font-size: 12px;
+      }
+
+      strong {
+        color: #f4f9ff;
+        font-size: 13px;
+      }
+    }
+
+    &__overview-meta {
+      margin: 0;
+      color: $admin-muted;
+      font-size: 12px;
+    }
+
+    &__overview-chart-card {
+      margin-top: 12px;
+      background: linear-gradient(180deg, rgba(26, 18, 36, 0.9) 0%, rgba(17, 11, 25, 0.94) 100%);
+      border: 1px solid rgba(83, 55, 110, 0.9);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    &__overview-chart {
+      height: 190px;
+      border: 1px solid rgba(85, 62, 117, 0.84);
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(24, minmax(0, 1fr));
+      align-items: end;
+      gap: 4px;
+      background:
+        linear-gradient(180deg, rgba(137, 66, 187, 0.16) 0%, rgba(19, 10, 30, 0.72) 100%),
+        repeating-linear-gradient(
+          to top,
+          rgba(255, 255, 255, 0.04) 0,
+          rgba(255, 255, 255, 0.04) 1px,
+          transparent 1px,
+          transparent 38px
+        );
+    }
+
+    &__overview-bar {
+      width: 100%;
+      min-height: 4px;
+      border-radius: 3px 3px 0 0;
+      background: rgba(177, 127, 236, 0.26);
+      transition: opacity 0.15s ease;
+
+      &--active {
+        background: linear-gradient(180deg, #cf7cff 0%, #7d35bb 100%);
+        box-shadow: 0 0 8px rgba(177, 89, 255, 0.34);
+      }
+    }
+
+    &__overview-chart-scale {
+      display: flex;
+      justify-content: space-between;
+      color: $admin-muted;
+      font-size: 11px;
+    }
+
     &__overview-info {
       display: flex;
       flex-direction: column;

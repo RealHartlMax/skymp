@@ -17,6 +17,11 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 
 | Area | Status | Notes |
 | --- | --- | --- |
+| Cross-platform dedicated server hosting (Windows + Linux) | Active direction | Long-term hosting target is parity for dedicated server operation on both Windows and Linux. Client/runtime specifics may differ, but server hosting must remain a first-class scenario on both platforms. |
+| Linux dedicated server source-build path | Active | Linux server builds, launch scripts and CI variants exist; current support is strongest on Ubuntu/glibc-based environments and still needs production hardening for fully standardized VPS hosting. |
+| Windows dedicated server path | Active | Windows remains a supported server-hosting platform with native launcher support and existing operational workflows. |
+| Cross-platform supervisor integration | Partial | A shared `supervisor` configuration model now exists for dedicated server control. Admin stop/restart is enabled only when explicit supervisor commands are configured. Remaining work is OS-specific operator setup and optional supervisor auto-detection. |
+| Cross-platform production packaging/docs | Partial | Ubuntu 24.04-oriented systemd templates and production notes are now included. Remaining work is to add equivalent polished Windows service templates and deployment runbooks. |
 | Admin dashboard auth routing | Active | `/admin` serves the new React-based admin UI with in-app login and session timeout; `/admin/` normalizes to `/admin`; `/admin-app` redirects to `/admin`. |
 | Admin dashboard auth UX | Active | Browser HTTP Basic popup was replaced by a custom login form (`/api/admin/session/login`, `/logout`, `/touch`), with 10-minute inactivity timeout based on dashboard click activity. |
 | Windows launcher self-restart safety | Active | `launch_server.bat` now auto-detects and terminates stale `dist_back/skymp5-server.js` processes before starting a new instance. |
@@ -28,7 +33,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | Locale resolution endpoint | Active | `GET /api/admin/locale/resolve?countryCode=XX` resolves configured language fallback. |
 | NPC settings parser and class filters | Active | `npcSettings.default` parsing fixed; optional `allowHumanoid`/`allowCreature` rules support city-empty + wildlife/monster spawn scenarios. |
 | Sidebar quick actions — Kick all / Announcement | Active | `POST /api/admin/players/kick-all` and `POST /api/admin/announcement` are implemented in `skymp5-server/ts/ui.ts`. Buttons work in the Admin sidebar. |
-| Sidebar quick actions — Start / Stop / Restart Server | Planned | Buttons are visible in the Admin sidebar but trigger an informational message because `skymp5-server.js` runs as a plain Node process without an external supervisor. The process cannot reliably restart itself. **Problem:** `process.exit()` or `process.kill()` would terminate the server without bringing it back up. **Solution:** Expose these routes (`POST /api/admin/server/stop`, `/restart`) behind a capability flag once an external process manager (e.g. Windows Service via NSSM, PM2, or a systemd unit on Linux) is detected or configured. The configured supervisor command/URL should be stored in `server-settings.json` under a new `supervisor` key. The Admin UI buttons should then become active automatically when a supervisor is configured. |
+| Sidebar quick actions — Start / Stop / Restart Server | Partial | Backend control now runs through configured supervisor commands and the Admin UI only enables these actions when supervisor support is configured. Remaining work is smoother platform-specific setup, validation and optional automatic supervisor discovery. |
 
 # Synchronization
 

@@ -50,6 +50,25 @@ Specifies the IP address to bind to. Applies to the `uiPort` (http). Binds to `0
 }
 ```
 
+## adminApi
+
+Admin API and dashboard URL behavior.
+
+- `enabled` controls whether admin API routes are available.
+- `externalUrl` can be left empty (`""`) so runtime auto-detect uses incoming `Host` and `X-Forwarded-Proto` headers.
+- If `externalUrl` is set, that explicit value is used for dashboard URL generation.
+
+```json5
+{
+  // ...
+  "adminApi": {
+    "enabled": true,
+    "externalUrl": ""
+  },
+  // ...
+}
+```
+
 ## metricsAuth
 
 HTTP Basic authentication for the `/metrics` endpoint.
@@ -602,6 +621,26 @@ A boolean setting that controls hot-reloading behavior for connected clients.
 }
 ```
 
-## supervisor (planned)
+## supervisor
 
-`supervisor`-style process lifecycle controls are tracked in roadmap discussions, but there is currently no stable `server-settings.json` field documented for this in the runtime configuration reference.
+Supervisor process control used by Admin dashboard server actions.
+
+- `enabled`: turns supervisor control on/off.
+- `stopCommand`: command executed for stop action.
+- `restartCommand`: command executed for restart action.
+
+Admin dashboard stop/restart buttons are only enabled when supervisor is configured and available.
+
+```json5
+{
+  // ...
+  "supervisor": {
+    "enabled": true,
+    "stopCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh stop",
+    "restartCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh restart"
+  }
+  // ...
+}
+```
+
+For Ubuntu 24.04 deployment examples, see [docs_running_a_server.md](docs_running_a_server.md).

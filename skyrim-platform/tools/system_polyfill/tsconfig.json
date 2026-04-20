@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "ignoreDeprecations": "6.0",
         "module": "System",
         "target": "ES5",
         "outDir": "dist",

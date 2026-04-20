@@ -128,12 +128,56 @@ const setupGamemode = (server: any, gamemodePath: string) => {
 
   const toAbsolute = (p: string) => {
     if (path.isAbsolute(p)) {
-      return p;
+      return path.normalize(p);
     }
-    return path.resolve("", p);
+    return path.normalize(path.resolve("", p));
   };
 
-  const absoluteGamemodePath = toAbsolute(gamemodePath);
+  const getAlternativeNtfsAliasPath = (absolutePath: string): string | null => {
+    if (process.platform !== 'win32') {
+      return null;
+    }
+
+    const normalized = path.normalize(absolutePath);
+    const lower = normalized.toLowerCase();
+    const dRoot = 'd:\\github\\skymp';
+    const cRoot = 'c:\\github\\skymp';
+
+    const isAtOrInside = (value: string, root: string) => value === root || value.startsWith(root + '\\');
+
+    if (isAtOrInside(lower, dRoot)) {
+      return 'C:' + normalized.slice(2);
+    }
+    if (isAtOrInside(lower, cRoot)) {
+      return 'D:' + normalized.slice(2);
+    }
+    return null;
+  };
+
+  const resolveExistingPath = (p: string): string => {
+    const absolute = toAbsolute(p);
+    const candidates = [absolute];
+    const aliasCandidate = getAlternativeNtfsAliasPath(absolute);
+    if (aliasCandidate) {
+      candidates.push(aliasCandidate);
+    }
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
+
+      try {
+        return fs.realpathSync.native(candidate);
+      } catch {
+        return candidate;
+      }
+    }
+
+    return absolute;
+  };
+
+  const absoluteGamemodePath = resolveExistingPath(gamemodePath);
   console.log(`Gamemode path is "${absoluteGamemodePath}"`);
 
   if (!fs.existsSync(absoluteGamemodePath)) {

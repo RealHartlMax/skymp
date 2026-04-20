@@ -235,6 +235,12 @@ interface DiscordBotSettings {
   warningsChannelId: string;
 }
 
+interface SupervisorSettings {
+  enabled: boolean;
+  stopCommand: string;
+  restartCommand: string;
+}
+
 const frontendMetrics: FrontendMetricEntry[] = [];
 const MAX_FRONTEND_METRICS = 1000;
 const FRONTEND_METRICS_INFO_LOG_INTERVAL_MS = 30 * 60 * 1000;
@@ -878,7 +884,34 @@ const getOnlinePlayerIds = (): number[] => {
   if (!Array.isArray(onlinePlayers)) {
     return [];
   }
-  return onlinePlayers.filter((v: unknown) => typeof v === 'number') as number[];
+
+  const uniqueUserIds = new Set<number>();
+
+  for (const value of onlinePlayers) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      continue;
+    }
+
+    const candidate = Math.floor(value);
+
+    // onlinePlayers currently stores actor form IDs; convert them to user IDs
+    const mappedUserId = safeCall(() => gScampServer.getUserByActor(candidate), -1);
+    if (Number.isFinite(mappedUserId) && mappedUserId >= 0) {
+      const mappedActorId = safeCall(() => gScampServer.getUserActor(mappedUserId), 0);
+      if (mappedActorId === candidate) {
+        uniqueUserIds.add(mappedUserId);
+        continue;
+      }
+    }
+
+    // Backward-compatible fallback in case onlinePlayers already contains user IDs
+    const actorId = safeCall(() => gScampServer.getUserActor(candidate), 0);
+    if (actorId) {
+      uniqueUserIds.add(candidate);
+    }
+  }
+
+  return Array.from(uniqueUserIds);
 };
 
 const safeCall = <T>(fn: () => T, fallback: T): T => {
@@ -1208,6 +1241,33 @@ const ensureDiscordBotSettingsInObject = (settingsObj: Record<string, unknown>):
     eventLogChannelId: normalized.warningsChannelId,
   };
   return normalized;
+};
+
+const sanitizeSupervisorSettings = (
+  value: Record<string, unknown> | undefined,
+): SupervisorSettings => {
+  return {
+    enabled: Boolean(value?.enabled),
+    stopCommand: String(value?.stopCommand || '').trim(),
+    restartCommand: String(value?.restartCommand || '').trim(),
+  };
+};
+
+const ensureSupervisorSettingsInObject = (settingsObj: Record<string, unknown>): SupervisorSettings => {
+  const current = settingsObj.supervisor as Record<string, unknown> | undefined;
+  const normalized = sanitizeSupervisorSettings(current);
+  settingsObj.supervisor = normalized;
+  return normalized;
+};
+
+const getSupervisorSettings = (settings: Settings): SupervisorSettings => {
+  const current = settings.allSettings?.supervisor as Record<string, unknown> | undefined;
+  return sanitizeSupervisorSettings(current);
+};
+
+const isServerControlAvailable = (settings: Settings): boolean => {
+  const supervisor = getSupervisorSettings(settings);
+  return supervisor.enabled && Boolean(supervisor.stopCommand) && Boolean(supervisor.restartCommand);
 };
 
 const getServerSettingsPath = (): string => path.resolve('./server-settings.json');
@@ -1558,6 +1618,20 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
   const app = new Koa();
   app.use(koaBody.default({ multipart: true }));
+
+  // Middleware to auto-detect external URL from Host header
+  app.use(async (ctx: any, next: any) => {
+    const configuredUrl = (settings.allSettings.adminApi as any)?.externalUrl;
+    if (configuredUrl) {
+      ctx.state.externalUrl = configuredUrl;
+    } else {
+      // Auto-detect from Host header
+      const host = ctx.request.header.host || 'localhost:8080';
+      const protocol = ctx.request.header['x-forwarded-proto'] || (ctx.secure ? 'https' : 'http');
+      ctx.state.externalUrl = `${protocol}://${host}`;
+    }
+    await next();
+  });
 
   app.use(async (ctx: any, next: any) => {
     try {
@@ -2013,12 +2087,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!session) {
         clearAdminSessionCookie(ctx);
         const prefilledAdminUser = getConfiguredAdminUser();
+        const externalUrlJson = JSON.stringify(String(ctx.state.externalUrl || ''));
         ctx.type = 'text/html; charset=utf-8';
         ctx.body = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script>window.__SKYMP_API_BASE_URL__ = ${externalUrlJson};</script>
   <title>SkyMP Admin Login</title>
   <style>
     :root {
@@ -2359,6 +2435,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
 
       ctx.type = 'text/html; charset=utf-8';
+      const externalUrlJson = JSON.stringify(String(ctx.state.externalUrl || ''));
       ctx.body = `<!doctype html>
 <html lang="en">
 <head>
@@ -2375,6 +2452,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   <div id="root"></div>
   <script>
     window.__SKYMP_ADMIN_MODE__ = true;
+    window.__SKYMP_API_BASE_URL__ = ${externalUrlJson};
     try {
       window.localStorage.setItem('skymp.dev.loggedIn', '1');
     } catch {}
@@ -2536,27 +2614,38 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
-      if (action === 'restart') {
+      const supervisor = getSupervisorSettings(settings);
+      const command = action === 'stop'
+        ? supervisor.stopCommand
+        : supervisor.restartCommand;
+
+      if (!supervisor.enabled || !command) {
+        ctx.status = 409;
+        ctx.body = {
+          ok: false,
+          error: 'server control requires a configured supervisor',
+        };
+        return;
+      }
+
+      addAdminLog('console', `Server ${action} requested from admin dashboard via supervisor`);
+      ctx.body = { ok: true, action, queued: true, via: 'supervisor' };
+
+      setTimeout(() => {
         try {
-          const child = spawn(process.execPath, process.argv.slice(1), {
+          const child = spawn(command, [], {
             cwd: process.cwd(),
             detached: true,
             stdio: 'ignore',
             windowsHide: true,
+            shell: true,
+            env: process.env,
           });
           child.unref();
         } catch (error: any) {
-          ctx.status = 500;
-          ctx.body = { ok: false, error: `failed to spawn restart process: ${error?.message ?? 'unknown error'}` };
-          return;
+          console.error(`Failed to execute supervisor ${action} command:`, error);
+          addAdminLog('error', `Failed to execute supervisor ${action} command: ${error?.message ?? 'unknown error'}`);
         }
-      }
-
-      addAdminLog('console', `Server ${action} requested from admin dashboard`);
-      ctx.body = { ok: true, action, queued: true };
-
-      setTimeout(() => {
-        process.exit(0);
       }, 200);
     });
 
@@ -2566,6 +2655,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         user,
         role,
         ...capabilities,
+        serverControlAvailable: capabilities.canConsole && isServerControlAvailable(settings),
       };
     });
 
@@ -3161,6 +3251,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         const localeRouting = ensureLocaleRoutingSettingsInObject(parsed);
         const joinAccess = ensureJoinAccessSettingsInObject(parsed);
         const discordBot = ensureDiscordBotSettingsInObject(parsed);
+        const supervisor = ensureSupervisorSettingsInObject(parsed);
 
         ctx.body = {
           ok: true,
@@ -3168,6 +3259,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           localeRouting,
           joinAccess,
           discordBot,
+          supervisor,
           json: JSON.stringify(parsed, null, 2),
         };
       } catch (error) {
@@ -3204,10 +3296,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const localeRouting = ensureLocaleRoutingSettingsInObject(parsed);
       const joinAccess = ensureJoinAccessSettingsInObject(parsed);
       const discordBot = ensureDiscordBotSettingsInObject(parsed);
+      const supervisor = ensureSupervisorSettingsInObject(parsed);
 
       try {
         writeServerSettingsJson(parsed);
-        addAdminLog('console', `Updated server-settings.json (locale=${localeRouting.defaultLanguage}, joinMode=${joinAccess.mode}, discordBot=${discordBot.enabled ? 'on' : 'off'})`);
+        addAdminLog('console', `Updated server-settings.json (locale=${localeRouting.defaultLanguage}, joinMode=${joinAccess.mode}, discordBot=${discordBot.enabled ? 'on' : 'off'}, supervisor=${supervisor.enabled ? 'on' : 'off'})`);
       } catch (error) {
         ctx.status = 500;
         ctx.body = {
@@ -3222,6 +3315,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         restartRequired: true,
         localeRouting,
         joinAccess,
+        supervisor,
         discordBot: {
           enabled: discordBot.enabled,
           guildId: discordBot.guildId,
@@ -3637,7 +3731,7 @@ export const main = (settings: Settings): void => {
   adminAuthParse(settings);
   const devServerPort = 1234;
 
-  const uiListenHost = settings.allSettings.uiListenHost as (string | undefined);
+  const uiListenHost = (settings.allSettings.uiListenHost as (string | undefined)) || "0.0.0.0";
   const configuredUiPort = Number(settings.allSettings.uiPort);
   const uiPort = Number.isFinite(configuredUiPort) && configuredUiPort > 0
     ? Math.floor(configuredUiPort)

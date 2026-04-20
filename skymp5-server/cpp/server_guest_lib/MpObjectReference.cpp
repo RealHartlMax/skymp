@@ -33,6 +33,7 @@
 #include <map>
 #include <numeric>
 #include <optional>
+#include <unordered_set>
 
 #include "OpenContainerMessage.h"
 #include "SetInventoryMessage.h"
@@ -1789,8 +1790,13 @@ void MpObjectReference::InitScripts()
     auto lookupRes =
       GetParent()->GetEspm().GetBrowser().LookupById(cellOrWorld);
     if (lookupRes.rec && lookupRes.rec->GetType() == "WRLD") {
-      spdlog::trace("Skipping non-Sweet scripts for exterior form {:x}",
-                    cellOrWorld);
+      static std::unordered_set<uint32_t> reportedExteriorWorlds;
+      if (reportedExteriorWorlds.insert(cellOrWorld).second) {
+        spdlog::info(
+          "Skipping non-Sweet scripts for exterior world {:x} "
+          "(logging once per world)",
+          cellOrWorld);
+      }
       scriptNames.erase(std::remove_if(scriptNames.begin(), scriptNames.end(),
                                        [](const std::string& val) {
                                          auto kPrefix = "Sweet";

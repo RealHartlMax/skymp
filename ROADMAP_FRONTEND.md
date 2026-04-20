@@ -44,7 +44,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | CFG editor in panel | ✅ Works now | `GET/POST /api/admin/cfg/server-settings` + structured form sections | Validation exists; policy scoping still pending |
 | Whitelist/respawn operations panel | ✅ Partial (usable) | Respawn/revive/events are implemented; whitelist is config-driven today | Direct whitelist user workflow not yet a dedicated page |
 | Permission-gated UI/actions | ✅ Partial (usable) | Role capability model (`admin/moderator/viewer`) and endpoint checks | Full txAdmin-grade policy editor/audit UI pending |
-| Server start/stop/restart buttons | ⚠️ Dummy in UI | Buttons are intentionally disabled and show unavailable status | Backend control endpoints and safe process manager needed |
+| Server start/stop/restart buttons | ✅ Partial (guarded) | Buttons call `/api/admin/server/control` and are enabled only when supervisor-backed server control is available | Final parity needs broader OS-specific supervisor templates and operator UX |
 | Resource start/stop/restart manager | ⚠️ Dummy/placeholder | Resources tab currently inventory-oriented (`.esm`/`.pex`) | Needs runtime resource control backend to be real |
 | Scheduler (timed restart with warnings) | ⚠️ Dummy/planned | No first-class scheduler page/actions yet | Requires backend scheduler state + job APIs |
 | Diagnostics report bundle | 📋 Planned | No txAdmin-like diagnostics exporter UI yet | Could reuse current logs/metrics as data sources |
@@ -53,7 +53,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 
 ### Recommended Next Adoption Steps
 
-1. Replace sidebar server control dummy buttons with real guarded backend actions (`start/stop/restart`) plus confirmation dialogs.
+1. Extend guarded server control with richer operator diagnostics (which supervisor is active, last action result, command health checks).
 2. Expand Players into a txAdmin-style player profile modal (notes/history/identifiers/warn templates).
 3. Add a first scheduler page for planned restarts and warning announcements.
 4. Introduce WebSocket push for dashboard status/player/events to reduce polling lag and API load.

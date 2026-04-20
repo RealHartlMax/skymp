@@ -22,6 +22,8 @@ If your build completed successfully, the server launcher will be generated as `
 
 Client support remains Windows-first, but the dedicated server can be prepared for Linux environments.
 
+Ubuntu 24.04 is a good target for production hosting. The current Linux path is best aligned with glibc-based systems such as Ubuntu rather than Alpine or Arch.
+
 ## Admin Dashboard
 
 The admin dashboard is available at `http://<host>:<uiPort>/admin`.
@@ -30,6 +32,8 @@ The admin dashboard is available at `http://<host>:<uiPort>/admin`.
 - The page uses an in-app login form (not browser Basic Auth popup).
 - Credentials are validated against configured admin credentials (secure setup flow), with legacy `adminUiAuth` / `metricsAuth` fallback behavior where applicable.
 - Session timeout is 10 minutes of inactivity for dashboard interactions.
+- `adminApi.externalUrl` can be left empty so the server auto-detects the external URL from `Host` and `X-Forwarded-Proto` headers.
+- Stop/Restart actions in the Admin dashboard are only enabled when a server supervisor is explicitly configured.
 
 ## Configuration
 
@@ -51,10 +55,45 @@ To make your server reachable from outside your local machine/network, configure
   "uiListenHost": "0.0.0.0",
   "port": 7777,
   "uiPort": 8080,
-  "name": "My Server"
+  "name": "My Server",
+  "adminApi": {
+    "enabled": true,
+    "externalUrl": ""
+  },
+  "supervisor": {
+    "enabled": false,
+    "stopCommand": "",
+    "restartCommand": ""
+  }
 }
 ```
 
 - You may find out your public IP here http://api.ipify.org
 - You need to have ports open. Talk to your Internet provider support if you want to open ports. Status of each port can be checked here https://www.yougetsignal.com/tools/open-ports/. See [Server Ports Usage](docs_server_ports_usage.md) and [Server Configuration Reference](docs_server_configuration_reference.md).
 - If you use `LogMeIn Hamachi` or similar software then just type an IP address you got assigned from it. Your friends who share a "local" network with you will be able to connect, players from the Internet will not.
+
+## Ubuntu 24.04 Production Setup
+
+Recommended production pattern on Ubuntu 24.04:
+
+1. Build the server and place it in a stable deployment path such as `/opt/skymp`.
+2. Install the systemd service template from [misc/systemd/skymp.service](../misc/systemd/skymp.service).
+3. Create a dedicated service user such as `skymp`.
+4. Enable and start the service with `systemctl enable --now skymp.service`.
+5. Open your game and admin ports in `ufw` or your provider firewall.
+
+Example supervisor configuration for the admin dashboard:
+
+```json5
+{
+  "supervisor": {
+    "enabled": true,
+    "stopCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh stop",
+    "restartCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh restart"
+  }
+}
+```
+
+The helper script template is available at [misc/systemd/skymp-supervisorctl.sh](../misc/systemd/skymp-supervisorctl.sh). For Ubuntu 24.04 you will typically allow the service user to run `systemctl stop skymp.service` and `systemctl restart skymp.service` via `sudoers` without a password prompt.
+
+If you place the admin dashboard behind Nginx or another reverse proxy, make sure it forwards `Host` and `X-Forwarded-Proto` so the server can generate correct external admin URLs automatically.

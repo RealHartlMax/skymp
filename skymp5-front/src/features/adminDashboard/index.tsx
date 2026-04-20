@@ -528,6 +528,7 @@ const asRole = (value: unknown): AdminRole => {
 const AdminDashboard = () => {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
+  const [serverControlAvailable, setServerControlAvailable] = useState(false);
   const [menuDebugEnabled] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -830,6 +831,7 @@ const AdminDashboard = () => {
       const payload = await res.json();
       setAdminRole(asRole(payload?.role));
       setAdminUser(typeof payload?.user === 'string' ? payload.user : '');
+      setServerControlAvailable(Boolean(payload?.serverControlAvailable));
       setCapabilities({
         canKick: typeof payload?.canKick === 'boolean' ? payload.canKick : DEFAULT_CAPABILITIES.canKick,
         canBan: typeof payload?.canBan === 'boolean' ? payload.canBan : DEFAULT_CAPABILITIES.canBan,
@@ -1654,6 +1656,11 @@ const AdminDashboard = () => {
       return;
     }
 
+    if (!serverControlAvailable) {
+      setStatusMsg(t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }));
+      return;
+    }
+
     const confirmMessage = action === 'stop'
       ? t('adminDashboard.stopServer')
       : t('adminDashboard.restartServer');
@@ -1670,6 +1677,14 @@ const AdminDashboard = () => {
 
       if (res.status === 403) {
         setStatusMsg(t('adminDashboard.noPermission'));
+        return;
+      }
+
+      if (res.status === 409) {
+        const payload = await res.json().catch(() => null);
+        setStatusMsg(typeof payload?.error === 'string'
+          ? payload.error
+          : t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }));
         return;
       }
 
@@ -2601,8 +2616,9 @@ const AdminDashboard = () => {
                 <button
                   type="button"
                   className="admin-dashboard__sidebar-action"
-                  disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                  disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                   onClick={() => { void runServerControl('stop'); }}
+                  title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                 >
                   {sidebarActionSending === 'server-stop'
                     ? t('adminDashboard.loading')
@@ -2611,8 +2627,9 @@ const AdminDashboard = () => {
                 <button
                   type="button"
                   className="admin-dashboard__sidebar-action"
-                  disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                  disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                   onClick={() => { void runServerControl('restart'); }}
+                  title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                 >
                   {sidebarActionSending === 'server-restart' ? t('adminDashboard.loading') : t('adminDashboard.restartServer')}
                 </button>
@@ -2686,16 +2703,18 @@ const AdminDashboard = () => {
                         <button
                           type="button"
                           className="admin-dashboard__sidebar-action"
-                          disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                           onClick={() => { void runServerControl('restart'); }}
+                          title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                         >
                           {t('adminDashboard.restartServer')}
                         </button>
                         <button
                           type="button"
                           className="admin-dashboard__sidebar-action"
-                          disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                           onClick={() => { void runServerControl('stop'); }}
+                          title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                         >
                           {t('adminDashboard.stopServer')}
                         </button>
@@ -2763,20 +2782,25 @@ const AdminDashboard = () => {
                   <article className="admin-dashboard__system-card">
                     <h4>{t('adminDashboard.systemCard_process', { defaultValue: 'Process Control' })}</h4>
                     <p>{t('adminDashboard.systemCard_processDesc', { defaultValue: 'Restart, stop and supervise the running server process.' })}</p>
+                      {!serverControlAvailable && (
+                        <p>{t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' })}</p>
+                      )}
                     <div className="admin-dashboard__system-card-actions">
                       <button
                         type="button"
                         className="admin-dashboard__sidebar-action"
-                        disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                         onClick={() => { void runServerControl('restart'); }}
+                          title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                       >
                         {t('adminDashboard.restartServer')}
                       </button>
                       <button
                         type="button"
                         className="admin-dashboard__sidebar-action"
-                        disabled={!capabilities.canConsole || sidebarActionSending !== null}
+                          disabled={!capabilities.canConsole || !serverControlAvailable || sidebarActionSending !== null}
                         onClick={() => { void runServerControl('stop'); }}
+                          title={!serverControlAvailable ? t('adminDashboard.serverControlUnavailable', { defaultValue: 'Server control requires a configured supervisor.' }) : undefined}
                       >
                         {t('adminDashboard.stopServer')}
                       </button>
@@ -4864,3 +4888,4 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+
