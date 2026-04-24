@@ -62,10 +62,20 @@ const createDirectory = (path) => {
 const isTruthyEnv = (value) =>
   ['1', 'true', 'yes', 'on'].includes((value || '').toLowerCase());
 
+const supportedBuildConfigs = ['Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel'];
+
+const normalizeBuildConfig = (value) => {
+  const candidate = (value || '').trim();
+  return supportedBuildConfigs.includes(candidate) ? candidate : null;
+};
+
 const watchCallback = (_eventType, fileName) => {
   {
-    if (fileName === 'touch_Release' || fileName === 'touch_Debug') {
-      let buildCfg = fileName === 'touch_Release' ? 'Release' : 'Debug';
+    if (fileName && fileName.startsWith('touch_')) {
+      let buildCfg = normalizeBuildConfig(fileName.slice('touch_'.length));
+      if (!buildCfg) {
+        return;
+      }
 
       console.log('Skyrim Platform ' + buildCfg + ' x64 updated.');
 
@@ -312,7 +322,9 @@ const watchCallback = (_eventType, fileName) => {
 
 if (process.env.DEV_SERVICE_ONLY_ONCE) {
   const defaultConfig =
-    process.env.DEFAULT_CONFIG === 'Debug' ? 'Debug' : 'Release';
+    normalizeBuildConfig(process.env.DEFAULT_CONFIG) ||
+    normalizeBuildConfig(process.env.BUILD_TYPE) ||
+    'Release';
   watchCallback(undefined, `touch_${defaultConfig}`);
 } else {
   console.log(`Watching for changes in ${bin}`);
