@@ -16,11 +16,21 @@ const tryLoadConfig = (fileName) => {
   return fs.existsSync(filePath) ? require(filePath) : null;
 };
 
+const loadFirstAvailableConfig = (fileNames) => {
+  for (const fileName of fileNames) {
+    const loaded = tryLoadConfig(fileName);
+    if (loaded) {
+      return loaded.default || loaded;
+    }
+  }
+  return null;
+};
+
 // CI should work without local config files; developers can still override locally.
 const config = {
   ...defaultConfig,
-  ...(tryLoadConfig('config.js') || {}),
-  ...(tryLoadConfig('config.local.js') || {}),
+  ...(loadFirstAvailableConfig(['config.ts', 'config.js']) || {}),
+  ...(loadFirstAvailableConfig(['config.local.ts', 'config.local.js']) || {}),
 };
 
 const distPath = path.isAbsolute(config.outputPath)
