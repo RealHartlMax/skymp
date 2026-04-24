@@ -59,6 +59,9 @@ const createDirectory = (path) => {
   }
 };
 
+const isTruthyEnv = (value) =>
+  ['1', 'true', 'yes', 'on'].includes((value || '').toLowerCase());
+
 const watchCallback = (_eventType, fileName) => {
   {
     if (fileName === 'touch_Release' || fileName === 'touch_Debug') {
@@ -92,58 +95,78 @@ const watchCallback = (_eventType, fileName) => {
       let binPath = (file) => path.join(bin, `bin/${buildCfg}/${file}`);
 
       if (process.platform === 'win32') {
-        let cefDir = fs
+        const cefDir = fs
           .readFileSync(path.join(bin, `cef_dir.txt`))
-          .toString('utf-8');
-        [
-          'chrome_elf.dll',
-          'd3dcompiler_47.dll',
-          'libcef.dll',
-          'libEGL.dll',
-          'libGLESv2.dll',
-          'snapshot_blob.bin',
-          'v8_context_snapshot.bin',
-        ].forEach((item) => {
-          cp(
-            path.join(cefDir, 'Release', item),
-            path.join(
-              distDir,
-              'Data/Platform/Distribution/RuntimeDependencies',
-            ),
-          );
-        });
-        ['libEGL.dll', 'libGLESv2.dll'].forEach((item) => {
-          cp(
-            path.join(cefDir, 'Release', item),
-            path.join(
-              distDir,
-              'Data/Platform/Distribution/RuntimeDependencies',
-            ),
-          );
-        });
-        ['icudtl.dat'].forEach((item) => {
-          cp(
-            path.join(cefDir, 'Resources', item),
-            path.join(
-              distDir,
-              'Data/Platform/Distribution/RuntimeDependencies',
-            ),
-          );
-        });
-        [
-          'chrome_100_percent.pak',
-          'chrome_200_percent.pak',
-          'resources.pak',
-        ].forEach((item) => {
-          cp(
-            path.join(cefDir, 'Resources', item),
-            path.join(distDir, 'Data/Platform/Distribution/CEF'),
-          );
-        });
-        fs.copySync(
-          path.join(cefDir, 'Resources/locales'),
-          path.join(distDir, 'Data/Platform/Distribution/CEF/locales'),
+          .toString('utf-8')
+          .trim();
+        const cefRuntimeDirCandidates = [
+          path.join(cefDir, buildCfg),
+          path.join(cefDir, 'Release'),
+          path.join(cefDir, 'RelWithDebInfo'),
+          path.join(cefDir, 'MinSizeRel'),
+          path.join(cefDir, 'Debug'),
+        ];
+        const cefRuntimeDir = cefRuntimeDirCandidates.find((dir) =>
+          fs.existsSync(path.join(dir, 'chrome_elf.dll')),
         );
+        const cefResourcesDir = path.join(cefDir, 'Resources');
+        const canCopyCefAssets =
+          !!cefRuntimeDir &&
+          fs.existsSync(path.join(cefResourcesDir, 'icudtl.dat'));
+        const isNoGameMode = isTruthyEnv(process.env.DEV_SERVICE_NO_GAME);
+
+        if (!canCopyCefAssets) {
+          const cefError =
+            `Unable to locate required CEF runtime assets under '${cefDir}'. ` +
+            `Checked runtime directories: ${cefRuntimeDirCandidates.join(', ')}; ` +
+            `resources directory: ${cefResourcesDir}`;
+          if (isNoGameMode) {
+            console.warn(`${cefError}. Skipping CEF runtime copy in no-game mode.`);
+          } else {
+            throw new Error(cefError);
+          }
+        } else {
+          [
+            'chrome_elf.dll',
+            'd3dcompiler_47.dll',
+            'libcef.dll',
+            'libEGL.dll',
+            'libGLESv2.dll',
+            'snapshot_blob.bin',
+            'v8_context_snapshot.bin',
+          ].forEach((item) => {
+            cp(
+              path.join(cefRuntimeDir, item),
+              path.join(
+                distDir,
+                'Data/Platform/Distribution/RuntimeDependencies',
+              ),
+            );
+          });
+          ['icudtl.dat'].forEach((item) => {
+            cp(
+              path.join(cefResourcesDir, item),
+              path.join(
+                distDir,
+                'Data/Platform/Distribution/RuntimeDependencies',
+              ),
+            );
+          });
+          [
+            'chrome_100_percent.pak',
+            'chrome_200_percent.pak',
+            'resources.pak',
+          ].forEach((item) => {
+            cp(
+              path.join(cefResourcesDir, item),
+              path.join(distDir, 'Data/Platform/Distribution/CEF'),
+            );
+          });
+          fs.copySync(
+            path.join(cefResourcesDir, 'locales'),
+            path.join(distDir, 'Data/Platform/Distribution/CEF/locales'),
+          );
+        }
 
         cp(binPath('SkyrimPlatform.pdb'), distDir);
         cp(binPath('SkyrimPlatformImpl.pdb'), distDir);
