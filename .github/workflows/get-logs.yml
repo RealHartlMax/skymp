@@ -48,7 +48,7 @@ jobs:
               echo "TAIL_ARG=${{ github.event.client_payload.inputs.tail }}" >> $GITHUB_ENV
 
           - name: Checkout misc/deploy folder
-            uses: actions/checkout@v4
+            uses: actions/checkout@v6
             with:
               fetch-depth: 1
 

@@ -30,9 +30,11 @@ export class MasterClient implements System {
     private gamemode?: string,
     private countryCode?: string,
     private serverUid?: string
-  ) { }
+  ) {
+    this.updateIntervalMs = MasterClient.clampHeartbeatInterval(updateIntervalMs);
+  }
 
-  private readonly updateIntervalMs = MasterClient.clampHeartbeatInterval(updateIntervalMs);
+  private readonly updateIntervalMs: number;
 
   async initAsync(): Promise<void> {
     if (!this.masterUrl) {

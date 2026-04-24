@@ -12,6 +12,7 @@ import { Settings } from "./settings";
 import Axios from "axios";
 import { AddressInfo } from "net";
 import { register, getAggregatedMetrics, rpcCallsCounter, rpcDurationHistogram } from "./systems/metricsSystem";
+import { WebSocketServer, WebSocket } from "ws";
 
 let gScampServer: any = null;
 
@@ -56,6 +57,18 @@ const MAX_SERVER_LOG = 2000;
 const serverLogBuffers: Record<ServerLogLevel, string> = {
   info: '',
   error: '',
+};
+
+let liveConsoleClients: Set<WebSocket> = new Set();
+
+const broadcastLiveConsoleLog = (entry: ServerLogEntry): void => {
+  if (liveConsoleClients.size === 0) return;
+  const msg = JSON.stringify({ type: 'serverLog', entry });
+  for (const ws of liveConsoleClients) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
+  }
 };
 
 interface FrontendMetricEntry {
@@ -346,9 +359,9 @@ const addServerLog = (level: ServerLogLevel, message: string): void => {
     .replace(/\u001b\[[0-9;]*m/g, '')
     .trim();
   if (!cleaned) return;
-  const entry = {
+  const entry: ServerLogEntry = {
     ts: Date.now(),
-    type: 'server',
+    type: 'server' as const,
     level,
     message: cleaned.slice(0, 4000),
   };
@@ -2643,7 +2656,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           child.unref();
         } catch (error: any) {
           console.error(`Failed to execute supervisor ${action} command:`, error);
-          addAdminLog('error', `Failed to execute supervisor ${action} command: ${error?.message ?? 'unknown error'}`);
+          addAdminLog('console', `Failed to execute supervisor ${action} command: ${error?.message ?? 'unknown error'}`);
         }
       }, 200);
     });
@@ -3715,6 +3728,18 @@ export const pushClientRuntimeEvents = (entries: Array<{
 
 export const pushServerLogChunk = (level: ServerLogLevel, chunk: string): void => {
   pushServerLogChunkInternal(level, chunk);
+};
+
+export const setupLiveConsoleWebSocket = (server: http.Server): void => {
+  const wss = new WebSocketServer({ server, path: '/ws/live-console' });
+  wss.on('connection', (ws) => {
+    liveConsoleClients.add(ws);
+    // Send recent log history on connect
+    const history = serverLog.slice(-200);
+    ws.send(JSON.stringify({ type: 'serverLogHistory', entries: history }));
+    ws.on('close', () => liveConsoleClients.delete(ws));
+    ws.on('error', () => liveConsoleClients.delete(ws));
+  });
 };
 
 export const pushPlayerDrop = (entry: { userId: number; playerName: string; type: 'expected' | 'unexpected'; reason?: string }): void => {

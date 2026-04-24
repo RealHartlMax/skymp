@@ -14,16 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: 'recursive' # ensures submodules are checked out
 
     - name: Set up Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v4
 
     - name: Login to Docker Hub
-      uses: docker/login-action@v1
+      uses: docker/login-action@v4
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -43,7 +43,7 @@ jobs:
         cd ..
 
     - name: Cache Docker layers
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/.buildx-cache
         key: ${{ runner.os }}-buildx-vcpkg-${{ github.run_number }}
@@ -51,7 +51,7 @@ jobs:
           ${{ runner.os }}-buildx-vcpkg-
 
     - name: Build and push skymp-vcpkg-deps
-      uses: docker/build-push-action@v2
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: ./Dockerfile
@@ -66,7 +66,7 @@ jobs:
         cache-to: type=local,dest=/tmp/.buildx-cache
 
     - name: Cache Docker layers
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/.buildx-cache
         key: ${{ runner.os }}-buildx-runtime-${{ github.run_number }}
@@ -74,7 +74,7 @@ jobs:
           ${{ runner.os }}-buildx-runtime-
 
     - name: Build and push skymp-runtime-base
-      uses: docker/build-push-action@v2
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: ./Dockerfile
@@ -95,7 +95,7 @@ jobs:
         sed -i "s|skymp/skymp-vcpkg-deps:[^ ]*|skymp/skymp-vcpkg-deps:${SHORT_SHA}|g" misc/github_env_linux
 
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v3
+      uses: peter-evans/create-pull-request@v7
       with:
         commit-message: "internal: update skymp-runtime-base and skymp-vcpkg-deps to ${{ steps.short_sha.outputs.short_sha }}"
         title: "internal: update skymp-runtime-base and skymp-vcpkg-deps to ${{ steps.short_sha.outputs.short_sha }}"

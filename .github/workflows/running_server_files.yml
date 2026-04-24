@@ -12,6 +12,9 @@ on:
         options:
           - RelWithDebInfo
           - Release
+  push:
+    branches:
+      - main
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -21,15 +24,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  determine-version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        run: |
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$latest_tag" ]; then
+            new_version="v1.0.0"
+          else
+            major=$(echo "$latest_tag" | sed 's/v\([0-9]*\)\..*/\1/')
+            minor=$(echo "$latest_tag" | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/')
+            patch=$(echo "$latest_tag" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/')
+            new_patch=$((patch + 1))
+            new_version="v${major}.${minor}.${new_patch}"
+          fi
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "Next version: $new_version"
+
   windows-server-files:
     name: Windows server files
+    needs: determine-version
     runs-on: windows-2022
     env:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}
       VCPKG_BINARY_SOURCES: clear;nuget,GitHub,readwrite
       VCPKG_FEATURE_FLAGS: manifests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -48,12 +78,13 @@ jobs:
 
   linux-server-files:
     name: Linux server files
+    needs: determine-version
     runs-on: ubuntu-latest
     env:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -93,57 +124,38 @@ jobs:
           cd "${{ github.workspace }}/build"
           tar czf running_server_files_linux_server_dist.tar.gz dist/server
 
-
       - name: Upload Linux server artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: running_server_files_linux_server_dist
           path: ${{ github.workspace }}/build/running_server_files_linux_server_dist.tar.gz
 
   release-server-files:
     name: Release server files
-    needs: [windows-server-files, linux-server-files]
+    needs: [determine-version, windows-server-files, linux-server-files]
     runs-on: ubuntu-latest
     steps:
       - name: Download Windows server artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: running_server_files_windows_server_dist
           path: ./artifacts
 
       - name: Download Linux server artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: running_server_files_linux_server_dist
           path: ./artifacts
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: server-release-${{ github.run_number }}
-          release_name: Server Release ${{ github.run_number }}
+          tag_name: ${{ needs.determine-version.outputs.version }}
+          name: ${{ needs.determine-version.outputs.version }}
           draft: false
           prerelease: false
-
-      - name: Upload Windows server artifact to Release
-        uses: actions/upload-release-asset@v1
+          files: |
+            ./artifacts/running_server_files_windows_server_dist.zip
+            ./artifacts/running_server_files_linux_server_dist.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/running_server_files_windows_server_dist.zip
-          asset_name: running_server_files_windows_server_dist.zip
-          asset_content_type: application/zip
-
-      - name: Upload Linux server artifact to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/running_server_files_linux_server_dist.tar.gz
-          asset_name: running_server_files_linux_server_dist.tar.gz
-          asset_content_type: application/gzip
