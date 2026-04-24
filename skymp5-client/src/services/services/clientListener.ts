@@ -10,6 +10,44 @@ export interface ClientListenerEvents {
 // these are only available in the git version, so we augment the module
 // TODO: use typings from the current codebase, not npm module
 declare module 'skyrimPlatform' {
+  interface ActorAnimationVariables {
+    booleans: ArrayBuffer;
+    floats: ArrayBuffer;
+    integers: ArrayBuffer;
+  }
+
+  const enum SpellType {
+    Left,
+    Right,
+    Voise,
+    Instant,
+  }
+
+  function castSpellImmediate(
+    actorCasterFormId: number,
+    castingSource: SpellType,
+    formIdSpell: number,
+    formIdTarget: number,
+    aimAngle: number,
+    aimHeading: number,
+    animationVariables: ActorAnimationVariables,
+  ): void;
+
+  function interruptCast(
+    actorCasterFormId: number,
+    castingSource: SpellType,
+    animationVariables: ActorAnimationVariables,
+  ): void;
+
+  function getAnimationVariablesFromActor(
+    actorFormId: number,
+  ): ActorAnimationVariables;
+
+  function applyAnimationVariablesToActor(
+    actorFormId: number,
+    animationVariables: ActorAnimationVariables,
+  ): boolean;
+
   function setTextsVisibility(
     visibility: 'inheritBrowser' | 'off' | 'on',
   ): void;

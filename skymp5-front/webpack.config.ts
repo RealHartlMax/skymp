@@ -2,7 +2,26 @@ const path = require('path');
 const fs = require('fs');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const config = require('./config');
+
+const defaultConfig = {
+  outputPath: 'dist',
+  devServerPort: 1234,
+  devServerHost: '0.0.0.0',
+  devProxyTarget: 'http://127.0.0.1:7777',
+  devHealthIntervalMs: 12000,
+};
+
+const tryLoadConfig = (fileName) => {
+  const filePath = path.resolve(__dirname, fileName);
+  return fs.existsSync(filePath) ? require(filePath) : null;
+};
+
+// CI should work without local config files; developers can still override locally.
+const config = {
+  ...defaultConfig,
+  ...(tryLoadConfig('config.js') || {}),
+  ...(tryLoadConfig('config.local.js') || {}),
+};
 
 const distPath = path.isAbsolute(config.outputPath)
   ? config.outputPath

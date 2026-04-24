@@ -1,8 +1,6 @@
 // TODO: refactor this out
-// @ts-expect-error (TODO: Remove in 2.10.0)
 import {
   Actor,
-  ActorAnimationVariables,
   EquippedItemType,
   Game,
   SlotType,
@@ -165,7 +163,7 @@ export class MagicSyncService extends ClientListener {
 
   private getUpdateAnimVariablesEventData(
     ac: Actor,
-    animVariables: ActorAnimationVariables,
+    animVariables: UpdateAnimVariablesMessageMsgData['actorAnimationVariables'],
   ): UpdateAnimVariablesMessageMsgData {
     const animVarsData: UpdateAnimVariablesMessageMsgData = {
       actorRemoteId: localIdToRemoteId(ac.getFormID(), true),

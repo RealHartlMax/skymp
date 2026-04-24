@@ -389,25 +389,25 @@ export class AuthService extends ClientListener {
     const route = `/api/users/me/play/${settingsService.getServerMasterKey()}`;
     logTrace(this, `Creating play session ${route}`);
 
-    client.post(
-      route,
-      {
+    client
+      .post(route, {
         body: '{}',
         contentType: 'application/json',
         headers: {
           authorization: token,
         },
-        // @ts-ignore
-      },
-      (res) => {
+      })
+      .then((res) => {
         if (res.status != 200) {
           callback('', 'status code ' + res.status);
         } else {
           // TODO: handle JSON.parse failure?
           callback(JSON.parse(res.body).session, '');
         }
-      },
-    );
+      })
+      .catch((err) => {
+        callback('', String(err));
+      });
   }
 
   private checkLoginState() {
@@ -569,11 +569,7 @@ export class AuthService extends ClientListener {
     logTrace(this, `Reading`, this.pluginAuthDataName, `from disk`);
 
     try {
-      // @ts-expect-error (TODO: Remove in 2.10.0)
-      const data = this.sp.getPluginSourceCode(
-        this.pluginAuthDataName,
-        'PluginsNoLoad',
-      );
+      const data = this.sp.getPluginSourceCode(this.pluginAuthDataName);
 
       if (!data) {
         logTrace(this, `Read empty`, this.pluginAuthDataName, `returning null`);
@@ -603,8 +599,6 @@ export class AuthService extends ClientListener {
       this.sp.writePlugin(
         this.pluginAuthDataName,
         content,
-        // @ts-expect-error (TODO: Remove in 2.10.0)
-        'PluginsNoLoad',
       );
     } catch (e) {
       logError(
