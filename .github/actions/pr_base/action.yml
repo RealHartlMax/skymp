@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
 name: PR Base
 description: 'Reusable composite action for PR and deploy builds (Windows)'
 inputs:
