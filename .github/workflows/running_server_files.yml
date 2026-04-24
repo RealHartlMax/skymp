@@ -1,3 +1,4 @@
+
 name: running_server_files
 
 on:
@@ -11,6 +12,9 @@ on:
         options:
           - RelWithDebInfo
           - Release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,6 +39,7 @@ jobs:
           DESCRIPTION: running_server_files-windows
           SKYRIM_VR_FLAG: OFF
           SP_NEXUS_ARTIFACT_NAME: nope
+          OFFLINE_MODE: OFF
           DEPLOY_BRANCH: ""
           DIST_ARTIFACT_NAME: running_server_files_windows_dist
           SERVER_DIST_ARTIFACT_NAME: running_server_files_windows_server_dist
@@ -71,6 +76,7 @@ jobs:
               ./build.sh --configure \
                 -DBUILD_UNIT_TESTS=OFF \
                 -DBUILD_GAMEMODE=OFF \
+                -DOFFLINE_MODE=OFF \
                 -DDOWNLOAD_SKYRIM_DATA=ON \
                 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
@@ -87,9 +93,57 @@ jobs:
           cd "${{ github.workspace }}/build"
           tar czf running_server_files_linux_server_dist.tar.gz dist/server
 
+
       - name: Upload Linux server artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v3
         with:
           name: running_server_files_linux_server_dist
           path: ${{ github.workspace }}/build/running_server_files_linux_server_dist.tar.gz
-          archive: false
+
+  release-server-files:
+    name: Release server files
+    needs: [windows-server-files, linux-server-files]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows server artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: running_server_files_windows_server_dist
+          path: ./artifacts
+
+      - name: Download Linux server artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: running_server_files_linux_server_dist
+          path: ./artifacts
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: server-release-${{ github.run_number }}
+          release_name: Server Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Windows server artifact to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/running_server_files_windows_server_dist.zip
+          asset_name: running_server_files_windows_server_dist.zip
+          asset_content_type: application/zip
+
+      - name: Upload Linux server artifact to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/running_server_files_linux_server_dist.tar.gz
+          asset_name: running_server_files_linux_server_dist.tar.gz
+          asset_content_type: application/gzip

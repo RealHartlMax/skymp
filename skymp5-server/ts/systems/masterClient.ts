@@ -3,19 +3,36 @@ import Axios from "axios";
 import { SystemContext } from "./system";
 import { ScampServer } from "../scampNative";
 
+interface MasterHeartbeatPayload {
+  name: string;
+  ip: string;
+  port: number;
+  maxPlayers: number;
+  online: number;
+  gamemode?: string;
+  countryCode?: string;
+  server_uid?: string;
+}
+
 export class MasterClient implements System {
   systemName = "MasterClient";
 
   constructor(
     private log: Log,
     private serverPort: number,
+    private serverIp: string,
     private masterUrl: string | null,
     private maxPlayers: number,
     private name: string,
     private masterKey: string,
-    private updateIntervalMs = 5000,
-    private offlineMode = false
+    updateIntervalMs = 15000,
+    private offlineMode = false,
+    private gamemode?: string,
+    private countryCode?: string,
+    private serverUid?: string
   ) { }
+
+  private readonly updateIntervalMs = MasterClient.clampHeartbeatInterval(updateIntervalMs);
 
   async initAsync(): Promise<void> {
     if (!this.masterUrl) {
@@ -27,6 +44,15 @@ export class MasterClient implements System {
 
     this.endpoint = `${this.masterUrl}/api/servers/${this.masterKey}`;
     this.log(`Our endpoint on master is ${this.endpoint}`);
+
+    await this.sendHeartbeat(0, "initial");
+
+    process.once("SIGINT", () => {
+      void this.sendHeartbeat(0, "shutdown");
+    });
+    process.once("SIGTERM", () => {
+      void this.sendHeartbeat(0, "shutdown");
+    });
   }
 
   update(): void {
@@ -40,15 +66,7 @@ export class MasterClient implements System {
 
     await new Promise((r) => setTimeout(r, this.updateIntervalMs));
 
-    if (this.endpoint) {
-      const { name, maxPlayers } = this;
-      const online = this.getCurrentOnline(ctx.svr);
-      try {
-        await Axios.post(this.endpoint, { name, maxPlayers, online });
-      } catch (e) {
-        console.error(`Error updating info on master server: ${e}`);
-      }
-    }
+    await this.sendHeartbeat(this.getCurrentOnline(ctx.svr), "periodic");
   }
 
   // connect/disconnect events are not reliable so we do full recalculate
@@ -60,5 +78,78 @@ export class MasterClient implements System {
     return;
   }
 
-  private endpoint: string;
+  private buildPayload(online: number): MasterHeartbeatPayload {
+    const payload: MasterHeartbeatPayload = {
+      name: this.name,
+      ip: this.serverIp,
+      port: this.serverPort,
+      maxPlayers: this.maxPlayers,
+      online,
+    };
+
+    if (this.gamemode) {
+      payload.gamemode = this.gamemode;
+    }
+    if (this.countryCode) {
+      payload.countryCode = this.countryCode;
+    }
+    if (this.serverUid) {
+      payload.server_uid = this.serverUid;
+    }
+
+    return payload;
+  }
+
+  private async sendHeartbeat(online: number, reason: "initial" | "periodic" | "shutdown"): Promise<void> {
+    if (!this.endpoint) {
+      return;
+    }
+
+    const payload = this.buildPayload(online);
+    const maxAttempts = 4;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await Axios.post(this.endpoint, payload);
+        return;
+      } catch (error) {
+        if (Axios.isAxiosError(error)) {
+          if (error.response) {
+            const body = typeof error.response.data === "string"
+              ? error.response.data
+              : JSON.stringify(error.response.data);
+            this.log(`[MasterClient] Heartbeat ${reason} failed with status=${error.response.status}, body=${body}`);
+            return;
+          }
+
+          const message = error.message || "network error";
+          this.log(`[MasterClient] Heartbeat ${reason} network error on attempt ${attempt}/${maxAttempts}: ${message}`);
+        } else {
+          this.log(`[MasterClient] Heartbeat ${reason} failed on attempt ${attempt}/${maxAttempts}: ${String(error)}`);
+        }
+
+        if (attempt >= maxAttempts) {
+          return;
+        }
+
+        const delayMs = MasterClient.getRetryDelayMs(attempt);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  private static getRetryDelayMs(attempt: number): number {
+    const baseMs = 500;
+    const jitter = Math.floor(Math.random() * 250);
+    return Math.min(5000, baseMs * (2 ** (attempt - 1))) + jitter;
+  }
+
+  private static clampHeartbeatInterval(value: number): number {
+    if (!Number.isFinite(value)) {
+      return 15000;
+    }
+    return Math.max(10000, Math.min(30000, Math.floor(value)));
+  }
+
+  private endpoint: string | null = null;
 }

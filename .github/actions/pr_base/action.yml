@@ -36,6 +36,10 @@ inputs:
     description: "A GitHub token for GitHub Packages (Nuget)"
     required: false
     default: ""
+  OFFLINE_MODE:
+    description: "Set generated server/client settings offline mode"
+    required: false
+    default: "ON"
   EMSCRIPTEN:
     description: "Set to true if building for Emscripten"
     required: false
@@ -264,6 +268,7 @@ runs:
         $cmake_command_full += "-DBUILD_FRONT=${{ inputs.BUILD_SKYMP5_FRONT }} "
         $cmake_command_full += "-DSKYMP5_FRONT_REPO_PAT=${{ inputs.SKYMP5_FRONT_PAT }} "
         $cmake_command_full += "$prepare_nexus_archives_arg "
+        $cmake_command_full += "-DOFFLINE_MODE=${{ inputs.OFFLINE_MODE }} "
         $cmake_command_full += "-DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} "
         $cmake_command_full += "-DSKYRIM_VR=${{ inputs.SKYRIM_VR_FLAG }} "
         $cmake_command_full += "$cppcov_path_arg "

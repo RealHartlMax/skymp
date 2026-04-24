@@ -1,3 +1,79 @@
+// Resource entry type for frontend
+interface ResourceEntry {
+  key: string;
+  name: string;
+  path: string;
+  kind: 'mod' | 'script';
+  size: number;
+  mtimeMs: number;
+}
+
+  // Resources tab state
+  const [resources, setResources] = useState<ResourceEntry[]>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [resourcesError, setResourcesError] = useState<string | null>(null);
+
+  // Fetch resources when tab is active
+  useEffect(() => {
+    if (activeMenuSurface !== 'sidebar' || activeTab !== 'resources') return;
+    setResourcesLoading(true);
+    setResourcesError(null);
+    fetch('/api/admin/resources?limit=1000')
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to fetch resources');
+        const data = await res.json();
+        setResources(Array.isArray(data.entries) ? data.entries : []);
+      })
+      .catch((e) => setResourcesError(e.message || 'Unknown error'))
+      .finally(() => setResourcesLoading(false));
+  }, [activeMenuSurface, activeTab]);
+  // Helper for formatting size
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  // Helper for formatting date
+  function formatDate(ms: number): string {
+    const d = new Date(ms);
+    return d.toLocaleString();
+  }
+            {/* Resources Tab */}
+            {activeMenuSurface === 'sidebar' && activeTab === 'resources' && (
+              <section className="admin-dashboard__resources" aria-label={t('adminDashboard.sideTx_resources', { defaultValue: 'Resources' })}>
+                <h3>{t('adminDashboard.sideTx_resources', { defaultValue: 'Resources' })}</h3>
+                {resourcesLoading && <div>{t('adminDashboard.loading', { defaultValue: 'Loading...' })}</div>}
+                {resourcesError && <div style={{ color: 'red' }}>{resourcesError}</div>}
+                {!resourcesLoading && !resourcesError && (
+                  <table className="admin-dashboard__resources-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Kind</th>
+                        <th>Path</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resources.map((r) => (
+                        <tr key={r.key}>
+                          <td>{r.name}</td>
+                          <td>{r.kind}</td>
+                          <td style={{ fontSize: '90%' }}>{r.path}</td>
+                          <td>{formatSize(r.size)}</td>
+                          <td>{formatDate(r.mtimeMs)}</td>
+                        </tr>
+                      ))}
+                      {resources.length === 0 && (
+                        <tr><td colSpan={5}>{t('adminDashboard.noResources', { defaultValue: 'No resources found.' })}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            )}
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FrameButton } from '../../components/FrameButton/FrameButton';
@@ -8,7 +84,7 @@ import { ITEM_CATALOG, ITEM_CATEGORIES, ItemCategory } from './itemCatalog';
 import { detectLanguage, persistRuntimeLanguage } from '../../utils/i18nLanguage';
 import './styles.scss';
 
-type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics' | 'respawn' | 'events' | 'cfg';
+type Tab = 'overview' | 'players' | 'console' | 'logs' | 'metrics' | 'resources' | 'respawn' | 'events' | 'cfg';
 type TopSection = 'players' | 'history' | 'playerDrops' | 'whitelist' | 'admins' | 'settings' | 'system';
 type ActiveMenuSurface = 'sidebar' | 'topbar';
 type AdminRole = 'admin' | 'moderator' | 'viewer';
@@ -239,6 +315,8 @@ interface NpcDefaultSettingsForm {
 
 interface CfgFormState {
   serverName: string;
+  masterUrl: string;
+  masterKey: string;
   port: number;
   maxPlayers: number;
   offlineMode: boolean;
@@ -395,6 +473,8 @@ interface PersistedAdminDashboardState {
 
 const DEFAULT_CFG_FORM: CfgFormState = {
   serverName: '',
+  masterUrl: 'https://gateway.skymp.net',
+  masterKey: '',
   port: 7777,
   maxPlayers: 100,
   offlineMode: false,
@@ -427,6 +507,19 @@ const DEFAULT_CFG_FORM: CfgFormState = {
     warningsChannelId: '',
   },
   starterInventory: [],
+};
+
+const MASTER_URL_OPTIONS = [
+  'https://gateway.skymp.net',
+  'https://api.skymp-worlds.net',
+] as const;
+
+const normalizeMasterUrl = (value: unknown): string => {
+  const normalized = String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+  if (normalized === 'https://api.skymp-worlds.net' || normalized === 'api.skymp-worlds.net') {
+    return 'https://api.skymp-worlds.net';
+  }
+  return 'https://gateway.skymp.net';
 };
 
 const parseCommaList = (value: string): string[] => value
@@ -904,28 +997,43 @@ const AdminDashboard = () => {
     }
   }, [capabilities.canViewLogs, logBeforeTs, logLevelFilter, logLimit, logSinceMinutes, logTypeFilter]);
 
-  const fetchServerConsole = useCallback(async () => {
-    try {
-      if (!capabilities.canViewLogs) {
-        setServerConsoleEntries([]);
-        return;
-      }
 
-      const res = await fetch('/api/admin/logs?type=server&limit=200');
-      if (!res.ok) {
-        if (res.status === 403) {
-          setServerConsoleEntries([]);
-        }
-        return;
-      }
+  // --- WebSocket for Live Console ---
+  useEffect(() => {
+    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'console' || !capabilities.canViewLogs) return;
+    let ws: WebSocket | null = null;
+    let closed = false;
+    let reconnectTimeout: any = null;
 
-      const entries = await res.json();
-      const parsed = Array.isArray(entries) ? entries as LogEntry[] : [];
-      setServerConsoleEntries(parsed.slice().reverse());
-    } catch {
-      // silently ignore
+    function connect() {
+      ws = new window.WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/admin/live-console`);
+      ws.onopen = () => {
+        // Optionally: set status
+      };
+      ws.onmessage = (event) => {
+        try {
+          const entry = JSON.parse(event.data);
+          setServerConsoleEntries((prev) => {
+            // Avoid duplicates if initial batch overlaps
+            if (prev.length > 0 && prev[prev.length - 1].ts === entry.ts && prev[prev.length - 1].message === entry.message) return prev;
+            return [...prev, entry].slice(-200);
+          });
+        } catch {}
+      };
+      ws.onclose = () => {
+        if (!closed) reconnectTimeout = setTimeout(connect, 2000);
+      };
+      ws.onerror = () => {
+        ws?.close();
+      };
     }
-  }, [capabilities.canViewLogs]);
+    connect();
+    return () => {
+      closed = true;
+      if (ws) ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [visible, activeMenuSurface, activeTab, capabilities.canViewLogs]);
 
   const fetchFrontendMetrics = useCallback(async () => {
     try {
@@ -1074,6 +1182,8 @@ const AdminDashboard = () => {
 
     return {
       serverName: String(parsed.name || ''),
+      masterUrl: normalizeMasterUrl(parsed.master),
+      masterKey: String(parsed.masterKey || ''),
       port: Number.isFinite(Number(parsed.port)) ? Math.max(1, Math.floor(Number(parsed.port))) : 7777,
       maxPlayers: Number.isFinite(Number(parsed.maxPlayers)) ? Math.max(1, Math.floor(Number(parsed.maxPlayers))) : 100,
       offlineMode: Boolean(parsed.offlineMode),
@@ -1267,6 +1377,8 @@ const AdminDashboard = () => {
   const mergeCfgFormIntoJson = useCallback((rawJsonText: string, form: CfgFormState): string => {
     const parsed = JSON.parse(rawJsonText) as Record<string, unknown>;
     parsed.name = form.serverName.trim() || parsed.name || DEFAULT_CFG_FORM.serverName;
+    parsed.master = normalizeMasterUrl(form.masterUrl);
+    parsed.masterKey = form.masterKey.trim();
     parsed.port = Math.max(1, Math.floor(Number(form.port) || 7777));
     parsed.maxPlayers = Math.max(1, Math.floor(Number(form.maxPlayers) || 100));
     parsed.offlineMode = Boolean(form.offlineMode);
@@ -1788,7 +1900,6 @@ const AdminDashboard = () => {
           ? `${t('adminDashboard.consoleResult')}: ${resultText}`
           : t('adminDashboard.consoleSent');
         setConsoleLines((prev) => [...prev, { text: msg, kind: 'ok' }]);
-        void fetchServerConsole();
       } else if (res.status === 403) {
         setConsoleLines((prev) => [...prev, { text: t('adminDashboard.noPermission'), kind: 'err' }]);
       } else {
@@ -1928,14 +2039,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (!visible || activeMenuSurface !== 'sidebar') return;
 
-    if (activeTab === 'console') void fetchServerConsole();
     if (activeTab === 'logs') void fetchLogs();
     if (activeTab === 'metrics') void fetchFrontendMetrics();
     if (activeTab === 'metrics') void fetchClientRuntimeEvents();
     if (activeTab === 'respawn') void fetchDownedPlayers();
     if (activeTab === 'events') void fetchRevivalEvents();
     if (activeTab === 'cfg') void loadCfgEditor();
-  }, [activeMenuSurface, activeTab, fetchClientRuntimeEvents, fetchDownedPlayers, fetchFrontendMetrics, fetchLogs, fetchRevivalEvents, fetchServerConsole, loadCfgEditor, visible]);
+  }, [activeMenuSurface, activeTab, fetchClientRuntimeEvents, fetchDownedPlayers, fetchFrontendMetrics, fetchLogs, fetchRevivalEvents, loadCfgEditor, visible]);
 
   useEffect(() => {
     if (!visible || activeMenuSurface !== 'topbar') return;
@@ -1988,13 +2098,6 @@ const AdminDashboard = () => {
     return () => clearInterval(id);
   }, [activeMenuSurface, activeTopSection, crashReasonsLimit, crashReasonsSortMode, dropsHoursWindow, fetchTopbarAdminSnapshot, fetchTopbarAdmins, fetchTopbarCfgSnapshots, fetchTopbarHistory, fetchTopbarPlayerDrops, fetchTopbarSystemStatus, visible]);
 
-  useEffect(() => {
-    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'console') return;
-    const id = setInterval(() => {
-      void fetchServerConsole();
-    }, 2000);
-    return () => clearInterval(id);
-  }, [activeMenuSurface, activeTab, fetchServerConsole, visible]);
 
   useEffect(() => {
     if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'logs') return;
@@ -2343,6 +2446,7 @@ const AdminDashboard = () => {
     { key: 'console', label: t('adminDashboard.tabConsole') },
     { key: 'logs', label: t('adminDashboard.tabLogs') },
     { key: 'metrics', label: t('adminDashboard.tabMetrics') },
+    { key: 'resources', label: t('adminDashboard.sideTx_resources', { defaultValue: 'Resources' }) },
     { key: 'cfg', label: t('adminDashboard.tabCfg') },
     { key: 'respawn', label: t('adminDashboard.tabRespawn') },
     { key: 'events', label: t('adminDashboard.tabEvents') },
@@ -2373,7 +2477,8 @@ const AdminDashboard = () => {
     { key: 'overview', label: t('adminDashboard.sideTx_dashboard') },
     { key: 'players', label: t('adminDashboard.sideTx_players', { defaultValue: 'Players' }) },
     { key: 'console', label: t('adminDashboard.sideTx_liveConsole') },
-    { key: 'metrics', label: t('adminDashboard.sideTx_resources') },
+    { key: 'resources', label: t('adminDashboard.sideTx_resources', { defaultValue: 'Resources' }) },
+    { key: 'metrics', label: t('adminDashboard.tabMetrics') },
     { key: 'logs', label: t('adminDashboard.sideTx_serverLog') },
     { key: 'cfg', label: t('adminDashboard.sideTx_cfgEditor') },
     { key: 'respawn', label: t('adminDashboard.sideTx_respawnCenter') },
@@ -4379,6 +4484,29 @@ const AdminDashboard = () => {
                         type="text"
                         value={cfgForm.serverName}
                         onChange={(e) => setCfgForm((prev) => ({ ...prev, serverName: e.target.value }))}
+                      />
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgMasterUrl')}</span>
+                      <select
+                        className="admin-dashboard__log-select"
+                        value={cfgForm.masterUrl}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, masterUrl: e.target.value }))}
+                      >
+                        {MASTER_URL_OPTIONS.map((url) => (
+                          <option key={url} value={url}>{url}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="admin-dashboard__cfg-field">
+                      <span>{t('adminDashboard.cfgMasterKey')}</span>
+                      <input
+                        className="admin-dashboard__search-input"
+                        type="text"
+                        value={cfgForm.masterKey}
+                        onChange={(e) => setCfgForm((prev) => ({ ...prev, masterKey: e.target.value }))}
                       />
                     </label>
 

@@ -12,6 +12,7 @@ jobs:
     env:
       INSTALLER_REPOSITORY: ${{ vars.INSTALLER_REPOSITORY || '' }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Adding FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 to the env block
     steps:
       - name: Validate installer repository variable
         run: |

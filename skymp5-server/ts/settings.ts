@@ -45,6 +45,13 @@ export class Settings {
   maxPlayers = 100;
   master: string = "https://gateway.skymp.net";
   name = 'Yet Another Server';
+  listenHost = '0.0.0.0';
+  externalHost: string | null = null;
+  publicHost: string | null = null;
+  gamemode: string | null = null;
+  countryCode: string | null = null;
+  serverUid: string | null = null;
+  masterHeartbeatIntervalMs = 15000;
   gamemodePath = '...';
   loadOrder = new Array<string>();
   dataDir = './data';
@@ -94,6 +101,13 @@ export class Settings {
       'maxPlayers',
       'master',
       'name',
+      'listenHost',
+      'externalHost',
+      'publicHost',
+      'gamemode',
+      'countryCode',
+      'serverUid',
+      'masterHeartbeatIntervalMs',
       'gamemodePath',
       'loadOrder',
       'dataDir',

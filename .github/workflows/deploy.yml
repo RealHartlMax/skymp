@@ -23,9 +23,11 @@ on:
                     - 'indev'
                 default: 'indev'
 
+
 env:
     BUILD_TYPE: RelWithDebInfo
     GAMEMODE_GITHUB_TOKEN: ${{secrets.GAMEMODE_GITHUB_TOKEN}}
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
     deploy:

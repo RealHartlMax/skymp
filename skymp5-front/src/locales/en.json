@@ -192,6 +192,8 @@
     "cfgInvalidJson": "Invalid JSON",
     "cfgInvalidItemCode": "Invalid item code (use hex like 000139B5)",
     "cfgServerName": "Server name",
+    "cfgMasterUrl": "Master server URL",
+    "cfgMasterKey": "Master key",
     "cfgPort": "Port",
     "cfgMaxPlayers": "Max players",
     "cfgLanguage": "Default language",

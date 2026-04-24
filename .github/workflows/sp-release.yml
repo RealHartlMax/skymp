@@ -1,10 +1,10 @@
 name: SP Release
 on:
   workflow_dispatch:
+
 jobs:
   sprelease:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +67,7 @@ jobs:
             echo "## Other changes"$'\n' >> "$TARGET"
             content=$(< ./temp.txt)
             echo "$content" >> "$TARGET"
-            echo $'\n' >> ./temp.txt
+            echo $'\n' >> "$TARGET"
             rm -f ./temp.txt
           fi
 

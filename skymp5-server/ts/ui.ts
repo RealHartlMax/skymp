@@ -345,19 +345,18 @@ const addServerLog = (level: ServerLogLevel, message: string): void => {
   const cleaned = String(message || '')
     .replace(/\u001b\[[0-9;]*m/g, '')
     .trim();
-
   if (!cleaned) return;
-
-  serverLog.push({
+  const entry = {
     ts: Date.now(),
     type: 'server',
     level,
     message: cleaned.slice(0, 4000),
-  });
-
+  };
+  serverLog.push(entry);
   if (serverLog.length > MAX_SERVER_LOG) {
     serverLog.splice(0, serverLog.length - MAX_SERVER_LOG);
   }
+  broadcastLiveConsoleLog(entry);
 };
 
 const pushServerLogChunkInternal = (level: ServerLogLevel, chunk: string): void => {

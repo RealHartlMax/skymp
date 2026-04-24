@@ -192,6 +192,8 @@
     "cfgInvalidJson": "Неверный JSON",
     "cfgInvalidItemCode": "Неверный код предмета (hex, например 000139B5)",
     "cfgServerName": "Имя сервера",
+    "cfgMasterUrl": "URL master-сервера",
+    "cfgMasterKey": "Master key",
     "cfgPort": "Порт",
     "cfgMaxPlayers": "Макс. игроков",
     "cfgLanguage": "Язык по умолчанию",

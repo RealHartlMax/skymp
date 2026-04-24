@@ -1,9 +1,7 @@
+
 name: Deploy Gamemode
 
 on:
-  # repository_dispatch is not yet in use, but it's a good idea to have it
-  repository_dispatch:
-    types: [deploy_gamemode]
   workflow_dispatch:
     inputs:
       branch:
@@ -15,11 +13,14 @@ on:
           - 'indev'
         default: 'indev'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy_gamemode:
     runs-on: ubuntu-latest
     env:
-      DEPLOY_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.event.client_payload.inputs.branch }}
+      DEPLOY_BRANCH: ${{ inputs.branch || 'indev' }}
     steps:
       - name: Show resolved deploy inputs
         run: |
@@ -89,7 +90,7 @@ jobs:
           fi
 
           remote_server_connstr="$DEPLOY_TARGET_USER@$DEPLOY_TARGET_HOST"
-          remote_dir="~/skymp-server-${{ github.event.inputs.branch }}/server/"
+          remote_dir="~/skymp-server-$DEPLOY_BRANCH/server/"
 
           remote_shell="ssh -i ssh_id -o UserKnownHostsFile=ssh_known_hosts"
           rsync --rsh="$remote_shell" -vazPh --checksum \

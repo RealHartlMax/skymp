@@ -1,4 +1,5 @@
 import * as ui from "./ui";
+import * as http from "http";
 
 // @ts-ignore
 import * as sourceMapSupport from "source-map-support";
@@ -233,11 +234,58 @@ const main = async () => {
     port, master, maxPlayers, name, masterKey, offlineMode, gamemodePath
   } = settingsObject;
 
+  const trimOrNull = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const isInvalidPublicHost = (value: string | null): boolean => {
+    if (!value) {
+      return true;
+    }
+    const normalized = value.toLowerCase();
+    return normalized === "0.0.0.0" || normalized === "::" || normalized === "::0";
+  };
+
+  const heartbeatIp = trimOrNull(settingsObject.publicHost)
+    || trimOrNull(settingsObject.externalHost)
+    || (!isInvalidPublicHost(trimOrNull(settingsObject.listenHost)) ? trimOrNull(settingsObject.listenHost) : null)
+    || "127.0.0.1";
+
+  const heartbeatGamemode = trimOrNull(settingsObject.gamemode)
+    || trimOrNull((settingsObject.allSettings as any)?.gamemode)
+    || trimOrNull((settingsObject.allSettings as any)?.serverName);
+
+  const heartbeatCountryCode = trimOrNull(settingsObject.countryCode)
+    || trimOrNull((settingsObject.allSettings as any)?.countryCode);
+
+  const heartbeatServerUid = trimOrNull(settingsObject.serverUid)
+    || trimOrNull((settingsObject.allSettings as any)?.server_uid);
+
+  const heartbeatIntervalMsRaw = Number((settingsObject.allSettings as any)?.masterHeartbeatIntervalMs ?? settingsObject.masterHeartbeatIntervalMs);
+  const heartbeatIntervalMs = Number.isFinite(heartbeatIntervalMsRaw) ? heartbeatIntervalMsRaw : 15000;
+
   const log = console.log;
   const systems = new Array<System>();
   systems.push(
     new MetricsSystem(),
-    new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
+    new MasterClient(
+      log,
+      port,
+      heartbeatIp,
+      master,
+      maxPlayers,
+      name,
+      masterKey,
+      heartbeatIntervalMs,
+      offlineMode,
+      heartbeatGamemode || undefined,
+      heartbeatCountryCode || undefined,
+      heartbeatServerUid || undefined,
+    ),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     new DiscordBanSystem(),
@@ -250,8 +298,18 @@ const main = async () => {
   ui.main(settingsObject);
 
   let server: any;
+  let httpServer: http.Server | null = null;
 
   try {
+    // Start Koa HTTP server first (for WebSocket upgrade)
+    const app = require("./ui").default || require("./ui");
+    httpServer = app.listen(settingsObject.port, () => {
+      console.log(`HTTP server listening on port ${settingsObject.port}`);
+    });
+    // Setup WebSocket for live console
+    if (ui.setupLiveConsoleWebSocket) {
+      ui.setupLiveConsoleWebSocket(httpServer);
+    }
     server = createScampServer(settingsObject.allSettings);
     ui.setServer(server);
   } catch (e) {
