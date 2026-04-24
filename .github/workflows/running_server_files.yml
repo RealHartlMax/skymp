@@ -59,7 +59,7 @@ jobs:
       packages: write
     env:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}
-      VCPKG_BINARY_SOURCES: clear;nuget,GitHub,readwrite;interactive
+      VCPKG_BINARY_SOURCES: clear;nuget,GitHub,readwrite
       VCPKG_FEATURE_FLAGS: manifests
     steps:
       - uses: actions/checkout@v6
