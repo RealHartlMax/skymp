@@ -226,7 +226,17 @@ runs:
           exit 0
         }
 
+        if ([string]::IsNullOrWhiteSpace("${{ inputs.NUGET_GITHUB_TOKEN }}")) {
+          throw "NUGET_GITHUB_TOKEN is empty. Set it from a repository/org secret so NuGet binary cache auth can work."
+        }
+
         $nugetPath = & 'C:\vcpkg\vcpkg.exe' fetch nuget | Select-Object -Last 1
+
+        # Ensure package push has an API key configured for GitHub Packages.
+        & $nugetPath setapikey "${{ inputs.NUGET_GITHUB_TOKEN }}" -Source "https://nuget.pkg.github.com/skyrim-multiplayer/index.json"
+
+        # Reset source to avoid stale credentials from previous runner state.
+        & $nugetPath sources remove -name "GitHub" | Out-Null
 
         if ("${{ github.event_name }}" -eq "pull_request") {
           Write-Host "Pull request detected. Adding NuGet source for actor."
@@ -288,6 +298,25 @@ runs:
 
         Invoke-Expression $cmake_command_full
       shell: powershell
+
+    - name: Verify CEF sandbox library exists (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      shell: powershell
+      run: |
+        $candidates = @(
+          "${{ github.workspace }}\build\vcpkg_installed\x64-windows-sp\share\cef-prebuilt\Release\cef_sandbox.lib",
+          "${{ github.workspace }}\build\vcpkg_installed\x64-windows-sp\share\cef-prebuilt\RelWithDebInfo\cef_sandbox.lib",
+          "${{ github.workspace }}\build\vcpkg_installed\x64-windows-sp\share\cef-prebuilt\MinSizeRel\cef_sandbox.lib"
+        )
+
+        foreach ($candidate in $candidates) {
+          if (Test-Path $candidate) {
+            Write-Host "Found CEF sandbox lib: $candidate"
+            exit 0
+          }
+        }
+
+        throw "cef_sandbox.lib was not found in expected cef-prebuilt locations. Check NuGet auth/binary cache and cef-prebuilt overlay port installation."
 
     - name: Upload vcpkg logs (non-Windows)
       if: ${{ always() && runner.os != 'Windows' }}
