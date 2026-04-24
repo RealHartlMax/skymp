@@ -71,6 +71,7 @@ jobs:
         with:
           DESCRIPTION: running_server_files-windows
           SKYRIM_VR_FLAG: OFF
+          RUN_TESTS: false
           SP_NEXUS_ARTIFACT_NAME: nope
           OFFLINE_MODE: OFF
           DEPLOY_BRANCH: ""

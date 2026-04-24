@@ -92,6 +92,18 @@ const watchCallback = (_eventType, fileName) => {
           path.join(targetDir, getFileName(from)),
           fs.readFileSync(from),
         );
+      let cpIfExists = (from, targetDir) => {
+        if (fs.existsSync(from)) {
+          cp(from, targetDir);
+        } else {
+          console.warn(`Optional file is missing, skipping copy: ${from}`);
+        }
+      };
+      let unlinkIfExists = (filePath) => {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      };
       let binPath = (file) => path.join(bin, `bin/${buildCfg}/${file}`);
 
       if (process.platform === 'win32') {
@@ -168,8 +180,8 @@ const watchCallback = (_eventType, fileName) => {
           );
         }
 
-        cp(binPath('SkyrimPlatform.pdb'), distDir);
-        cp(binPath('SkyrimPlatformImpl.pdb'), distDir);
+        cpIfExists(binPath('SkyrimPlatform.pdb'), distDir);
+        cpIfExists(binPath('SkyrimPlatformImpl.pdb'), distDir);
         requiredVcpkgDlls.forEach((dll) => {
           cp(
             binPath(dll),
@@ -214,7 +226,7 @@ const watchCallback = (_eventType, fileName) => {
           binPath('SkyrimPlatformCEF.exe.hidden'),
           path.join(distDir, 'Data/Platform/Distribution/RuntimeDependencies'),
         );
-        cp(binPath('SkyrimPlatformCEF.pdb'), distDir);
+        cpIfExists(binPath('SkyrimPlatformCEF.pdb'), distDir);
         cp(
           binPath('SkyrimPlatform.dll'),
           path.join(distDir, 'Data/SKSE/Plugins'),
@@ -254,9 +266,9 @@ const watchCallback = (_eventType, fileName) => {
         }
 
         // No need to release pdb to the public
-        fs.unlinkSync(path.join(distDir, 'SkyrimPlatform.pdb'));
-        fs.unlinkSync(path.join(distDir, 'SkyrimPlatformCEF.pdb'));
-        fs.unlinkSync(path.join(distDir, 'SkyrimPlatformImpl.pdb'));
+        unlinkIfExists(path.join(distDir, 'SkyrimPlatform.pdb'));
+        unlinkIfExists(path.join(distDir, 'SkyrimPlatformCEF.pdb'));
+        unlinkIfExists(path.join(distDir, 'SkyrimPlatformImpl.pdb'));
       }
 
       // On Linux, we would not have this directory created yet

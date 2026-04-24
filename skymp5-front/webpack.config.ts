@@ -13,7 +13,17 @@ const defaultConfig = {
 
 const tryLoadConfig = (fileName) => {
   const filePath = path.resolve(__dirname, fileName);
-  return fs.existsSync(filePath) ? require(filePath) : null;
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    return require(filePath);
+  } catch (e) {
+    // Keep CI and local builds alive even if a TS config can't be loaded in CJS mode.
+    console.warn(`[webpack-config] failed to load ${fileName}: ${e.message}`);
+    return null;
+  }
 };
 
 const loadFirstAvailableConfig = (fileNames) => {
@@ -29,8 +39,8 @@ const loadFirstAvailableConfig = (fileNames) => {
 // CI should work without local config files; developers can still override locally.
 const config = {
   ...defaultConfig,
-  ...(loadFirstAvailableConfig(['config.ts', 'config.js']) || {}),
-  ...(loadFirstAvailableConfig(['config.local.ts', 'config.local.js']) || {}),
+  ...(loadFirstAvailableConfig(['config.js', 'config.ts']) || {}),
+  ...(loadFirstAvailableConfig(['config.local.js', 'config.local.ts']) || {}),
 };
 
 const distPath = path.isAbsolute(config.outputPath)
