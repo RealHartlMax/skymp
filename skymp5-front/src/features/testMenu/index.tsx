@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SkyrimFrame } from '../../components/SkyrimFrame/SkyrimFrame';
+
 import { FrameButton } from '../../components/FrameButton/FrameButton';
-import './styles.scss';
+import { SkyrimFrame } from '../../components/SkyrimFrame/SkyrimFrame';
 import { SkyrimHint } from '../../components/SkyrimHint/SkyrimHint';
+import './styles.scss';
+
 //import hoverSound from './assets/OnCoursor.wav';
 //import quitSound from './assets/Quit.wav';
 //import selectSound from './assets/ButtonDown.wav';
@@ -87,11 +89,7 @@ const TestMenu = ({ send }: { send: (message: string) => void }) => {
     if (!playerData) return;
     setpExp(1);
     setpMem(1);
-    setscale(
-      window.innerWidth >= 1920
-        ? 1
-        : window.innerWidth / 2500
-    );
+    setscale(window.innerWidth >= 1920 ? 1 : window.innerWidth / 2500);
   }, [playerData]);
 
   if (!playerData) return <></>;
@@ -157,8 +155,7 @@ const TestMenu = ({ send }: { send: (message: string) => void }) => {
                   width={242}
                   height={56}
                 ></FrameButton>
-                {confirmDiscard
-                  ? (
+                {confirmDiscard ? (
                   <div className="perks__footer__buttons__confirm">
                     <FrameButton
                       text={t('skillsMenu.yes')}
@@ -176,17 +173,16 @@ const TestMenu = ({ send }: { send: (message: string) => void }) => {
                       onMouseDown={() => setconfirmDiscard(false)}
                     ></FrameButton>
                   </div>
-                    )
-                  : (
+                ) : (
                   <FrameButton
-                      text={t('skillsMenu.reset')}
+                    text={t('skillsMenu.reset')}
                     name="discardBtn"
                     variant="DEFAULT"
                     width={242}
                     height={56}
                     // disabled={Object.keys(playerData.perks).length === 0}
                   ></FrameButton>
-                    )}
+                )}
               </div>
               <div className="perks__footer__exit-button">
                 <FrameButton

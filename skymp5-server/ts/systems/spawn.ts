@@ -1,5 +1,5 @@
-import { Settings } from "../settings";
-import { System, Log, SystemContext } from "./system";
+import { Settings } from '../settings';
+import { Log, System, SystemContext } from './system';
 
 type Mp = any; // TODO
 
@@ -8,7 +8,11 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
-function toSpawnPoint(point: { pos: number[]; worldOrCell: string; angleZ: number }) {
+function toSpawnPoint(point: {
+  pos: number[];
+  worldOrCell: string;
+  angleZ: number;
+}) {
   return {
     pos: point.pos,
     rot: [0, 0, point.angleZ],
@@ -17,17 +21,22 @@ function toSpawnPoint(point: { pos: number[]; worldOrCell: string; angleZ: numbe
 }
 
 export class Spawn implements System {
-  systemName = "Spawn";
-  constructor(private log: Log) { }
+  systemName = 'Spawn';
+  constructor(private log: Log) {}
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const settingsObject = await Settings.get();
-    const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string) => {
+    const listenerFn = (
+      userId: number,
+      userProfileId: number,
+      discordRoleIds: string[],
+      discordId?: string,
+    ) => {
       const { startPoints, starterInventory } = settingsObject;
       // TODO: Show race menu if character is not created after relogging
       let actorId = ctx.svr.getActorsByProfileId(userProfileId)[0];
       if (actorId) {
-        this.log("Loading character", actorId.toString(16));
+        this.log('Loading character', actorId.toString(16));
         ctx.svr.setEnabled(actorId, true);
         ctx.svr.setUserActor(userId, actorId);
       } else {
@@ -38,33 +47,36 @@ export class Spawn implements System {
           startPoint.pos,
           startPoint.angleZ,
           +startPoint.worldOrCell,
-          userProfileId
+          userProfileId,
         );
-        this.log("Creating character", actorId.toString(16));
+        this.log('Creating character', actorId.toString(16));
         ctx.svr.setUserActor(userId, actorId);
 
         const mp = ctx.svr as unknown as Mp;
-        mp.set(actorId, "spawnPoint", toSpawnPoint(startPoint));
+        mp.set(actorId, 'spawnPoint', toSpawnPoint(startPoint));
         if (starterInventory.entries.length > 0) {
-          mp.set(actorId, "inventory", starterInventory);
+          mp.set(actorId, 'inventory', starterInventory);
         }
         ctx.svr.setRaceMenuOpen(actorId, true);
       }
 
       const mp = ctx.svr as unknown as Mp;
-      mp.set(actorId, "private.discordRoles", discordRoleIds);
+      mp.set(actorId, 'private.discordRoles', discordRoleIds);
 
       if (discordId !== undefined) {
         // This helps us to test if indexes registration works in LoadForm or not
-        if (mp.get(actorId, "private.indexed.discordId") !== discordId) {
-          mp.set(actorId, "private.indexed.discordId", discordId);
+        if (mp.get(actorId, 'private.indexed.discordId') !== discordId) {
+          mp.set(actorId, 'private.indexed.discordId', discordId);
         }
 
-        const forms = mp.findFormsByPropertyValue("private.indexed.discordId", discordId) as number[];
+        const forms = mp.findFormsByPropertyValue(
+          'private.indexed.discordId',
+          discordId,
+        ) as number[];
         console.log(`Found forms ${forms}`);
       }
     };
-    ctx.gm.on("spawnAllowed", listenerFn);
+    ctx.gm.on('spawnAllowed', listenerFn);
     (ctx.svr as any)._onSpawnAllowed = listenerFn;
   }
 

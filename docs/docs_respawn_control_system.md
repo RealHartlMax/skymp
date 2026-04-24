@@ -11,13 +11,15 @@ The system is based on the new **`canRespawn`** property, which controls whether
 ### Core Components
 
 1. **`canRespawn` Property** - Boolean property on actors (default: `true`)
+
    - When `true`: Dead players auto-respawn after the delay configured in `spawnDelay`
    - When `false`: Dead players stay dead until manually revived via `isDead` property
 
 2. **Property Binding** - Access via `mp.set()` / `mp.get()` from TypeScript/gamemode
+
    ```typescript
-   mp.set(actorId, "canRespawn", false);  // Disable auto-respawn
-   mp.get(actorId, "canRespawn");         // Check if respawn enabled
+   mp.set(actorId, 'canRespawn', false); // Disable auto-respawn
+   mp.get(actorId, 'canRespawn'); // Check if respawn enabled
    ```
 
 3. **Death Event Gating** - Modified `DeathEvent.OnFireSuccess()` in C++
@@ -27,6 +29,7 @@ The system is based on the new **`canRespawn`** property, which controls whether
 ### Implementation Details
 
 **File: `DeathEvent.cpp`**
+
 ```cpp
 void DeathEvent::OnFireSuccess(WorldState*)
 {
@@ -37,11 +40,13 @@ void DeathEvent::OnFireSuccess(WorldState*)
 ```
 
 **File: `MpChangeForms.h`**
+
 ```cpp
 bool canRespawn = true;  // Persisted in ChangeForm
 ```
 
 **File: `CanRespawnBinding.h/cpp`**
+
 - Property binding to expose `canRespawn` to TypeScript via `mp.set()`/`mp.get()`
 - Registered in `PropertyBindingFactory::CreateStandardPropertyBindings()`
 
@@ -52,18 +57,18 @@ bool canRespawn = true;  // Persisted in ChangeForm
 ```typescript
 // When player dies, disable auto-respawn
 export const onDeath = (dyingActorId: number, killerId: number) => {
-  mp.set(dyingActorId, "canRespawn", false);
+  mp.set(dyingActorId, 'canRespawn', false);
   console.log(`Player ${dyingActorId} is downed. Waiting for healer...`);
 };
 
 // Healer casts revival spell
 export const revivePlayer = (playerId: number, healerId: number) => {
   // Resurrect the player
-  mp.set(playerId, "isDead", false);
-  
+  mp.set(playerId, 'isDead', false);
+
   // Re-enable respawn for next death
-  mp.set(playerId, "canRespawn", true);
-  
+  mp.set(playerId, 'canRespawn', true);
+
   console.log(`Player ${playerId} revived by healer ${healerId}`);
 };
 ```
@@ -71,25 +76,25 @@ export const revivePlayer = (playerId: number, healerId: number) => {
 ### Example 2: Delayed Revival with Timeout
 
 ```typescript
-const downedPlayers = new Map<number, number>();  // playerId -> downTime
+const downedPlayers = new Map<number, number>(); // playerId -> downTime
 
 export const onDeath = (dyingActorId: number, killerId: number) => {
-  mp.set(dyingActorId, "canRespawn", false);
+  mp.set(dyingActorId, 'canRespawn', false);
   downedPlayers.set(dyingActorId, Date.now());
-  
+
   // Auto-revive after 5 minutes if not revived by healer
   setTimeout(() => {
     if (downedPlayers.has(dyingActorId)) {
-      mp.set(dyingActorId, "isDead", false);
-      mp.set(dyingActorId, "canRespawn", true);
+      mp.set(dyingActorId, 'isDead', false);
+      mp.set(dyingActorId, 'canRespawn', true);
       downedPlayers.delete(dyingActorId);
     }
-  }, 300000);  // 5 minutes
+  }, 300000); // 5 minutes
 };
 
 export const healerRevives = (playerId: number) => {
-  mp.set(playerId, "isDead", false);
-  mp.set(playerId, "canRespawn", true);
+  mp.set(playerId, 'isDead', false);
+  mp.set(playerId, 'canRespawn', true);
   downedPlayers.delete(playerId);
 };
 ```
@@ -103,10 +108,10 @@ For Papyrus scripts that need to read/write `canRespawn`:
 Function RevivePlayer(Actor akTarget)
   ; Enable respawn
   mp_set(akTarget, "canRespawn", true)
-  
+
   ; Resurrect
   mp_set(akTarget, "isDead", false)
-  
+
   ; Optional: Restore health
   akTarget.RestoreActorValue("Health", 100)
 EndFunction
@@ -115,10 +120,10 @@ EndFunction
 Function HandlePlayerDeath(Actor akPlayer)
   ; Disable auto-respawn
   mp_set(akPlayer, "canRespawn", false)
-  
+
   ; Wait for healer to revive (or timeout)
   Utility.Wait(300.0)  ; 5 minute timeout
-  
+
   ; Auto-revive if still downed
   if mp_get(akPlayer, "isDead") as bool
     mp_set(akPlayer, "canRespawn", true)
@@ -136,14 +141,16 @@ EndFunction
 **Persistence:** Saved in actor's ChangeForm
 
 **Read:**
+
 ```typescript
-const canRespawn = mp.get(actorId, "canRespawn");
+const canRespawn = mp.get(actorId, 'canRespawn');
 ```
 
 **Write:**
+
 ```typescript
-mp.set(actorId, "canRespawn", false);  // Disable auto-respawn
-mp.set(actorId, "canRespawn", true);   // Enable auto-respawn
+mp.set(actorId, 'canRespawn', false); // Disable auto-respawn
+mp.set(actorId, 'canRespawn', true); // Enable auto-respawn
 ```
 
 ### Related Properties
@@ -157,37 +164,41 @@ mp.set(actorId, "canRespawn", true);   // Enable auto-respawn
 To implement a healer revival system:
 
 ### 1. Disable Respawn on Death
+
 ```typescript
 export const onDeath = (dyingActorId: number, killerId: number) => {
-  mp.set(dyingActorId, "canRespawn", false);
+  mp.set(dyingActorId, 'canRespawn', false);
 };
 ```
 
 ### 2. Create Healer Power/Spell
+
 ```typescript
 export const castHealerRevival = (healerId: number, targetId: number) => {
   const healer = mp.getFormById(healerId);
   const target = mp.getFormById(targetId);
-  
+
   if (!healer || !target) return;
-  
+
   // Check distance, PvP restrictions, etc.
   const dx = target.pos[0] - healer.pos[0];
   const dy = target.pos[1] - healer.pos[1];
   const distance = Math.sqrt(dx * dx + dy * dy);
-  
-  if (distance > 20) {  // 20 unit range
-    console.log("Too far away to revive");
+
+  if (distance > 20) {
+    // 20 unit range
+    console.log('Too far away to revive');
     return;
   }
-  
+
   // Revive
-  mp.set(targetId, "isDead", false);
-  mp.set(targetId, "canRespawn", true);
+  mp.set(targetId, 'isDead', false);
+  mp.set(targetId, 'canRespawn', true);
 };
 ```
 
 ### 3. (Optional) Add Revival Restrictions
+
 - Check healer profession (e.g., member of "Healers Guild")
 - Check cooldown timers
 - Require special items (healing herbs, potions)
@@ -201,7 +212,7 @@ export const castHealerRevival = (healerId: number, targetId: number) => {
 4. **Resurrection Timing:** To revive a downed player, use `mp.set(actorId, "isDead", false)`
 5. **Health on Revival:** By default, revived actors have 0% health. Set health explicitly:
    ```typescript
-   mp.set(actorId, "percentages", { health: 0.25, magicka: 1.0, stamina: 1.0 });
+   mp.set(actorId, 'percentages', { health: 0.25, magicka: 1.0, stamina: 1.0 });
    ```
 
 ## Backward Compatibility
@@ -216,19 +227,19 @@ To test the system:
 
 ```typescript
 // Simulate player death without respawn
-mp.set(playerId, "isDead", true);
-mp.set(playerId, "canRespawn", false);
+mp.set(playerId, 'isDead', true);
+mp.set(playerId, 'canRespawn', false);
 
 // Verify canRespawn is disabled
-console.assert(mp.get(playerId, "canRespawn") === false);
+console.assert(mp.get(playerId, 'canRespawn') === false);
 
 // Revive
-mp.set(playerId, "isDead", false);
-mp.set(playerId, "canRespawn", true);
+mp.set(playerId, 'isDead', false);
+mp.set(playerId, 'canRespawn', true);
 
 // Verify player is alive and respawn enabled
-console.assert(mp.get(playerId, "isDead") === false);
-console.assert(mp.get(playerId, "canRespawn") === true);
+console.assert(mp.get(playerId, 'isDead') === false);
+console.assert(mp.get(playerId, 'canRespawn') === true);
 ```
 
 ## Performance Impact

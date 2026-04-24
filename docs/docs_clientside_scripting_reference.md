@@ -18,7 +18,7 @@ Refers to Skyrim Platform API. See [Skyrim Platform](docs_skyrim_platform.md) pa
 
 ```typescript
 // Print to console
-ctx.sp.printConsole("Hello Skyrim Platform!");
+ctx.sp.printConsole('Hello Skyrim Platform!');
 // Kill player character (locally)
 ctx.sp.Game.getPlayer().kill();
 ```
@@ -37,7 +37,7 @@ In `eventSource` it is usually `undefined` unless your script assigns it manuall
 const pos = [
   ctx.refr.getPositionX(),
   ctx.refr.getPositionY(),
-  ctx.refr.getPositionZ()
+  ctx.refr.getPositionZ(),
 ];
 ```
 
@@ -62,7 +62,7 @@ A writable object that is used to store data between `updateOwner`/`updateNeighb
 For event sources, each source has its own `ctx.state` object that persists between callback calls.
 
 ```typescript
-ctx.state.x = "y";
+ctx.state.x = 'y';
 ```
 
 ## ctx.get()
@@ -72,7 +72,7 @@ Get the value of the specified property. Built-in properties are not supported p
 `ctx.get(...)` is not available in `eventSource` context.
 
 ```typescript
-const v = ctx.get("myAwesomeProperty");
+const v = ctx.get('myAwesomeProperty');
 ```
 
 ## ctx.getFormIdInServerFormat()

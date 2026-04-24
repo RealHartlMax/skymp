@@ -13,15 +13,18 @@ Custom event names must start with an underscore, for example `_onSomeEvent`.
 
 ```typescript
 // 1) Register a client-side event source
-mp.makeEventSource("_onSomeEvent", `
+mp.makeEventSource(
+  '_onSomeEvent',
+  `
   ctx.sp.once("update", () => {
     ctx.sendEvent({ foo: "bar" });
   });
-`);
+`,
+);
 
 // 2) Register a server-side handler
 mp._onSomeEvent = (pcFormId, payload) => {
-  console.log("handled for", pcFormId, payload);
+  console.log('handled for', pcFormId, payload);
 };
 ```
 
@@ -36,7 +39,9 @@ In event-source code (`makeEventSource` body):
 ## Practical Example (Death Pulse)
 
 ```typescript
-mp.makeEventSource("_onLocalDeath", `
+mp.makeEventSource(
+  '_onLocalDeath',
+  `
   ctx.sp.on("update", () => {
     const pl = ctx.sp.Game.getPlayer();
     const isDead = pl.getActorValuePercentage("health") === 0;
@@ -48,10 +53,11 @@ mp.makeEventSource("_onLocalDeath", `
       ctx.state.wasDead = isDead;
     }
   });
-`);
+`,
+);
 
 mp._onLocalDeath = (pcFormId, payload) => {
-  console.log("downed", pcFormId, payload);
+  console.log('downed', pcFormId, payload);
 };
 ```
 

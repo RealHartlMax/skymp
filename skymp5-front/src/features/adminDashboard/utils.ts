@@ -18,21 +18,30 @@ export const formatAdminUptime = (seconds: number): string => {
   return `${h}h ${m}m`;
 };
 
-export const formatAdminPos = (pos: AdminPosition | number[] | undefined): string => {
+export const formatAdminPos = (
+  pos: AdminPosition | number[] | undefined,
+): string => {
   if (!pos) return '-';
-  if (Array.isArray(pos)) return pos.map((v) => Math.round(Number(v))).join(', ');
+  if (Array.isArray(pos))
+    return pos.map((v) => Math.round(Number(v))).join(', ');
   return `${Math.round(pos.x)}, ${Math.round(pos.y)}, ${Math.round(pos.z)}`;
 };
 
-export const formatAdminTime = (ts: number): string => new Date(ts).toLocaleTimeString();
+export const formatAdminTime = (ts: number): string =>
+  new Date(ts).toLocaleTimeString();
 
-export const filterAdminPlayers = <T extends AdminPlayerSearchEntry>(players: T[], search: string): T[] => {
+export const filterAdminPlayers = <T extends AdminPlayerSearchEntry>(
+  players: T[],
+  search: string,
+): T[] => {
   const query = search.trim().toLowerCase();
   if (!query) return players;
 
   return players.filter((player) => {
-    return String(player.userId).includes(query)
-      || (player.actorName || '').toLowerCase().includes(query)
-      || (player.ip || '').includes(query);
+    return (
+      String(player.userId).includes(query) ||
+      (player.actorName || '').toLowerCase().includes(query) ||
+      (player.ip || '').includes(query)
+    );
   });
 };

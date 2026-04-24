@@ -1,7 +1,7 @@
 const SUPPORTED_LANGUAGES = ['de', 'en', 'es', 'ru'] as const;
 const LANGUAGE_STORAGE_KEY = 'skymp.language';
 
-export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 export const detectLanguage = (rawLanguage?: string): SupportedLanguage => {
   if (!rawLanguage) {

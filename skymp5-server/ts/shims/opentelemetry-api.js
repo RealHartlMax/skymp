@@ -1,10 +1,10 @@
-"use strict";
+'use strict';
 
 const noopSpan = {
   spanContext() {
     return {
-      traceId: "",
-      spanId: "",
+      traceId: '',
+      spanId: '',
     };
   },
 };

@@ -1,4 +1,11 @@
-export type ItemCategory = 'weapons' | 'armor' | 'clothing' | 'potions' | 'food' | 'ingredients' | 'misc';
+export type ItemCategory =
+  | 'weapons'
+  | 'armor'
+  | 'clothing'
+  | 'potions'
+  | 'food'
+  | 'ingredients'
+  | 'misc';
 
 export interface CatalogItem {
   codeHex: string;
@@ -71,14 +78,26 @@ export const ITEM_CATALOG: CatalogItem[] = [
   { codeHex: '000D1920', name: 'Fine Boots', category: 'clothing' },
   { codeHex: '000D1922', name: 'Fine Hat', category: 'clothing' },
   { codeHex: '000D191D', name: 'Merchant Clothes', category: 'clothing' },
-  { codeHex: '000D1923', name: 'Radiant Raiment Fine Clothes', category: 'clothing' },
+  {
+    codeHex: '000D1923',
+    name: 'Radiant Raiment Fine Clothes',
+    category: 'clothing',
+  },
   { codeHex: '000CEE80', name: 'College Boots', category: 'clothing' },
 
   // Potions
   { codeHex: '00039BE5', name: 'Potion of Minor Healing', category: 'potions' },
   { codeHex: '00039BE4', name: 'Potion of Healing', category: 'potions' },
-  { codeHex: '00039BE3', name: 'Potion of Plentiful Healing', category: 'potions' },
-  { codeHex: '00039BE2', name: 'Potion of Vigorous Healing', category: 'potions' },
+  {
+    codeHex: '00039BE3',
+    name: 'Potion of Plentiful Healing',
+    category: 'potions',
+  },
+  {
+    codeHex: '00039BE2',
+    name: 'Potion of Vigorous Healing',
+    category: 'potions',
+  },
   { codeHex: '00039BE0', name: 'Potion of Minor Magicka', category: 'potions' },
   { codeHex: '00039BDF', name: 'Potion of Magicka', category: 'potions' },
   { codeHex: '00039BE8', name: 'Potion of Minor Stamina', category: 'potions' },
@@ -99,7 +118,11 @@ export const ITEM_CATALOG: CatalogItem[] = [
   { codeHex: '00064B43', name: 'Ale', category: 'food' },
 
   // Ingredients
-  { codeHex: '0003AD66', name: 'Blue Mountain Flower', category: 'ingredients' },
+  {
+    codeHex: '0003AD66',
+    name: 'Blue Mountain Flower',
+    category: 'ingredients',
+  },
   { codeHex: '0003AD60', name: 'Wheat', category: 'ingredients' },
   { codeHex: '0006ABCB', name: 'Salt Pile', category: 'ingredients' },
   { codeHex: '00077E1C', name: 'Garlic', category: 'ingredients' },

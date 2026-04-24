@@ -24,7 +24,8 @@ $server-input-bg: #0f1d28;
   width: 100%;
   max-width: 1120px;
   max-height: 90vh;
-  background: radial-gradient(circle at 5% -10%, #1a3040 0%, transparent 55%), $server-bg;
+  background: radial-gradient(circle at 5% -10%, #1a3040 0%, transparent 55%),
+    $server-bg;
   border: 1px solid $server-line;
   border-radius: 14px;
   color: $server-text;
@@ -360,7 +361,7 @@ $server-input-bg: #0f1d28;
     cursor: pointer;
     user-select: none;
 
-    input[type="checkbox"] {
+    input[type='checkbox'] {
       accent-color: $server-accent;
       cursor: pointer;
     }
@@ -461,8 +462,13 @@ $server-input-bg: #0f1d28;
     border-radius: 50%;
     flex-shrink: 0;
 
-    &--online  { background: $server-accent; box-shadow: 0 0 5px $server-accent; }
-    &--offline { background: $server-muted; }
+    &--online {
+      background: $server-accent;
+      box-shadow: 0 0 5px $server-accent;
+    }
+    &--offline {
+      background: $server-muted;
+    }
   }
 
   &__lock {
@@ -510,10 +516,18 @@ $server-input-bg: #0f1d28;
     font-size: 13px;
     font-weight: 600;
 
-    &--good    { color: $server-accent; }
-    &--ok      { color: #d4c84a; }
-    &--bad     { color: $server-warn; }
-    &--unknown { color: $server-muted; }
+    &--good {
+      color: $server-accent;
+    }
+    &--ok {
+      color: #d4c84a;
+    }
+    &--bad {
+      color: $server-warn;
+    }
+    &--unknown {
+      color: $server-muted;
+    }
   }
 
   // --- Connect button in table ---
@@ -534,7 +548,9 @@ $server-input-bg: #0f1d28;
       border-color: $server-accent;
     }
 
-    &:active { transform: scale(0.97); }
+    &:active {
+      transform: scale(0.97);
+    }
 
     &:focus-visible {
       outline: 2px solid $server-accent;
@@ -595,8 +611,12 @@ $server-input-bg: #0f1d28;
     justify-content: space-between;
     font-size: 13px;
 
-    span:first-child { color: $server-muted; }
-    span:last-child  { font-weight: 500; }
+    span:first-child {
+      color: $server-muted;
+    }
+    span:last-child {
+      font-weight: 500;
+    }
   }
 
   &__detail-desc {
@@ -638,8 +658,12 @@ $server-input-bg: #0f1d28;
     min-width: 100px;
     transition: border-color 0.15s;
 
-    &::placeholder { color: $server-muted; }
-    &:focus { border-color: $server-accent; }
+    &::placeholder {
+      color: $server-muted;
+    }
+    &:focus {
+      border-color: $server-accent;
+    }
 
     &--port {
       flex: 0 0 90px;
@@ -664,7 +688,9 @@ $server-input-bg: #0f1d28;
       border-color: $server-accent;
     }
 
-    &:active { transform: scale(0.97); }
+    &:active {
+      transform: scale(0.97);
+    }
 
     &:focus-visible {
       outline: 2px solid $server-accent;

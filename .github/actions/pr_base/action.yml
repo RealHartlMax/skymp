@@ -1,52 +1,52 @@
 name: PR Base
-description: "Reusable composite action for PR and deploy builds (Windows)"
+description: 'Reusable composite action for PR and deploy builds (Windows)'
 inputs:
   DESCRIPTION:
-    description: "Will be used for artifact names"
+    description: 'Will be used for artifact names'
     required: true
   SKYRIM_VR_FLAG:
-    description: "Set to ON if building for Skyrim VR"
+    description: 'Set to ON if building for Skyrim VR'
     required: false
     default: OFF
   SP_NEXUS_ARTIFACT_NAME:
-    description: "May be nope. Artifact name for Skyrim Platform Nexus artifact, %SP_VERSION% will be replaced with the version number"
+    description: 'May be nope. Artifact name for Skyrim Platform Nexus artifact, %SP_VERSION% will be replaced with the version number'
     required: false
-    default: "nope"
+    default: 'nope'
   DEPLOY_BRANCH:
-    description: "May be empty. Branch here refers to indev/sweetpie"
+    description: 'May be empty. Branch here refers to indev/sweetpie'
     required: false
-    default: ""
+    default: ''
   DIST_ARTIFACT_NAME:
-    description: "Artifact name for the dist folder"
+    description: 'Artifact name for the dist folder'
     required: true
   SERVER_DIST_ARTIFACT_NAME:
-    description: "Artifact name for the server dist folder"
+    description: 'Artifact name for the server dist folder'
     required: true
   SKYMP5_PATCHES_PAT:
-    description: "PAT for skymp5-patches repository"
+    description: 'PAT for skymp5-patches repository'
     required: true
   SKYMP5_FRONT_PAT:
-    description: "PAT for skymp5-front repository"
+    description: 'PAT for skymp5-front repository'
     required: false
   BUILD_SKYMP5_FRONT:
-    description: "Set to true if building skymp5-front"
+    description: 'Set to true if building skymp5-front'
     required: false
-    default: "false"
+    default: 'false'
   NUGET_GITHUB_TOKEN:
-    description: "A GitHub token for GitHub Packages (Nuget)"
+    description: 'A GitHub token for GitHub Packages (Nuget)'
     required: false
-    default: ""
+    default: ''
   OFFLINE_MODE:
-    description: "Set generated server/client settings offline mode"
+    description: 'Set generated server/client settings offline mode'
     required: false
-    default: "ON"
+    default: 'ON'
   EMSCRIPTEN:
-    description: "Set to true if building for Emscripten"
+    description: 'Set to true if building for Emscripten'
     required: false
-    default: "false"
+    default: 'false'
 runs:
   using: composite
-  steps:  
+  steps:
     - name: Get Git SHA Before Gather
       id: repo_sha
       shell: powershell
@@ -94,6 +94,17 @@ runs:
         cd ${{github.workspace}}/skymp5-client
         yarn
         yarn build
+      shell: powershell
+
+    - name: Early build skymp5-front
+      if: ${{ inputs.EMSCRIPTEN != 'true' }}
+      run: |
+        cd ${{github.workspace}}/skymp5-front
+        yarn install --frozen-lockfile
+        yarn build
+        if (-not (Test-Path "${{github.workspace}}/skymp5-front/dist/build.js")) {
+          throw "skymp5-front/dist/build.js was not produced by the frontend build"
+        }
       shell: powershell
 
     - name: Check and install OpenCppCoverage using github-script
@@ -293,9 +304,9 @@ runs:
       shell: powershell
       run: |
         $logDir = "${{ github.workspace }}\vcpkg_logs"
-        
+
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-        
+
         $sourceDir = "C:\vcpkg\buildtrees"
 
         Get-ChildItem -Path $sourceDir -Filter "*.log" -Recurse | ForEach-Object {
@@ -305,7 +316,6 @@ runs:
           New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
           Copy-Item -Path $_.FullName -Destination $destinationPath -Force
         }
-
 
     - name: Upload vcpkg logs (Windows)
       if: ${{ always() && runner.os == 'Windows' }}
@@ -365,7 +375,7 @@ runs:
 
     - name: Test
       working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
+      # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}} --verbose # --output-on-failure
       shell: powershell
@@ -413,7 +423,7 @@ runs:
         $artifactName = $artifactName.Replace("%SP_VERSION%", "${{ env.VERSION }}")
         echo "SP_NEXUS_ARTIFACT_NAME=$artifactName" | Out-File -Append -FilePath $env:GITHUB_ENV
       shell: powershell
-      
+
     - uses: actions/upload-artifact@v7
       if: ${{ inputs.SP_NEXUS_ARTIFACT_NAME != 'nope' }}
       with:

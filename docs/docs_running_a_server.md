@@ -43,28 +43,28 @@ To make your server reachable from outside your local machine/network, configure
 
 ```json5
 {
-  "dataDir": "data",
-  "loadOrder": [
-    "Skyrim.esm",
-    "Update.esm",
-    "Dawnguard.esm",
-    "HearthFires.esm",
-    "Dragonborn.esm"
+  dataDir: 'data',
+  loadOrder: [
+    'Skyrim.esm',
+    'Update.esm',
+    'Dawnguard.esm',
+    'HearthFires.esm',
+    'Dragonborn.esm',
   ],
-  "listenHost": "0.0.0.0",
-  "uiListenHost": "0.0.0.0",
-  "port": 7777,
-  "uiPort": 8080,
-  "name": "My Server",
-  "adminApi": {
-    "enabled": true,
-    "externalUrl": ""
+  listenHost: '0.0.0.0',
+  uiListenHost: '0.0.0.0',
+  port: 7777,
+  uiPort: 8080,
+  name: 'My Server',
+  adminApi: {
+    enabled: true,
+    externalUrl: '',
   },
-  "supervisor": {
-    "enabled": false,
-    "stopCommand": "",
-    "restartCommand": ""
-  }
+  supervisor: {
+    enabled: false,
+    stopCommand: '',
+    restartCommand: '',
+  },
 }
 ```
 
@@ -86,11 +86,11 @@ Example supervisor configuration for the admin dashboard:
 
 ```json5
 {
-  "supervisor": {
-    "enabled": true,
-    "stopCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh stop",
-    "restartCommand": "/opt/skymp/misc/systemd/skymp-supervisorctl.sh restart"
-  }
+  supervisor: {
+    enabled: true,
+    stopCommand: '/opt/skymp/misc/systemd/skymp-supervisorctl.sh stop',
+    restartCommand: '/opt/skymp/misc/systemd/skymp-supervisorctl.sh restart',
+  },
 }
 ```
 

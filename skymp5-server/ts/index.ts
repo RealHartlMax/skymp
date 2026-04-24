@@ -1,38 +1,44 @@
-import * as ui from "./ui";
-import * as http from "http";
-
+import * as chokidar from 'chokidar';
+import * as fs from 'fs';
+import * as http from 'http';
+import * as os from 'os';
+import * as path from 'path';
 // @ts-ignore
-import * as sourceMapSupport from "source-map-support";
+import * as sourceMapSupport from 'source-map-support';
+import { EventEmitter } from 'events';
+import { pid } from 'process';
+
+import * as manifestGen from './manifestGen';
+import * as scampNative from './scampNative';
+import * as ui from './ui';
+import { createScampServer } from './scampNative';
+import { Settings } from './settings';
+import { DiscordBanSystem } from './systems/discordBanSystem';
+import { Login } from './systems/login';
+import { MasterApiBalanceSystem } from './systems/masterApiBalanceSystem';
+import { MasterClient } from './systems/masterClient';
+import {
+  MetricsSystem,
+  tickDurationHistogram,
+  tickDurationSummary,
+} from './systems/metricsSystem';
+import { Spawn } from './systems/spawn';
+import { System } from './systems/system';
+
 sourceMapSupport.install({
   retrieveSourceMap: function (source: string) {
     if (source.endsWith('skymp5-server.js')) {
       return {
         url: 'original.js',
-        map: require('fs').readFileSync('dist_back/skymp5-server.js.map', 'utf8')
+        map: require('fs').readFileSync(
+          'dist_back/skymp5-server.js.map',
+          'utf8',
+        ),
       };
     }
     return null;
-  }
+  },
 });
-
-import * as scampNative from "./scampNative";
-import { Settings } from "./settings";
-import { System } from "./systems/system";
-import { MasterClient } from "./systems/masterClient";
-import { Spawn } from "./systems/spawn";
-import { Login } from "./systems/login";
-import { DiscordBanSystem } from "./systems/discordBanSystem";
-import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
-import { EventEmitter } from "events";
-import { pid } from "process";
-import * as fs from "fs";
-import * as chokidar from "chokidar";
-import * as path from "path";
-import * as os from "os";
-
-import * as manifestGen from "./manifestGen";
-import { createScampServer } from "./scampNative";
-import { MetricsSystem, tickDurationHistogram, tickDurationSummary } from "./systems/metricsSystem";
 
 const gamemodeCache = new Map<string, string>();
 
@@ -44,7 +50,10 @@ function requireTemp(module: string) {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), appPrefix));
 
     const contents = fs.readFileSync(module, 'utf8');
-    const tempPath = path.join(tmpDir, Math.random() + '-' + Date.now() + '.js');
+    const tempPath = path.join(
+      tmpDir,
+      Math.random() + '-' + Date.now() + '.js',
+    );
     fs.writeFileSync(tempPath, contents);
 
     require(tempPath);
@@ -56,7 +65,9 @@ function requireTemp(module: string) {
         fs.rmSync(tmpDir, { recursive: true });
       }
     } catch (e) {
-      console.error(`An error has occurred while removing the temp folder at ${tmpDir}. Please remove it manually. Error: ${e}`);
+      console.error(
+        `An error has occurred while removing the temp folder at ${tmpDir}. Please remove it manually. Error: ${e}`,
+      );
     }
   }
 }
@@ -64,9 +75,9 @@ function requireTemp(module: string) {
 function requireUncached(
   module: string,
   clear: () => void,
-  server: scampNative.ScampServer
+  server: scampNative.ScampServer,
 ): void {
-  let gamemodeContents = fs.readFileSync(require.resolve(module), "utf8");
+  let gamemodeContents = fs.readFileSync(require.resolve(module), 'utf8');
 
   // Reload gamemode.js only if there are real changes
   const gamemodeContentsOld = gamemodeCache.get(module);
@@ -88,7 +99,7 @@ function requireUncached(
         if (`${e}`.indexOf("'JsRun' returned error 0x30002") === -1) {
           throw e;
         } else {
-          console.log("Bad syntax, ignoring");
+          console.log('Bad syntax, ignoring');
           return;
         }
       }
@@ -98,14 +109,16 @@ function requireUncached(
 
 const setupStreams = (scampNative: any) => {
   class LogsStream {
-    constructor(private logLevel: string) {
-    }
+    constructor(private logLevel: string) {}
 
     write(chunk: Buffer, encoding: string, callback: () => void) {
       // @ts-ignore
       const str = chunk.toString(encoding);
       if (str.trim().length > 0) {
-        ui.pushServerLogChunk(this.logLevel === 'error' ? 'error' : 'info', str);
+        ui.pushServerLogChunk(
+          this.logLevel === 'error' ? 'error' : 'info',
+          str,
+        );
         scampNative.writeLogs(this.logLevel, str);
       }
       callback();
@@ -115,11 +128,19 @@ const setupStreams = (scampNative: any) => {
   const infoStream = new LogsStream('info');
   const errorStream = new LogsStream('error');
   // @ts-ignore
-  process.stdout.write = (chunk: Buffer, encoding: string, callback: () => void) => {
+  process.stdout.write = (
+    chunk: Buffer,
+    encoding: string,
+    callback: () => void,
+  ) => {
     infoStream.write(chunk, encoding, callback);
   };
   // @ts-ignore
-  process.stderr.write = (chunk: Buffer, encoding: string, callback: () => void) => {
+  process.stderr.write = (
+    chunk: Buffer,
+    encoding: string,
+    callback: () => void,
+  ) => {
     errorStream.write(chunk, encoding, callback);
   };
 };
@@ -131,7 +152,7 @@ const setupGamemode = (server: any, gamemodePath: string) => {
     if (path.isAbsolute(p)) {
       return path.normalize(p);
     }
-    return path.normalize(path.resolve("", p));
+    return path.normalize(path.resolve('', p));
   };
 
   const getAlternativeNtfsAliasPath = (absolutePath: string): string | null => {
@@ -144,7 +165,8 @@ const setupGamemode = (server: any, gamemodePath: string) => {
     const dRoot = 'd:\\github\\skymp';
     const cRoot = 'c:\\github\\skymp';
 
-    const isAtOrInside = (value: string, root: string) => value === root || value.startsWith(root + '\\');
+    const isAtOrInside = (value: string, root: string) =>
+      value === root || value.startsWith(root + '\\');
 
     if (isAtOrInside(lower, dRoot)) {
       return 'C:' + normalized.slice(2);
@@ -213,29 +235,32 @@ const setupGamemode = (server: any, gamemodePath: string) => {
 
   const reloadGamemodeTimeout = function () {
     const n = numReloads.n;
-    setTimeout(
-      () => (n === numReloads.n ? reloadGamemode() : undefined),
-      1000,
-    );
+    setTimeout(() => (n === numReloads.n ? reloadGamemode() : undefined), 1000);
   };
 
-  watcher.on("add", reloadGamemodeTimeout);
-  watcher.on("addDir", reloadGamemodeTimeout);
-  watcher.on("change", reloadGamemodeTimeout);
-  watcher.on("unlink", reloadGamemodeTimeout);
-  watcher.on("error", function (error) {
-    console.error("Error happened in chokidar watch", error);
+  watcher.on('add', reloadGamemodeTimeout);
+  watcher.on('addDir', reloadGamemodeTimeout);
+  watcher.on('change', reloadGamemodeTimeout);
+  watcher.on('unlink', reloadGamemodeTimeout);
+  watcher.on('error', function (error) {
+    console.error('Error happened in chokidar watch', error);
   });
 };
 
 const main = async () => {
   const settingsObject = await Settings.get();
   const {
-    port, master, maxPlayers, name, masterKey, offlineMode, gamemodePath
+    port,
+    master,
+    maxPlayers,
+    name,
+    masterKey,
+    offlineMode,
+    gamemodePath,
   } = settingsObject;
 
   const trimOrNull = (value: unknown): string | null => {
-    if (typeof value !== "string") {
+    if (typeof value !== 'string') {
       return null;
     }
     const trimmed = value.trim();
@@ -247,26 +272,39 @@ const main = async () => {
       return true;
     }
     const normalized = value.toLowerCase();
-    return normalized === "0.0.0.0" || normalized === "::" || normalized === "::0";
+    return (
+      normalized === '0.0.0.0' || normalized === '::' || normalized === '::0'
+    );
   };
 
-  const heartbeatIp = trimOrNull(settingsObject.publicHost)
-    || trimOrNull(settingsObject.externalHost)
-    || (!isInvalidPublicHost(trimOrNull(settingsObject.listenHost)) ? trimOrNull(settingsObject.listenHost) : null)
-    || "127.0.0.1";
+  const heartbeatIp =
+    trimOrNull(settingsObject.publicHost) ||
+    trimOrNull(settingsObject.externalHost) ||
+    (!isInvalidPublicHost(trimOrNull(settingsObject.listenHost))
+      ? trimOrNull(settingsObject.listenHost)
+      : null) ||
+    '127.0.0.1';
 
-  const heartbeatGamemode = trimOrNull(settingsObject.gamemode)
-    || trimOrNull((settingsObject.allSettings as any)?.gamemode)
-    || trimOrNull((settingsObject.allSettings as any)?.serverName);
+  const heartbeatGamemode =
+    trimOrNull(settingsObject.gamemode) ||
+    trimOrNull((settingsObject.allSettings as any)?.gamemode) ||
+    trimOrNull((settingsObject.allSettings as any)?.serverName);
 
-  const heartbeatCountryCode = trimOrNull(settingsObject.countryCode)
-    || trimOrNull((settingsObject.allSettings as any)?.countryCode);
+  const heartbeatCountryCode =
+    trimOrNull(settingsObject.countryCode) ||
+    trimOrNull((settingsObject.allSettings as any)?.countryCode);
 
-  const heartbeatServerUid = trimOrNull(settingsObject.serverUid)
-    || trimOrNull((settingsObject.allSettings as any)?.server_uid);
+  const heartbeatServerUid =
+    trimOrNull(settingsObject.serverUid) ||
+    trimOrNull((settingsObject.allSettings as any)?.server_uid);
 
-  const heartbeatIntervalMsRaw = Number((settingsObject.allSettings as any)?.masterHeartbeatIntervalMs ?? settingsObject.masterHeartbeatIntervalMs);
-  const heartbeatIntervalMs = Number.isFinite(heartbeatIntervalMsRaw) ? heartbeatIntervalMsRaw : 15000;
+  const heartbeatIntervalMsRaw = Number(
+    (settingsObject.allSettings as any)?.masterHeartbeatIntervalMs ??
+      settingsObject.masterHeartbeatIntervalMs,
+  );
+  const heartbeatIntervalMs = Number.isFinite(heartbeatIntervalMsRaw)
+    ? heartbeatIntervalMsRaw
+    : 15000;
 
   const log = console.log;
   const systems = new Array<System>();
@@ -289,7 +327,14 @@ const main = async () => {
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     new DiscordBanSystem(),
-    new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
+    new MasterApiBalanceSystem(
+      log,
+      maxPlayers,
+      master,
+      port,
+      masterKey,
+      offlineMode,
+    ),
   );
 
   setupStreams(scampNative.getScampNative());
@@ -302,7 +347,7 @@ const main = async () => {
 
   try {
     // Start Koa HTTP server first (for WebSocket upgrade)
-    const app = require("./ui").default || require("./ui");
+    const app = require('./ui').default || require('./ui');
     httpServer = app.listen(settingsObject.port, () => {
       console.log(`HTTP server listening on port ${settingsObject.port}`);
     });
@@ -355,8 +400,8 @@ const main = async () => {
       })();
   }
 
-  server.on("connect", (userId: number) => {
-    log("connect", userId);
+  server.on('connect', (userId: number) => {
+    log('connect', userId);
     for (const system of systems) {
       try {
         if (system.connect) {
@@ -368,8 +413,8 @@ const main = async () => {
     }
   });
 
-  server.on("disconnect", (userId: number) => {
-    log("disconnect", userId);
+  server.on('disconnect', (userId: number) => {
+    log('disconnect', userId);
     for (const system of systems) {
       try {
         if (system.disconnect) {
@@ -381,19 +426,21 @@ const main = async () => {
     }
   });
 
-  server.on("customPacket", (userId: number, rawContent: string) => {
+  server.on('customPacket', (userId: number, rawContent: string) => {
     const content = JSON.parse(rawContent);
 
     const type = `${content.customPacketType}`;
     delete content.customPacketType;
 
     if (type === 'clientTelemetry') {
-      const source = typeof content.source === 'string'
-        ? String(content.source).slice(0, 80)
-        : 'skymp5-client';
-      const sessionId = typeof content.sessionId === 'string'
-        ? String(content.sessionId).slice(0, 64)
-        : undefined;
+      const source =
+        typeof content.source === 'string'
+          ? String(content.source).slice(0, 80)
+          : 'skymp5-client';
+      const sessionId =
+        typeof content.sessionId === 'string'
+          ? String(content.sessionId).slice(0, 64)
+          : undefined;
       const receivedAt = Date.now();
 
       const events = Array.isArray(content.events) ? content.events : [content];
@@ -408,9 +455,10 @@ const main = async () => {
       const safeEvents = events.slice(0, 50).map((entry: any) => {
         const eventName = String(entry?.name ?? 'unknown').slice(0, 120);
         const levelRaw = String(entry?.level ?? 'info').toLowerCase();
-        const level: 'info' | 'warn' | 'error' = (
+        const level: 'info' | 'warn' | 'error' =
           levelRaw === 'warn' || levelRaw === 'error' || levelRaw === 'info'
-        ) ? levelRaw : 'info';
+            ? levelRaw
+            : 'info';
 
         let details = '';
         if (typeof entry?.details === 'string') {
@@ -451,7 +499,7 @@ const main = async () => {
     }
   });
 
-  server.on("customPacket", (userId: number, content: string) => {
+  server.on('customPacket', (userId: number, content: string) => {
     // At this moment we don't have any custom packets
   });
 
@@ -471,14 +519,14 @@ main();
 
 // This is needed at least to handle axios errors in masterClient
 // TODO: implement alerts
-process.on("unhandledRejection", (...args) => {
-  console.error("[!!!] unhandledRejection")
+process.on('unhandledRejection', (...args) => {
+  console.error('[!!!] unhandledRejection');
   console.error(...args);
 });
 
 // setTimeout on gamemode should not be able to kill the entire server
 // TODO: implement alerts
-process.on("uncaughtException", (...args) => {
-  console.error("[!!!] uncaughtException")
+process.on('uncaughtException', (...args) => {
+  console.error('[!!!] uncaughtException');
   console.error(...args);
 });

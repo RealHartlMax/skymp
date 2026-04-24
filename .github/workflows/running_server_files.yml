@@ -98,6 +98,12 @@ jobs:
             "$SKYMP_VCPKG_DEPS_IMAGE" \
             chown -R skymp:skymp /src
 
+      - name: Build frontend
+        run: |
+          cd ${{ github.workspace }}/skymp5-front
+          yarn install --frozen-lockfile
+          yarn build
+
       - name: Configure CMake
         run: |
           docker run --rm -v "${{ github.workspace }}:/src" -w "/src" \

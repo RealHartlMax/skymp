@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SkyrimFrame } from '../../components/SkyrimFrame/SkyrimFrame';
+
 import { FrameButton } from '../../components/FrameButton/FrameButton';
-import content, { levels } from './metadata';
-import './styles.scss';
+import { SkyrimFrame } from '../../components/SkyrimFrame/SkyrimFrame';
 import { SkyrimHint } from '../../components/SkyrimHint/SkyrimHint';
-import hoverSound from './assets/OnCoursor.wav';
-import quitSound from './assets/Quit.wav';
+import { IPlayerData } from '../../interfaces/skillMenu';
 import selectSound from './assets/ButtonDown.wav';
 import learnSound from './assets/LearnSkill.wav';
-import { IPlayerData } from '../../interfaces/skillMenu';
+import hoverSound from './assets/OnCoursor.wav';
+import quitSound from './assets/Quit.wav';
+import content, { levels } from './metadata';
+import './styles.scss';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -33,21 +34,34 @@ const levelKeys = ['beginner', 'apprentice', 'adept', 'expert', 'master'];
 const typedLevels = levels as SkillLevel[];
 const typedContent = content as SkillCategory[];
 
-const buildLocalizedLevels = (t: Translate) => typedLevels.map((level, index) => ({
-  ...level,
-  name: t(`levels.${levelKeys[index]}`, { defaultValue: level.name })
-}));
+const buildLocalizedLevels = (t: Translate) =>
+  typedLevels.map((level, index) => ({
+    ...level,
+    name: t(`levels.${levelKeys[index]}`, { defaultValue: level.name }),
+  }));
 
-const buildLocalizedContent = (t: Translate) => typedContent.map((category) => category.map((perk) => ({
-  ...perk,
-  description: t(`perks.${perk.name}.description`),
-  levelsDescription: Array.from({ length: perk.levelsPrice.length + 1 }, (_, index) => t(`perks.${perk.name}.levels.${index}`))
-})));
+const buildLocalizedContent = (t: Translate) =>
+  typedContent.map((category) =>
+    category.map((perk) => ({
+      ...perk,
+      description: t(`perks.${perk.name}.description`),
+      levelsDescription: Array.from(
+        { length: perk.levelsPrice.length + 1 },
+        (_, index) => t(`perks.${perk.name}.levels.${index}`),
+      ),
+    })),
+  );
 
 const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
   const { t, i18n } = useTranslation();
-  const localizedLevels = useMemo(() => buildLocalizedLevels(t), [t, i18n.language]);
-  const localizedContent = useMemo(() => buildLocalizedContent(t), [t, i18n.language]);
+  const localizedLevels = useMemo(
+    () => buildLocalizedLevels(t),
+    [t, i18n.language],
+  );
+  const localizedContent = useMemo(
+    () => buildLocalizedContent(t),
+    [t, i18n.language],
+  );
   const [currentHeader, setcurrentHeader] = useState('');
   const [currentLevel, setcurrentLevel] = useState('');
   const [currentDescription, setcurrentDescription] = useState('');
@@ -65,7 +79,9 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
     if (el) {
       el.style.display = 'none';
     }
-    const newPlayerData = JSON.parse((event as CustomEvent).detail) as IPlayerData;
+    const newPlayerData = JSON.parse(
+      (event as CustomEvent).detail,
+    ) as IPlayerData;
     setplayerData(newPlayerData);
   };
 
@@ -80,9 +96,8 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
         const audio = source.cloneNode(true) as HTMLAudioElement;
         audio.play();
       }
-    }
-    catch (e) {
-      console.log("Error playing sound", e);
+    } catch (e) {
+      console.log('Error playing sound', e);
     }
     setplayerData(null);
     send('/skill quit');
@@ -128,11 +143,7 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
     if (!playerData) return;
     setpExp(playerData.exp);
     setpMem(playerData.mem);
-    setscale(
-      window.innerWidth >= 1920
-        ? 1
-        : window.innerWidth / 2500
-    );
+    setscale(window.innerWidth >= 1920 ? 1 : window.innerWidth / 2500);
   }, [playerData]);
 
   const hoverHandler = (perk: SkillPerk) => {
@@ -174,8 +185,8 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
     if (perk.levelsPrice[playerLevel] > pExp) {
       setcurrentDescription(
         t('skillsMenu.notEnoughExperience', {
-          experience: perk.levelsPrice[playerLevel] - pExp
-        })
+          experience: perk.levelsPrice[playerLevel] - pExp,
+        }),
       );
       return;
     }
@@ -268,14 +279,17 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
                 <ul className="perks__category" key={cIndex}>
                   {category.map((perk, index) => (
                     <div
-                      className={`perks__perk perks__perk--level-${(playerData.perks[perk.name] /
-                        perk.levelsPrice.length) *
-                        4 || 0
-                        } ${index > 7 ? 'perks__perk--absolute' : ''} ${index % 2 ? 'perks__perk--right' : 'perks__perk--left'
-                        }
-                        ${perk.levelsPrice.length < 4
-                          ? 'perks__perk--short'
-                          : ''
+                      className={`perks__perk perks__perk--level-${
+                        (playerData.perks[perk.name] /
+                          perk.levelsPrice.length) *
+                          4 || 0
+                      } ${index > 7 ? 'perks__perk--absolute' : ''} ${
+                        index % 2 ? 'perks__perk--right' : 'perks__perk--left'
+                      }
+                        ${
+                          perk.levelsPrice.length < 4
+                            ? 'perks__perk--short'
+                            : ''
                         }
                       `}
                       key={perk.name}
@@ -290,15 +304,15 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
                       ></div>
                       {playerData.perks[perk.name] !==
                         perk.levelsPrice.length && (
-                          <p className="perks__perk__price">
-                            <span>
-                              {playerData.perks[perk.name]
-                                ? perk.levelsPrice[playerData.perks[perk.name]]
-                                : perk.levelsPrice[0]}
-                            </span>
-                            <span className="perks__exp" />
-                          </p>
-                        )}
+                        <p className="perks__perk__price">
+                          <span>
+                            {playerData.perks[perk.name]
+                              ? perk.levelsPrice[playerData.perks[perk.name]]
+                              : perk.levelsPrice[0]}
+                          </span>
+                          <span className="perks__exp" />
+                        </p>
+                      )}
                     </div>
                   ))}
                 </ul>
@@ -342,44 +356,42 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
                   disabled={
                     !selectedPerk ||
                     selectedPerk.levelsPrice[
-                    playerData.perks[selectedPerk.name] || 0
+                      playerData.perks[selectedPerk.name] || 0
                     ] > pExp ||
                     (!playerData.perks[selectedPerk.name] && pMem === 0)
                   }
                   onClick={() => learnHandler()}
                 ></FrameButton>
-                {confirmDiscard
-                  ? (
-                    <div className="perks__footer__buttons__confirm">
-                      <FrameButton
-                        text={t('skillsMenu.yes')}
-                        name="yesBtn"
-                        variant="DEFAULT"
-                        width={178}
-                        height={56}
-                        onClick={() => discardHandler()}
-                      ></FrameButton>
-                      <FrameButton
-                        text={t('skillsMenu.no')}
-                        name="noBtn"
-                        variant="DEFAULT"
-                        width={178}
-                        height={56}
-                        onClick={() => setconfirmDiscard(false)}
-                      ></FrameButton>
-                    </div>
-                  )
-                  : (
+                {confirmDiscard ? (
+                  <div className="perks__footer__buttons__confirm">
                     <FrameButton
-                      text={t('skillsMenu.reset')}
-                      name="discardBtn"
+                      text={t('skillsMenu.yes')}
+                      name="yesBtn"
                       variant="DEFAULT"
-                      width={242}
+                      width={178}
                       height={56}
-                      // disabled={Object.keys(playerData.perks).length === 0}
-                      onClick={() => confirmHanlder()}
+                      onClick={() => discardHandler()}
                     ></FrameButton>
-                  )}
+                    <FrameButton
+                      text={t('skillsMenu.no')}
+                      name="noBtn"
+                      variant="DEFAULT"
+                      width={178}
+                      height={56}
+                      onClick={() => setconfirmDiscard(false)}
+                    ></FrameButton>
+                  </div>
+                ) : (
+                  <FrameButton
+                    text={t('skillsMenu.reset')}
+                    name="discardBtn"
+                    variant="DEFAULT"
+                    width={242}
+                    height={56}
+                    // disabled={Object.keys(playerData.perks).length === 0}
+                    onClick={() => confirmHanlder()}
+                  ></FrameButton>
+                )}
               </div>
               <div className="perks__footer__exit-button">
                 <FrameButton

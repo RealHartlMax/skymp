@@ -2,22 +2,23 @@
 
 This repo contains GUI demo for Skyrim Multiplayer. Original chat interface by **davinchi59** has been ported.
 
-* `yarn build` is used to build the project.
-* `yarn watch` is used to start live-reload server (auto-selects a free port).
-* `yarn watch:fixed` starts live-reload server on port `1234`.
-* `yarn dev:lan` starts live-reload server for LAN/browser testing (`0.0.0.0` + auto port).
-* `yarn test:api` runs API integration checks for server list endpoint handling.
-* `yarn test:e2e` runs optional Playwright smoke test (if Playwright is installed).
+- `yarn build` is used to build the project.
+- `yarn watch` is used to start live-reload server (auto-selects a free port).
+- `yarn watch:fixed` starts live-reload server on port `1234`.
+- `yarn dev:lan` starts live-reload server for LAN/browser testing (`0.0.0.0` + auto port).
+- `yarn test:api` runs API integration checks for server list endpoint handling.
+- `yarn test:e2e` runs optional Playwright smoke test (if Playwright is installed).
 
 If you start a live-reload server and Skyrim Multiplayer server on the same machine, then live-reload would work in the game.
 
-## How To Use This 
+## How To Use This
 
 Create `config.js` and specify an output folder.
+
 ```js
 module.exports = {
-    /* TIP: Change to '<your_server_path>/data/ui' */
-    outputPath: "./dist",
+  /* TIP: Change to '<your_server_path>/data/ui' */
+  outputPath: './dist',
 };
 ```
 
@@ -26,9 +27,11 @@ module.exports = {
 The webpack dev server is configured to listen on all interfaces.
 
 1. Start frontend dev server:
+
 ```bash
 yarn watch
 ```
+
 If port `1234` is already busy, webpack dev server now picks a free port automatically.
 
 To force the classic fixed port behavior:
@@ -44,10 +47,13 @@ yarn dev:lan
 ```
 
 2. Open in browser from the same machine:
+
 ```text
 http://127.0.0.1:<printed-port>/
 ```
+
 3. Open from another device in your local network:
+
 ```text
 http://<your-lan-ip>:<printed-port>/
 ```
@@ -66,6 +72,7 @@ It includes a lightweight API reachability indicator based on `/api/servers` wit
 It also provides a `Pause checks`/`Resume checks` toggle (persisted in localStorage), a `Reset warnings` action, and escalates to a warning after repeated consecutive failures.
 
 For stable browser automation selectors, dev banner exposes `data-testid` hooks:
+
 - `dev-banner-health-controls`
 - `dev-banner-health-status`
 - `dev-banner-retry-btn`

@@ -24,12 +24,14 @@ export interface LatestUpdateDto {
   releaseNotesUrl?: string;
 }
 
-const removeTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
+const removeTrailingSlash = (value: string): string =>
+  value.replace(/\/+$/, '');
 
 const toServersUrl = (apiEndpoint: string): string => {
   const trimmed = apiEndpoint.trim();
   if (!trimmed) return '/api/servers';
-  if (trimmed.startsWith('/')) return `${removeTrailingSlash(trimmed)}/api/servers`;
+  if (trimmed.startsWith('/'))
+    return `${removeTrailingSlash(trimmed)}/api/servers`;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return `${removeTrailingSlash(trimmed)}/api/servers`;
   }
@@ -50,20 +52,23 @@ const toUpdateUrl = (
   if (!trimmed) return `/api/update/latest?${query.toString()}`;
 
   const updatePath = `/api/update/latest?${query.toString()}`;
-  if (trimmed.startsWith('/')) return `${removeTrailingSlash(trimmed)}${updatePath}`;
+  if (trimmed.startsWith('/'))
+    return `${removeTrailingSlash(trimmed)}${updatePath}`;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return `${removeTrailingSlash(trimmed)}${updatePath}`;
   }
   return `http://${removeTrailingSlash(trimmed)}${updatePath}`;
 };
 
-export const fetchServerList = async (apiEndpoint: string): Promise<ServerEntryDto[]> => {
+export const fetchServerList = async (
+  apiEndpoint: string,
+): Promise<ServerEntryDto[]> => {
   const url = toServersUrl(apiEndpoint);
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      Accept: 'application/json'
-    }
+      Accept: 'application/json',
+    },
   });
 
   if (!response.ok) {
@@ -87,15 +92,15 @@ export const fetchLatestUpdate = async (
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      Accept: 'application/json'
-    }
+      Accept: 'application/json',
+    },
   });
 
   if (!response.ok) {
     throw new Error(`launcher-update-api:${response.status}`);
   }
 
-  const data = await response.json() as LatestUpdateDto;
+  const data = (await response.json()) as LatestUpdateDto;
   if (!data || typeof data.version !== 'string' || !data.version.trim()) {
     throw new Error('launcher-update-api:invalid-payload');
   }

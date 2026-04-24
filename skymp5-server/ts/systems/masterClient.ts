@@ -1,7 +1,8 @@
-import { System, Log } from "./system";
-import Axios from "axios";
-import { SystemContext } from "./system";
-import { ScampServer } from "../scampNative";
+import Axios from 'axios';
+
+import { ScampServer } from '../scampNative';
+import { Log, System } from './system';
+import { SystemContext } from './system';
 
 interface MasterHeartbeatPayload {
   name: string;
@@ -15,7 +16,7 @@ interface MasterHeartbeatPayload {
 }
 
 export class MasterClient implements System {
-  systemName = "MasterClient";
+  systemName = 'MasterClient';
 
   constructor(
     private log: Log,
@@ -29,16 +30,17 @@ export class MasterClient implements System {
     private offlineMode = false,
     private gamemode?: string,
     private countryCode?: string,
-    private serverUid?: string
+    private serverUid?: string,
   ) {
-    this.updateIntervalMs = MasterClient.clampHeartbeatInterval(updateIntervalMs);
+    this.updateIntervalMs =
+      MasterClient.clampHeartbeatInterval(updateIntervalMs);
   }
 
   private readonly updateIntervalMs: number;
 
   async initAsync(): Promise<void> {
     if (!this.masterUrl) {
-      this.log("No master server specified");
+      this.log('No master server specified');
       return;
     }
 
@@ -47,13 +49,13 @@ export class MasterClient implements System {
     this.endpoint = `${this.masterUrl}/api/servers/${this.masterKey}`;
     this.log(`Our endpoint on master is ${this.endpoint}`);
 
-    await this.sendHeartbeat(0, "initial");
+    await this.sendHeartbeat(0, 'initial');
 
-    process.once("SIGINT", () => {
-      void this.sendHeartbeat(0, "shutdown");
+    process.once('SIGINT', () => {
+      void this.sendHeartbeat(0, 'shutdown');
     });
-    process.once("SIGTERM", () => {
-      void this.sendHeartbeat(0, "shutdown");
+    process.once('SIGTERM', () => {
+      void this.sendHeartbeat(0, 'shutdown');
     });
   }
 
@@ -68,12 +70,12 @@ export class MasterClient implements System {
 
     await new Promise((r) => setTimeout(r, this.updateIntervalMs));
 
-    await this.sendHeartbeat(this.getCurrentOnline(ctx.svr), "periodic");
+    await this.sendHeartbeat(this.getCurrentOnline(ctx.svr), 'periodic');
   }
 
   // connect/disconnect events are not reliable so we do full recalculate
   private getCurrentOnline(svr: ScampServer): number {
-    return (svr as any).get(0, "onlinePlayers").length;
+    return (svr as any).get(0, 'onlinePlayers').length;
   }
 
   customPacket(): void {
@@ -102,7 +104,10 @@ export class MasterClient implements System {
     return payload;
   }
 
-  private async sendHeartbeat(online: number, reason: "initial" | "periodic" | "shutdown"): Promise<void> {
+  private async sendHeartbeat(
+    online: number,
+    reason: 'initial' | 'periodic' | 'shutdown',
+  ): Promise<void> {
     if (!this.endpoint) {
       return;
     }
@@ -117,17 +122,26 @@ export class MasterClient implements System {
       } catch (error) {
         if (Axios.isAxiosError(error)) {
           if (error.response) {
-            const body = typeof error.response.data === "string"
-              ? error.response.data
-              : JSON.stringify(error.response.data);
-            this.log(`[MasterClient] Heartbeat ${reason} failed with status=${error.response.status}, body=${body}`);
+            const body =
+              typeof error.response.data === 'string'
+                ? error.response.data
+                : JSON.stringify(error.response.data);
+            this.log(
+              `[MasterClient] Heartbeat ${reason} failed with status=${error.response.status}, body=${body}`,
+            );
             return;
           }
 
-          const message = error.message || "network error";
-          this.log(`[MasterClient] Heartbeat ${reason} network error on attempt ${attempt}/${maxAttempts}: ${message}`);
+          const message = error.message || 'network error';
+          this.log(
+            `[MasterClient] Heartbeat ${reason} network error on attempt ${attempt}/${maxAttempts}: ${message}`,
+          );
         } else {
-          this.log(`[MasterClient] Heartbeat ${reason} failed on attempt ${attempt}/${maxAttempts}: ${String(error)}`);
+          this.log(
+            `[MasterClient] Heartbeat ${reason} failed on attempt ${attempt}/${maxAttempts}: ${String(
+              error,
+            )}`,
+          );
         }
 
         if (attempt >= maxAttempts) {
@@ -143,7 +157,7 @@ export class MasterClient implements System {
   private static getRetryDelayMs(attempt: number): number {
     const baseMs = 500;
     const jitter = Math.floor(Math.random() * 250);
-    return Math.min(5000, baseMs * (2 ** (attempt - 1))) + jitter;
+    return Math.min(5000, baseMs * 2 ** (attempt - 1)) + jitter;
   }
 
   private static clampHeartbeatInterval(value: number): number {

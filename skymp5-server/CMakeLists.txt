@@ -190,9 +190,11 @@ if(TARGET ${PROJECT_NAME})
   set(FRONTEND_UI_DIR "${CMAKE_BINARY_DIR}/dist/server/ui")
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${FRONTEND_UI_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FRONTEND_BUILD_JS}" "${FRONTEND_UI_DIR}/build.js"
-    COMMENT "Copying frontend build.js to dist/server/ui/"
+    COMMAND ${CMAKE_COMMAND}
+      -DFRONTEND_BUILD_JS=${FRONTEND_BUILD_JS}
+      -DFRONTEND_UI_DIR=${FRONTEND_UI_DIR}
+      -P ${CMAKE_SOURCE_DIR}/cmake/scripts/copy_frontend_if_exists.cmake
+    COMMENT "Copying frontend build.js to dist/server/ui/ (if available)"
   )
 endif()
 

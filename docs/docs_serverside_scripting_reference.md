@@ -31,11 +31,11 @@ interface Mp {
 }
 
 /* Usage */
-mp.makeProperty("playerLevel", {
-    isVisibleByOwner: true,
-    isVisibleByNeighbors: false,
-    updateOwner: "ctx.sp.Game.setPlayerLevel(ctx.value)",
-    updateNeighbor: ""
+mp.makeProperty('playerLevel', {
+  isVisibleByOwner: true,
+  isVisibleByNeighbors: false,
+  updateOwner: 'ctx.sp.Game.setPlayerLevel(ctx.value)',
+  updateNeighbor: '',
 });
 ```
 
@@ -54,7 +54,9 @@ interface Mp {
 }
 
 /* Usage */
-mp.makeEventSource("_onLocalDeath", `
+mp.makeEventSource(
+  '_onLocalDeath',
+  `
     ctx.sp.on("update", () => {
       const pl = ctx.sp.Game.getPlayer();
       const isDead = pl.getActorValuePercentage("health") === 0;
@@ -65,21 +67,27 @@ mp.makeEventSource("_onLocalDeath", `
         ctx.state.wasDead = isDead;
       }
     });
-  `);
-mp._onLocalDeath = function(pcFormId) { /* ... */ };
+  `,
+);
+mp._onLocalDeath = function (pcFormId) {
+  /* ... */
+};
 ```
 
 ### Handling custom events
 
 ```typescript
-mp.makeEventSource("_onPlayerPulse", `
+mp.makeEventSource(
+  '_onPlayerPulse',
+  `
   ctx.sp.once("update", () => {
     ctx.sendEvent({ ok: true });
   });
-`);
+`,
+);
 
 mp._onPlayerPulse = function (pcFormId, payload) {
-  console.log("pulse", pcFormId, payload);
+  console.log('pulse', pcFormId, payload);
 };
 ```
 
@@ -96,9 +104,9 @@ interface Mp {
 }
 
 /* Usage */
-mp.get(0xff000000, "type");
-mp.get(0xff000000, "pos");
-mp.get(0xff000000, "myAwesomeProperty");
+mp.get(0xff000000, 'type');
+mp.get(0xff000000, 'pos');
+mp.get(0xff000000, 'myAwesomeProperty');
 ```
 
 ## mp.set()
@@ -114,7 +122,7 @@ interface Mp {
 }
 
 /* Usage */
-mp.set(0xff000000, "pos", [0, 0, 0]);
+mp.set(0xff000000, 'pos', [0, 0, 0]);
 ```
 
 ## mp.clear()

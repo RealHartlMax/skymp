@@ -136,6 +136,14 @@ jobs:
               docker run --rm -v "${{ github.workspace }}:/src" -w /src -u root localhost/buildimage \
                 chown -R skymp:skymp /src
 
+          - name: Build frontend
+            run: |
+              docker run --rm -v "${{ github.workspace }}:/src" -w /src/skymp5-front -u skymp localhost/buildimage \
+                yarn install --frozen-lockfile
+              docker run --rm -v "${{ github.workspace }}:/src" -w /src/skymp5-front -u skymp localhost/buildimage \
+                yarn build
+              test -f "${{ github.workspace }}/skymp5-front/dist/build.js"
+
           - name: CMake Configure
             id: cmake_configure
             run: |

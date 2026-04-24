@@ -1,14 +1,19 @@
 /**
  * Admin Dashboard Revival Events Log Panel
  */
-
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+
 import { formatAdminTime } from './utils';
 
 export interface RevivalEventEntry {
   ts: number;
-  type: 'downed' | 'revived' | 'respawn_disabled' | 'respawn_enabled' | 'auto_revived';
+  type:
+    | 'downed'
+    | 'revived'
+    | 'respawn_disabled'
+    | 'respawn_enabled'
+    | 'auto_revived';
   userId: number;
   actorName?: string;
   details?: string;
@@ -16,8 +21,22 @@ export interface RevivalEventEntry {
 
 interface EventsPanelProps {
   revivalEvents: RevivalEventEntry[];
-  eventTypeFilter: '' | 'downed' | 'revived' | 'respawn_disabled' | 'respawn_enabled' | 'auto_revived';
-  onEventTypeFilterChange: (filter: '' | 'downed' | 'revived' | 'respawn_disabled' | 'respawn_enabled' | 'auto_revived') => void;
+  eventTypeFilter:
+    | ''
+    | 'downed'
+    | 'revived'
+    | 'respawn_disabled'
+    | 'respawn_enabled'
+    | 'auto_revived';
+  onEventTypeFilterChange: (
+    filter:
+      | ''
+      | 'downed'
+      | 'revived'
+      | 'respawn_disabled'
+      | 'respawn_enabled'
+      | 'auto_revived',
+  ) => void;
   eventLimit: number;
   onEventLimitChange: (limit: number) => void;
   onRefresh: () => void;
@@ -70,8 +89,15 @@ export const EventsPanel: React.FC<EventsPanelProps> = ({
   };
 
   return (
-    <div className="admin-dashboard__panel" id="admin-panel-events" role="tabpanel" aria-labelledby="admin-tab-events">
-      <h2 className="admin-dashboard__panel-title">{t('adminDashboard.revivalEventsTitle') || 'Revival Events Log'}</h2>
+    <div
+      className="admin-dashboard__panel"
+      id="admin-panel-events"
+      role="tabpanel"
+      aria-labelledby="admin-tab-events"
+    >
+      <h2 className="admin-dashboard__panel-title">
+        {t('adminDashboard.revivalEventsTitle') || 'Revival Events Log'}
+      </h2>
 
       <div className="admin-dashboard__log-controls">
         <select
@@ -112,7 +138,9 @@ export const EventsPanel: React.FC<EventsPanelProps> = ({
       </div>
 
       {revivalEvents.length === 0 ? (
-        <p className="admin-dashboard__no-players">{t('adminDashboard.noRevivalEvents') || 'No revival events'}</p>
+        <p className="admin-dashboard__no-players">
+          {t('adminDashboard.noRevivalEvents') || 'No revival events'}
+        </p>
       ) : (
         <div className="admin-dashboard__log-list">
           {revivalEvents.map((event, index) => (
@@ -121,8 +149,14 @@ export const EventsPanel: React.FC<EventsPanelProps> = ({
               className="admin-dashboard__log-entry"
               data-testid={`admin-event-entry-${event.type}-${index}`}
             >
-              <span className="admin-dashboard__log-ts">{formatAdminTime(event.ts)}</span>
-              <span className={`admin-dashboard__log-type admin-dashboard__event-type ${getEventTypeColor(event.type)}`}>
+              <span className="admin-dashboard__log-ts">
+                {formatAdminTime(event.ts)}
+              </span>
+              <span
+                className={`admin-dashboard__log-type admin-dashboard__event-type ${getEventTypeColor(
+                  event.type,
+                )}`}
+              >
                 {getEventTypeLabel(event.type)}
               </span>
               <span className="admin-dashboard__log-msg">

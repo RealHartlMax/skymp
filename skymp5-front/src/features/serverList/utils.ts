@@ -34,16 +34,21 @@ export const isValidHostOrIp = (value: string): boolean => {
   if (!input) return false;
 
   const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-  const hostname = /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  const hostname =
+    /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
   if (ipv4.test(input)) {
-    return input.split('.').every((octet) => Number(octet) >= 0 && Number(octet) <= 255);
+    return input
+      .split('.')
+      .every((octet) => Number(octet) >= 0 && Number(octet) <= 255);
   }
 
   return hostname.test(input);
 };
 
-export const collectServerTags = <T extends ServerListViewEntry>(servers: T[]): string[] => {
+export const collectServerTags = <T extends ServerListViewEntry>(
+  servers: T[],
+): string[] => {
   const tags = new Set<string>();
   servers.forEach((server) => {
     (server.tags || []).forEach((tag) => {
@@ -63,7 +68,7 @@ export const getVisibleServers = <T extends ServerListViewEntry>(
     favoriteIds?: Set<string>;
     onlyFavorites?: boolean;
     requiredTag?: string;
-  }
+  },
 ): T[] => {
   const query = search.trim().toLowerCase();
   const favoriteIds = options?.favoriteIds || new Set<string>();
@@ -74,9 +79,17 @@ export const getVisibleServers = <T extends ServerListViewEntry>(
     .filter((server) => {
       if (!showFull && server.players >= server.maxPlayers) return false;
       if (onlyFavorites && !favoriteIds.has(server.id)) return false;
-      if (requiredTag && !(server.tags || []).some((tag) => String(tag).toLowerCase() === requiredTag)) return false;
+      if (
+        requiredTag &&
+        !(server.tags || []).some(
+          (tag) => String(tag).toLowerCase() === requiredTag,
+        )
+      )
+        return false;
       if (!query) return true;
-      return server.name.toLowerCase().includes(query) || server.ip.includes(query);
+      return (
+        server.name.toLowerCase().includes(query) || server.ip.includes(query)
+      );
     })
     .sort((a, b) => {
       if (sortKey === 'players') return b.players - a.players;

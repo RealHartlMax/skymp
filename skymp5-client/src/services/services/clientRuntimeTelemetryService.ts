@@ -13,7 +13,9 @@ interface RuntimeEventPayload {
 }
 
 export class ClientRuntimeTelemetryService extends ClientListener {
-  private readonly sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  private readonly sessionId = `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private lastSentAt = 0;
 
@@ -21,7 +23,11 @@ export class ClientRuntimeTelemetryService extends ClientListener {
     super();
 
     this.controller.emitter.on('connectionAccepted', () => {
-      this.sendRuntimeEvent('connectionAccepted', 'info', this.describeTargetPeer());
+      this.sendRuntimeEvent(
+        'connectionAccepted',
+        'info',
+        this.describeTargetPeer(),
+      );
       this.startHeartbeat();
     });
 
@@ -32,16 +38,26 @@ export class ClientRuntimeTelemetryService extends ClientListener {
     });
 
     this.controller.emitter.on('connectionFailed', () => {
-      this.sendRuntimeEvent('connectionFailed', 'error', this.describeTargetPeer());
+      this.sendRuntimeEvent(
+        'connectionFailed',
+        'error',
+        this.describeTargetPeer(),
+      );
       this.stopHeartbeat();
     });
 
     this.controller.emitter.on('connectionDisconnect', () => {
-      this.sendRuntimeEvent('connectionDisconnect', 'warn', this.describeTargetPeer());
+      this.sendRuntimeEvent(
+        'connectionDisconnect',
+        'warn',
+        this.describeTargetPeer(),
+      );
       this.stopHeartbeat();
     });
 
-    this.controller.emitter.on('customPacketMessage', (event) => this.onCustomPacket(event));
+    this.controller.emitter.on('customPacketMessage', (event) =>
+      this.onCustomPacket(event),
+    );
   }
 
   private startHeartbeat(): void {
@@ -83,7 +99,11 @@ export class ClientRuntimeTelemetryService extends ClientListener {
       content = JSON.parse(event.message.contentJsonDump);
     } catch (err) {
       if (err instanceof SyntaxError) {
-        this.sendRuntimeEvent('incomingCustomPacketInvalidJson', 'warn', String(err.message || 'json parse failed'));
+        this.sendRuntimeEvent(
+          'incomingCustomPacketInvalidJson',
+          'warn',
+          String(err.message || 'json parse failed'),
+        );
         return;
       }
       throw err;
@@ -92,14 +112,17 @@ export class ClientRuntimeTelemetryService extends ClientListener {
     const packetType = String(content.customPacketType || '');
     if (!packetType.startsWith('loginFailed')) return;
 
-    const reason = typeof content.reason === 'string'
-      ? content.reason
-      : packetType;
+    const reason =
+      typeof content.reason === 'string' ? content.reason : packetType;
 
     this.sendRuntimeEvent(packetType, 'warn', reason);
   }
 
-  private sendRuntimeEvent(name: string, level: 'info' | 'warn' | 'error', details?: string): void {
+  private sendRuntimeEvent(
+    name: string,
+    level: 'info' | 'warn' | 'error',
+    details?: string,
+  ): void {
     if (!this.isConnected()) return;
 
     // Keep packet volume bounded when repetitive events fire in a tight loop.
@@ -131,7 +154,11 @@ export class ClientRuntimeTelemetryService extends ClientListener {
       });
       logTrace(this, `sent runtime telemetry event ${payload.name}`);
     } catch (error) {
-      logError(this, `failed to send runtime telemetry event ${payload.name}`, String(error));
+      logError(
+        this,
+        `failed to send runtime telemetry event ${payload.name}`,
+        String(error),
+      );
     }
   }
 }

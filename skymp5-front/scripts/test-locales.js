@@ -71,12 +71,16 @@ function run() {
     const { missing, extra } = diffKeys(baseKeys, localeKeys);
 
     if (missing.length === 0 && extra.length === 0) {
-      console.log(`[OK] ${locale}.json matches ${baseLocale}.json key structure`);
+      console.log(
+        `[OK] ${locale}.json matches ${baseLocale}.json key structure`,
+      );
       continue;
     }
 
     failed = true;
-    console.error(`[FAIL] ${locale}.json key mismatch against ${baseLocale}.json`);
+    console.error(
+      `[FAIL] ${locale}.json key mismatch against ${baseLocale}.json`,
+    );
     if (missing.length > 0) {
       printList('Missing keys', missing);
     }

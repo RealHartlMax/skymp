@@ -23,7 +23,9 @@ const BUFFER_FLUSH_MS = 15000;
 let metricBuffer: FrontendMetric[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let metricsDisabled = false;
-const metricsSessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const metricsSessionId = `${Date.now().toString(36)}-${Math.random()
+  .toString(36)
+  .slice(2, 10)}`;
 
 const pushMetric = (metric: FrontendMetric): void => {
   metricBuffer.push(metric);
@@ -33,7 +35,9 @@ const pushMetric = (metric: FrontendMetric): void => {
 };
 
 const resolveMetricsEndpoint = (): string => {
-  const envEndpoint = (window as any)?.SKYMP_METRICS_ENDPOINT as string | undefined;
+  const envEndpoint = (window as any)?.SKYMP_METRICS_ENDPOINT as
+    | string
+    | undefined;
   if (envEndpoint && typeof envEndpoint === 'string') return envEndpoint;
   return '/api/frontend/metrics';
 };
@@ -51,7 +55,8 @@ const shouldSkipNetworkFlush = (endpoint: string): boolean => {
   if (!isBrowserDevUiMode()) return false;
 
   const explicitEndpoint = (window as any)?.SKYMP_METRICS_ENDPOINT;
-  if (typeof explicitEndpoint === 'string' && explicitEndpoint.trim()) return false;
+  if (typeof explicitEndpoint === 'string' && explicitEndpoint.trim())
+    return false;
 
   return endpoint === '/api/frontend/metrics';
 };
@@ -118,7 +123,14 @@ const initPerformanceObservers = (): void => {
       });
     });
 
-    observer.observe({ entryTypes: ['navigation', 'resource', 'paint', 'largest-contentful-paint'] as any });
+    observer.observe({
+      entryTypes: [
+        'navigation',
+        'resource',
+        'paint',
+        'largest-contentful-paint',
+      ] as any,
+    });
   } catch {
     // Some browsers may not support all entry types.
   }

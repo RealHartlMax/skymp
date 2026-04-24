@@ -1,11 +1,4 @@
-import {
-  Actor,
-  Ammo,
-  Game,
-  ObjectReference,
-  Spell,
-  Ui,
-} from 'skyrimPlatform';
+import { Actor, Ammo, Game, ObjectReference, Spell, Ui } from 'skyrimPlatform';
 
 import { Entry, Inventory, applyInventory, getInventory } from './inventory';
 
@@ -62,7 +55,10 @@ const filterWorn = (inv: Inventory): Inventory => {
   return { entries: inv.entries.filter((x) => x.worn || x.wornLeft) };
 };
 
-const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory => {
+const removeUnnecessaryExtra = (
+  inv: Inventory,
+  ignoreAmmo: boolean,
+): Inventory => {
   return {
     entries: inv.entries.map((x) => {
       const r: Entry = JSON.parse(JSON.stringify(x));
@@ -112,7 +108,10 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
 
   ac.removeAllItems(null, false, true);
 
-  const newInventory = removeUnnecessaryExtra(filterWorn(eq.inv), ac.getFormID() === 0x14);
+  const newInventory = removeUnnecessaryExtra(
+    filterWorn(eq.inv),
+    ac.getFormID() === 0x14,
+  );
 
   applyInventory(ac, newInventory, false);
 

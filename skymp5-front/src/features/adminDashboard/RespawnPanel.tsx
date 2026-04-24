@@ -1,9 +1,9 @@
 /**
  * Admin Dashboard Respawn & Revival Configuration Panel
  */
-
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+
 import { formatAdminUptime } from './utils';
 
 export interface DownedPlayerEntry {
@@ -35,18 +35,29 @@ export const RespawnPanel: React.FC<RespawnPanelProps> = ({
   const { t } = useTranslation();
 
   return (
-    <div className="admin-dashboard__panel" id="admin-panel-respawn" role="tabpanel" aria-labelledby="admin-tab-respawn">
-      <h2 className="admin-dashboard__panel-title">{t('adminDashboard.respawnConfigTitle')}</h2>
+    <div
+      className="admin-dashboard__panel"
+      id="admin-panel-respawn"
+      role="tabpanel"
+      aria-labelledby="admin-tab-respawn"
+    >
+      <h2 className="admin-dashboard__panel-title">
+        {t('adminDashboard.respawnConfigTitle')}
+      </h2>
 
       <div className="admin-dashboard__respawn-info">
         <div className="admin-dashboard__respawn-stat">
           <span className="admin-dashboard__respawn-label">Downed Players</span>
-          <span className="admin-dashboard__respawn-value">{downedPlayers.length}</span>
+          <span className="admin-dashboard__respawn-value">
+            {downedPlayers.length}
+          </span>
         </div>
       </div>
 
       {downedPlayers.length === 0 ? (
-        <p className="admin-dashboard__no-players">{t('adminDashboard.noDownedPlayers') || 'No downed players'}</p>
+        <p className="admin-dashboard__no-players">
+          {t('adminDashboard.noDownedPlayers') || 'No downed players'}
+        </p>
       ) : (
         <>
           <div className="admin-dashboard__search-row">
@@ -64,7 +75,11 @@ export const RespawnPanel: React.FC<RespawnPanelProps> = ({
             {downedPlayers.map((player) => {
               const downtimeSec = Math.floor((nowTs - player.downedAt) / 1000);
               return (
-                <div key={player.userId} className="admin-dashboard__downed-row" data-testid={`admin-downed-row-${player.userId}`}>
+                <div
+                  key={player.userId}
+                  className="admin-dashboard__downed-row"
+                  data-testid={`admin-downed-row-${player.userId}`}
+                >
                   <div className="admin-dashboard__downed-info">
                     <span className="admin-dashboard__downed-name">
                       {player.actorName} (User ID: {player.userId})
@@ -72,8 +87,14 @@ export const RespawnPanel: React.FC<RespawnPanelProps> = ({
                     <span className="admin-dashboard__downed-time">
                       Downed for: {formatAdminUptime(downtimeSec)}
                     </span>
-                    <span className={`admin-dashboard__downed-status ${player.canRespawn ? 'can-respawn' : 'no-respawn'}`}>
-                      {player.canRespawn ? '✓ Auto-respawn enabled' : '✗ Auto-respawn disabled'}
+                    <span
+                      className={`admin-dashboard__downed-status ${
+                        player.canRespawn ? 'can-respawn' : 'no-respawn'
+                      }`}
+                    >
+                      {player.canRespawn
+                        ? '✓ Auto-respawn enabled'
+                        : '✗ Auto-respawn disabled'}
                     </span>
                   </div>
                   <button
@@ -93,7 +114,12 @@ export const RespawnPanel: React.FC<RespawnPanelProps> = ({
       )}
 
       {statusMsg && (
-        <div className="admin-dashboard__status-msg" data-testid="admin-status-msg" role="status" aria-live="polite">
+        <div
+          className="admin-dashboard__status-msg"
+          data-testid="admin-status-msg"
+          role="status"
+          aria-live="polite"
+        >
           {statusMsg}
         </div>
       )}

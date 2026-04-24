@@ -1,18 +1,25 @@
-const Koa = require("koa");
-const serve = require("koa-static");
-const Router = require("koa-router");
-const auth = require("koa-basic-auth");
-import * as koaBody from "koa-body";
-import * as http from "http";
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
-import { spawn } from "child_process";
-import { Settings } from "./settings";
-import Axios from "axios";
-import { AddressInfo } from "net";
-import { register, getAggregatedMetrics, rpcCallsCounter, rpcDurationHistogram } from "./systems/metricsSystem";
-import { WebSocketServer, WebSocket } from "ws";
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as http from 'http';
+import * as koaBody from 'koa-body';
+import * as path from 'path';
+import Axios from 'axios';
+import { spawn } from 'child_process';
+import { AddressInfo } from 'net';
+import { WebSocket, WebSocketServer } from 'ws';
+
+import { Settings } from './settings';
+import {
+  getAggregatedMetrics,
+  register,
+  rpcCallsCounter,
+  rpcDurationHistogram,
+} from './systems/metricsSystem';
+
+const Koa = require('koa');
+const serve = require('koa-static');
+const Router = require('koa-router');
+const auth = require('koa-basic-auth');
 
 let gScampServer: any = null;
 
@@ -37,19 +44,31 @@ const PLAYER_STATS_PERSIST_INTERVAL_MS = 30 * 1000;
 const ADMIN_PASSWORD_MIN_LENGTH = 10;
 const ADMIN_SESSION_COOKIE = 'skymp_admin_session';
 const ADMIN_SESSION_IDLE_MS = 10 * 60 * 1000;
-const adminSessions = new Map<string, {
-  id: string;
-  user: string;
-  createdAt: number;
-  lastActivityAt: number;
-}>();
+const adminSessions = new Map<
+  string,
+  {
+    id: string;
+    user: string;
+    createdAt: number;
+    lastActivityAt: number;
+  }
+>();
 const processStartedAt = Date.now();
 // ---------------------------------------------------------------------------
 // Admin event log (in-memory, capped at MAX_ADMIN_LOG entries)
 // ---------------------------------------------------------------------------
-interface AdminLogEntry { ts: number; type: 'kick' | 'ban' | 'mute' | 'console'; message: string; }
+interface AdminLogEntry {
+  ts: number;
+  type: 'kick' | 'ban' | 'mute' | 'console';
+  message: string;
+}
 type ServerLogLevel = 'info' | 'error';
-interface ServerLogEntry { ts: number; type: 'server'; level: ServerLogLevel; message: string; }
+interface ServerLogEntry {
+  ts: number;
+  type: 'server';
+  level: ServerLogLevel;
+  message: string;
+}
 const adminLog: AdminLogEntry[] = [];
 const MAX_ADMIN_LOG = 500;
 const serverLog: ServerLogEntry[] = [];
@@ -99,7 +118,12 @@ interface ClientRuntimeEventEntry {
   details?: string;
 }
 
-type RevivalEventType = 'downed' | 'revived' | 'respawn_disabled' | 'respawn_enabled' | 'auto_revived';
+type RevivalEventType =
+  | 'downed'
+  | 'revived'
+  | 'respawn_disabled'
+  | 'respawn_enabled'
+  | 'auto_revived';
 
 interface RevivalEventEntry {
   ts: number;
@@ -158,7 +182,11 @@ const MAX_ADMIN_HISTORY = 2000;
 
 const generateHistoryId = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const part = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const part = (len: number) =>
+    Array.from(
+      { length: len },
+      () => chars[Math.floor(Math.random() * chars.length)],
+    ).join('');
   return `${part(4)}-${part(4)}`;
 };
 
@@ -173,15 +201,27 @@ const loadHistory = (dataDir: string): void => {
     if (!fs.existsSync(filePath)) return;
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     if (Array.isArray(parsed)) {
-      adminHistory.splice(0, adminHistory.length, ...parsed.slice(-MAX_ADMIN_HISTORY));
+      adminHistory.splice(
+        0,
+        adminHistory.length,
+        ...parsed.slice(-MAX_ADMIN_HISTORY),
+      );
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 };
 
 const saveHistory = (dataDir: string): void => {
   try {
-    fs.writeFileSync(path.join(dataDir, ADMIN_HISTORY_FILE), JSON.stringify(adminHistory), 'utf8');
-  } catch { /* ignore */ }
+    fs.writeFileSync(
+      path.join(dataDir, ADMIN_HISTORY_FILE),
+      JSON.stringify(adminHistory),
+      'utf8',
+    );
+  } catch {
+    /* ignore */
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -215,7 +255,8 @@ const addPlayerDrop = (entry: Omit<PlayerDropEntry, 'ts'>): void => {
 
 const addEnvironmentChange = (type: string, description: string): void => {
   environmentChanges.push({ ts: Date.now(), type, description });
-  if (environmentChanges.length > MAX_ENVIRONMENT_CHANGES) environmentChanges.shift();
+  if (environmentChanges.length > MAX_ENVIRONMENT_CHANGES)
+    environmentChanges.shift();
 };
 
 interface OfflineInventorySnapshot {
@@ -231,7 +272,12 @@ interface LocaleRoutingSettings {
   countryCodeToLanguage: Record<string, string>;
 }
 
-type JoinAccessMode = 'open' | 'adminOnly' | 'approvedLicense' | 'discordMember' | 'discordRoles';
+type JoinAccessMode =
+  | 'open'
+  | 'adminOnly'
+  | 'approvedLicense'
+  | 'discordMember'
+  | 'discordRoles';
 
 interface JoinAccessSettings {
   mode: JoinAccessMode;
@@ -334,9 +380,14 @@ const addAdminLog = (type: AdminLogEntry['type'], message: string): void => {
   if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
 };
 
-const getAdminMenuDebugLogPath = (dataDir: string): string => path.join(dataDir, ADMIN_MENU_DEBUG_LOG_FILE);
+const getAdminMenuDebugLogPath = (dataDir: string): string =>
+  path.join(dataDir, ADMIN_MENU_DEBUG_LOG_FILE);
 
-const appendAdminMenuDebugLog = (dataDir: string, user: string, payload: any): void => {
+const appendAdminMenuDebugLog = (
+  dataDir: string,
+  user: string,
+  payload: any,
+): void => {
   try {
     const logPath = getAdminMenuDebugLogPath(dataDir);
     const entry = {
@@ -348,7 +399,9 @@ const appendAdminMenuDebugLog = (dataDir: string, user: string, payload: any): v
       next: payload?.next ?? null,
       clientTs: Number(payload?.ts) || null,
     };
-    fs.appendFileSync(logPath, `${JSON.stringify(entry)}\n`, { encoding: 'utf8' });
+    fs.appendFileSync(logPath, `${JSON.stringify(entry)}\n`, {
+      encoding: 'utf8',
+    });
   } catch (error) {
     console.error('Failed to append admin menu debug log:', error);
   }
@@ -372,7 +425,10 @@ const addServerLog = (level: ServerLogLevel, message: string): void => {
   broadcastLiveConsoleLog(entry);
 };
 
-const pushServerLogChunkInternal = (level: ServerLogLevel, chunk: string): void => {
+const pushServerLogChunkInternal = (
+  level: ServerLogLevel,
+  chunk: string,
+): void => {
   const normalizedChunk = String(chunk || '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
@@ -395,7 +451,10 @@ const addFrontendMetrics = (entries: FrontendMetricEntry[]): void => {
 const addClientRuntimeEvents = (entries: ClientRuntimeEventEntry[]): void => {
   clientRuntimeEvents.push(...entries);
   if (clientRuntimeEvents.length > MAX_CLIENT_RUNTIME_EVENTS) {
-    clientRuntimeEvents.splice(0, clientRuntimeEvents.length - MAX_CLIENT_RUNTIME_EVENTS);
+    clientRuntimeEvents.splice(
+      0,
+      clientRuntimeEvents.length - MAX_CLIENT_RUNTIME_EVENTS,
+    );
   }
 };
 
@@ -406,14 +465,28 @@ const addRevivalEvent = (entry: RevivalEventEntry): void => {
   }
 };
 
-const getActorBooleanProperty = (actorId: number, propertyName: string, fallback: boolean): boolean => {
+const getActorBooleanProperty = (
+  actorId: number,
+  propertyName: string,
+  fallback: boolean,
+): boolean => {
   if (!actorId) return fallback;
-  const value = safeCall(() => (gScampServer as any)?.get?.(actorId, propertyName), fallback);
+  const value = safeCall(
+    () => (gScampServer as any)?.get?.(actorId, propertyName),
+    fallback,
+  );
   return typeof value === 'boolean' ? value : fallback;
 };
 
-const setActorProperty = (actorId: number, propertyName: string, value: unknown): void => {
-  safeCall(() => (gScampServer as any)?.set?.(actorId, propertyName, value), undefined);
+const setActorProperty = (
+  actorId: number,
+  propertyName: string,
+  value: unknown,
+): void => {
+  safeCall(
+    () => (gScampServer as any)?.set?.(actorId, propertyName, value),
+    undefined,
+  );
 };
 
 const syncRespawnState = (): DownedPlayerEntry[] => {
@@ -430,7 +503,9 @@ const syncRespawnState = (): DownedPlayerEntry[] => {
       return;
     }
 
-    const actorName = safeCall(() => gScampServer.getActorName(actorId), '') || `userId=${userId}`;
+    const actorName =
+      safeCall(() => gScampServer.getActorName(actorId), '') ||
+      `userId=${userId}`;
     const isDead = getActorBooleanProperty(actorId, 'isDead', false);
     const canRespawn = getActorBooleanProperty(actorId, 'canRespawn', true);
     const previous = trackedRespawnStates.get(userId);
@@ -443,7 +518,9 @@ const syncRespawnState = (): DownedPlayerEntry[] => {
         type: 'downed',
         userId,
         actorName,
-        details: canRespawn ? 'Auto-respawn currently enabled' : 'Auto-respawn disabled',
+        details: canRespawn
+          ? 'Auto-respawn currently enabled'
+          : 'Auto-respawn disabled',
       });
     }
 
@@ -462,7 +539,8 @@ const syncRespawnState = (): DownedPlayerEntry[] => {
         type: 'auto_revived',
         userId,
         actorName,
-        details: 'Player returned to alive state outside the admin revive action',
+        details:
+          'Player returned to alive state outside the admin revive action',
       });
       downedAt = null;
     }
@@ -505,9 +583,9 @@ const summarizeFrontendMetrics = (entries: FrontendMetricEntry[]) => {
     totalValue += entry.value;
 
     if (
-      entry.source.includes('error')
-      || entry.name.includes('error')
-      || entry.name === 'unhandledrejection'
+      entry.source.includes('error') ||
+      entry.name.includes('error') ||
+      entry.name === 'unhandledrejection'
     ) {
       errorCount += 1;
     }
@@ -517,16 +595,18 @@ const summarizeFrontendMetrics = (entries: FrontendMetricEntry[]) => {
     }
   });
 
-  const toTopList = (input: Map<string, number>) => Array.from(input.entries())
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 5)
-    .map(([name, count]) => ({ name, count }));
+  const toTopList = (input: Map<string, number>) =>
+    Array.from(input.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
 
   return {
     totalCount: entries.length,
     errorCount,
     lastReceivedAt,
-    averageValue: entries.length > 0 ? Number((totalValue / entries.length).toFixed(2)) : 0,
+    averageValue:
+      entries.length > 0 ? Number((totalValue / entries.length).toFixed(2)) : 0,
     sources: toTopList(sourceCounts),
     names: toTopList(nameCounts),
   };
@@ -550,10 +630,11 @@ const summarizeClientRuntimeEvents = (entries: ClientRuntimeEventEntry[]) => {
     }
   });
 
-  const toTopList = (input: Map<string, number>) => Array.from(input.entries())
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 5)
-    .map(([name, count]) => ({ name, count }));
+  const toTopList = (input: Map<string, number>) =>
+    Array.from(input.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
 
   return {
     totalCount: entries.length,
@@ -629,11 +710,14 @@ const loadModerationState = (dataDir: string): void => {
           // New format: [userId, expiresAt | null][]
           const now = Date.now();
           (raw as [number, number | null][]).forEach(([userId, expiresAt]) => {
-            if (expiresAt === null || expiresAt > now) bannedUsers.set(userId, expiresAt);
+            if (expiresAt === null || expiresAt > now)
+              bannedUsers.set(userId, expiresAt);
           });
         }
       }
-      console.log(`Loaded ${bannedUsers.size} banned userId(s) from ${bansPath}`);
+      console.log(
+        `Loaded ${bannedUsers.size} banned userId(s) from ${bansPath}`,
+      );
     }
   } catch (e) {
     console.error('Failed to load ban list:', e);
@@ -641,12 +725,17 @@ const loadModerationState = (dataDir: string): void => {
   try {
     const mutesPath = path.join(dataDir, 'admin-mutes.json');
     if (fs.existsSync(mutesPath)) {
-      const entries = JSON.parse(fs.readFileSync(mutesPath, 'utf8')) as [number, number][];
+      const entries = JSON.parse(fs.readFileSync(mutesPath, 'utf8')) as [
+        number,
+        number,
+      ][];
       const now = Date.now();
       entries.forEach(([userId, expiresAt]) => {
         if (expiresAt > now) mutedUsers.set(userId, expiresAt);
       });
-      console.log(`Loaded ${mutedUsers.size} active muted userId(s) from ${mutesPath}`);
+      console.log(
+        `Loaded ${mutedUsers.size} active muted userId(s) from ${mutesPath}`,
+      );
     }
   } catch (e) {
     console.error('Failed to load mute list:', e);
@@ -655,7 +744,11 @@ const loadModerationState = (dataDir: string): void => {
 
 const savePlayerStats = (dataDir: string, force = false): void => {
   const now = Date.now();
-  if (!force && now - lastPlayerStatsPersistAt < PLAYER_STATS_PERSIST_INTERVAL_MS) return;
+  if (
+    !force &&
+    now - lastPlayerStatsPersistAt < PLAYER_STATS_PERSIST_INTERVAL_MS
+  )
+    return;
 
   try {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -667,7 +760,11 @@ const savePlayerStats = (dataDir: string, force = false): void => {
       activeSessionStartedAt: entry.activeSessionStartedAt,
       lastDisplayName: entry.lastDisplayName,
     }));
-    fs.writeFileSync(path.join(dataDir, ADMIN_PLAYER_STATS_FILE), JSON.stringify(entries), 'utf8');
+    fs.writeFileSync(
+      path.join(dataDir, ADMIN_PLAYER_STATS_FILE),
+      JSON.stringify(entries),
+      'utf8',
+    );
     lastPlayerStatsPersistAt = now;
   } catch (e) {
     console.error('Failed to persist admin player stats:', e);
@@ -690,7 +787,9 @@ const loadPlayerStats = (dataDir: string): void => {
       const lastConnectionAt = Number((value as any).lastConnectionAt);
       const totalPlayMs = Number((value as any).totalPlayMs);
       const activeSessionStartedAtRaw = (value as any).activeSessionStartedAt;
-      const activeSessionStartedAt = Number.isFinite(Number(activeSessionStartedAtRaw))
+      const activeSessionStartedAt = Number.isFinite(
+        Number(activeSessionStartedAtRaw),
+      )
         ? Number(activeSessionStartedAtRaw)
         : null;
 
@@ -699,13 +798,22 @@ const loadPlayerStats = (dataDir: string): void => {
       adminPlayerStats.set(Math.floor(userId), {
         userId: Math.floor(userId),
         firstJoinedAt: Math.floor(firstJoinedAt),
-        lastConnectionAt: Number.isFinite(lastConnectionAt) ? Math.floor(lastConnectionAt) : Math.floor(firstJoinedAt),
-        totalPlayMs: Number.isFinite(totalPlayMs) ? Math.max(0, Math.floor(totalPlayMs)) : 0,
+        lastConnectionAt: Number.isFinite(lastConnectionAt)
+          ? Math.floor(lastConnectionAt)
+          : Math.floor(firstJoinedAt),
+        totalPlayMs: Number.isFinite(totalPlayMs)
+          ? Math.max(0, Math.floor(totalPlayMs))
+          : 0,
         activeSessionStartedAt,
-        lastDisplayName: typeof (value as any).lastDisplayName === 'string' ? (value as any).lastDisplayName.slice(0, 120) : '',
+        lastDisplayName:
+          typeof (value as any).lastDisplayName === 'string'
+            ? (value as any).lastDisplayName.slice(0, 120)
+            : '',
       });
     });
-    console.log(`Loaded ${adminPlayerStats.size} admin player stat entrie(s) from ${statsPath}`);
+    console.log(
+      `Loaded ${adminPlayerStats.size} admin player stat entrie(s) from ${statsPath}`,
+    );
   } catch (e) {
     console.error('Failed to load admin player stats:', e);
   }
@@ -722,7 +830,9 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
     if (safeUserId < 0) return;
 
     const actorId = safeCall(() => gScampServer.getUserActor(safeUserId), 0);
-    const actorName = actorId ? String(safeCall(() => gScampServer.getActorName(actorId), '') || '') : '';
+    const actorName = actorId
+      ? String(safeCall(() => gScampServer.getActorName(actorId), '') || '')
+      : '';
     const existing = adminPlayerStats.get(safeUserId);
 
     if (!existing) {
@@ -761,7 +871,11 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
       entry.lastConnectionAt = now;
       changed = true;
       // Record the disconnect as an expected drop
-      addPlayerDrop({ userId, playerName: entry.lastDisplayName || `userId=${userId}`, type: 'expected' });
+      addPlayerDrop({
+        userId,
+        playerName: entry.lastDisplayName || `userId=${userId}`,
+        type: 'expected',
+      });
     }
   });
 
@@ -771,9 +885,13 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
 };
 
 const metricsAuthParse = (settings: Settings): void => {
-  const authConfig = settings.allSettings?.metricsAuth as { user?: string; password?: string } | undefined;
+  const authConfig = settings.allSettings?.metricsAuth as
+    | { user?: string; password?: string }
+    | undefined;
   if (!authConfig) {
-    console.log('Metrics auth is not configured, so it will be inaccessible. Set metricsAuth setting to activate');
+    console.log(
+      'Metrics auth is not configured, so it will be inaccessible. Set metricsAuth setting to activate',
+    );
     return;
   }
   if (!authConfig.user || !authConfig.password) {
@@ -781,11 +899,13 @@ const metricsAuthParse = (settings: Settings): void => {
     return;
   }
   metricsAuth = { user: authConfig.user, password: authConfig.password };
-}
+};
 
 const adminAuthParse = (settings: Settings): void => {
   adminAuthSource = 'none';
-  const authConfig = settings.allSettings?.adminUiAuth as { user?: string; password?: string } | undefined;
+  const authConfig = settings.allSettings?.adminUiAuth as
+    | { user?: string; password?: string }
+    | undefined;
   if (authConfig?.user && authConfig?.password) {
     adminAuth = { user: authConfig.user, password: authConfig.password };
     adminAuthSource = 'adminUiAuth';
@@ -795,20 +915,27 @@ const adminAuthParse = (settings: Settings): void => {
   if (metricsAuth?.user && metricsAuth?.password) {
     adminAuth = metricsAuth;
     adminAuthSource = 'metricsAuth';
-    console.log('adminUiAuth is not configured, falling back to metricsAuth credentials');
+    console.log(
+      'adminUiAuth is not configured, falling back to metricsAuth credentials',
+    );
     return;
   }
 
-  console.log('Admin dashboard auth is not configured and metricsAuth fallback is unavailable');
+  console.log(
+    'Admin dashboard auth is not configured and metricsAuth fallback is unavailable',
+  );
 };
 
-const getAdminAuthFilePath = (dataDir: string): string => path.join(dataDir, ADMIN_AUTH_FILE);
+const getAdminAuthFilePath = (dataDir: string): string =>
+  path.join(dataDir, ADMIN_AUTH_FILE);
 
 const isValidStoredAdminAuth = (value: any): value is StoredAdminAuth => {
-  return value
-    && typeof value.user === 'string'
-    && typeof value.passwordHash === 'string'
-    && value.algo === 'scrypt-v1';
+  return (
+    value &&
+    typeof value.user === 'string' &&
+    typeof value.passwordHash === 'string' &&
+    value.algo === 'scrypt-v1'
+  );
 };
 
 const loadStoredAdminAuth = (dataDir: string): void => {
@@ -847,11 +974,16 @@ const createScryptPasswordHash = (password: string): string => {
   const p = 1;
   const keyLen = 64;
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, keyLen, { N: n, r, p }).toString('hex');
+  const hash = crypto
+    .scryptSync(password, salt, keyLen, { N: n, r, p })
+    .toString('hex');
   return `scrypt-v1$${n}$${r}$${p}$${salt}$${hash}`;
 };
 
-const verifyScryptPasswordHash = (password: string, encodedHash: string): boolean => {
+const verifyScryptPasswordHash = (
+  password: string,
+  encodedHash: string,
+): boolean => {
   const parts = String(encodedHash || '').split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt-v1') return false;
 
@@ -861,22 +993,37 @@ const verifyScryptPasswordHash = (password: string, encodedHash: string): boolea
   const salt = parts[4];
   const expectedHex = parts[5];
 
-  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p) || !salt || !expectedHex) {
+  if (
+    !Number.isFinite(n) ||
+    !Number.isFinite(r) ||
+    !Number.isFinite(p) ||
+    !salt ||
+    !expectedHex
+  ) {
     return false;
   }
 
   try {
     const expected = Buffer.from(expectedHex, 'hex');
-    const derived = crypto.scryptSync(password, salt, expected.length, { N: n, r, p });
-    return derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+    const derived = crypto.scryptSync(password, salt, expected.length, {
+      N: n,
+      r,
+      p,
+    });
+    return (
+      derived.length === expected.length &&
+      crypto.timingSafeEqual(derived, expected)
+    );
   } catch {
     return false;
   }
 };
 
-const hasConfiguredAdminCredentials = (): boolean => Boolean(storedAdminAuth || adminAuth);
+const hasConfiguredAdminCredentials = (): boolean =>
+  Boolean(storedAdminAuth || adminAuth);
 
-const getConfiguredAdminUser = (): string => storedAdminAuth?.user || adminAuth?.user || '';
+const getConfiguredAdminUser = (): string =>
+  storedAdminAuth?.user || adminAuth?.user || '';
 
 const verifyAdminCredentials = (user: string, password: string): boolean => {
   if (storedAdminAuth) {
@@ -892,7 +1039,7 @@ const verifyAdminCredentials = (user: string, password: string): boolean => {
 };
 
 const getOnlinePlayerIds = (): number[] => {
-  const onlinePlayers = gScampServer?.get?.(0, "onlinePlayers");
+  const onlinePlayers = gScampServer?.get?.(0, 'onlinePlayers');
   if (!Array.isArray(onlinePlayers)) {
     return [];
   }
@@ -907,9 +1054,15 @@ const getOnlinePlayerIds = (): number[] => {
     const candidate = Math.floor(value);
 
     // onlinePlayers currently stores actor form IDs; convert them to user IDs
-    const mappedUserId = safeCall(() => gScampServer.getUserByActor(candidate), -1);
+    const mappedUserId = safeCall(
+      () => gScampServer.getUserByActor(candidate),
+      -1,
+    );
     if (Number.isFinite(mappedUserId) && mappedUserId >= 0) {
-      const mappedActorId = safeCall(() => gScampServer.getUserActor(mappedUserId), 0);
+      const mappedActorId = safeCall(
+        () => gScampServer.getUserActor(mappedUserId),
+        0,
+      );
       if (mappedActorId === candidate) {
         uniqueUserIds.add(mappedUserId);
         continue;
@@ -958,7 +1111,8 @@ const DEFAULT_LOCALE_ROUTING: LocaleRoutingSettings = {
 };
 const DEFAULT_JOIN_ACCESS: JoinAccessSettings = {
   mode: 'open',
-  rejectionMessage: 'Access denied. Please contact server staff for whitelist approval.',
+  rejectionMessage:
+    'Access denied. Please contact server staff for whitelist approval.',
   approvedLicenses: [],
   approvedDiscordIds: [],
   discordRoleIds: [],
@@ -1033,7 +1187,10 @@ const scanResourcesRecursively = (
   }
 };
 
-const listAdminResources = (settings: Settings, dataDir: string): AdminResourceEntry[] => {
+const listAdminResources = (
+  settings: Settings,
+  dataDir: string,
+): AdminResourceEntry[] => {
   const resources = new Map<string, AdminResourceEntry>();
 
   const candidates = [
@@ -1048,7 +1205,10 @@ const listAdminResources = (settings: Settings, dataDir: string): AdminResourceE
     const exists = safeCall(() => fs.existsSync(candidate), false);
     if (!exists) continue;
 
-    const stat = safeCall(() => fs.statSync(candidate), null as fs.Stats | null);
+    const stat = safeCall(
+      () => fs.statSync(candidate),
+      null as fs.Stats | null,
+    );
     if (!stat) continue;
 
     if (stat.isFile()) {
@@ -1062,7 +1222,9 @@ const listAdminResources = (settings: Settings, dataDir: string): AdminResourceE
   }
 
   const loadOrder = Array.isArray(settings.loadOrder)
-    ? settings.loadOrder.filter((v: unknown) => typeof v === 'string') as string[]
+    ? (settings.loadOrder.filter(
+        (v: unknown) => typeof v === 'string',
+      ) as string[])
     : [];
 
   for (const modName of loadOrder) {
@@ -1098,7 +1260,10 @@ const getInventoryEntriesCount = (inventory: unknown): number => {
   return Array.isArray(entries) ? entries.length : 0;
 };
 
-const getOfflineInventorySnapshot = (dataDir: string, profileId: number): OfflineInventorySnapshot | null => {
+const getOfflineInventorySnapshot = (
+  dataDir: string,
+  profileId: number,
+): OfflineInventorySnapshot | null => {
   const changeFormsDir = path.resolve(dataDir, 'changeForms');
   const entries = safeCall(
     () => fs.readdirSync(changeFormsDir, { withFileTypes: true }),
@@ -1115,18 +1280,25 @@ const getOfflineInventorySnapshot = (dataDir: string, profileId: number): Offlin
     const text = safeCall(() => fs.readFileSync(filePath, 'utf8'), '');
     if (!text) continue;
 
-    const parsed = safeCall(() => JSON.parse(text) as Record<string, unknown>, null as Record<string, unknown> | null);
+    const parsed = safeCall(
+      () => JSON.parse(text) as Record<string, unknown>,
+      null as Record<string, unknown> | null,
+    );
     if (!parsed) continue;
 
     const parsedProfileId = Number(parsed.profileId);
-    if (!Number.isFinite(parsedProfileId) || parsedProfileId !== profileId) continue;
+    if (!Number.isFinite(parsedProfileId) || parsedProfileId !== profileId)
+      continue;
 
     const inventory = parsed.inv;
     if (!inventory || typeof inventory !== 'object') continue;
 
     const stat = safeCall(() => fs.statSync(filePath), null as fs.Stats | null);
     const updatedAt = stat?.mtimeMs ?? 0;
-    const formDesc = typeof parsed.formDesc === 'string' ? parsed.formDesc : entry.name.replace(/\.json$/i, '').replace(/_/g, ':');
+    const formDesc =
+      typeof parsed.formDesc === 'string'
+        ? parsed.formDesc
+        : entry.name.replace(/\.json$/i, '').replace(/_/g, ':');
     const snapshot: OfflineInventorySnapshot = {
       profileId,
       formDesc,
@@ -1157,8 +1329,12 @@ const sanitizeCountryCodeToLanguage = (
 
   const result: Record<string, string> = {};
   Object.entries(input).forEach(([rawCountry, rawLanguage]) => {
-    const country = String(rawCountry || '').trim().toUpperCase();
-    const language = String(rawLanguage || '').trim().toLowerCase();
+    const country = String(rawCountry || '')
+      .trim()
+      .toUpperCase();
+    const language = String(rawLanguage || '')
+      .trim()
+      .toLowerCase();
     if (!country || country.length > 3 || !language) return;
     result[country] = language;
   });
@@ -1169,10 +1345,17 @@ const sanitizeCountryCodeToLanguage = (
   return result;
 };
 
-const ensureLocaleRoutingSettingsInObject = (settingsObj: Record<string, unknown>): LocaleRoutingSettings => {
-  const current = settingsObj.localeRouting as Record<string, unknown> | undefined;
+const ensureLocaleRoutingSettingsInObject = (
+  settingsObj: Record<string, unknown>,
+): LocaleRoutingSettings => {
+  const current = settingsObj.localeRouting as
+    | Record<string, unknown>
+    | undefined;
   const defaultLanguageRaw = current?.defaultLanguage;
-  const defaultLanguage = String(defaultLanguageRaw || DEFAULT_LOCALE_ROUTING.defaultLanguage).trim().toLowerCase() || DEFAULT_LOCALE_ROUTING.defaultLanguage;
+  const defaultLanguage =
+    String(defaultLanguageRaw || DEFAULT_LOCALE_ROUTING.defaultLanguage)
+      .trim()
+      .toLowerCase() || DEFAULT_LOCALE_ROUTING.defaultLanguage;
   const countryCodeToLanguage = sanitizeCountryCodeToLanguage(
     current?.countryCodeToLanguage as Record<string, unknown> | undefined,
   );
@@ -1201,24 +1384,29 @@ const sanitizeJoinAccessSettings = (
   value: Record<string, unknown> | undefined,
 ): JoinAccessSettings => {
   const modeRaw = String(value?.mode || DEFAULT_JOIN_ACCESS.mode).trim();
-  const mode: JoinAccessMode = (
-    modeRaw === 'adminOnly'
-    || modeRaw === 'approvedLicense'
-    || modeRaw === 'discordMember'
-    || modeRaw === 'discordRoles'
-    || modeRaw === 'open'
-  ) ? modeRaw : DEFAULT_JOIN_ACCESS.mode;
+  const mode: JoinAccessMode =
+    modeRaw === 'adminOnly' ||
+    modeRaw === 'approvedLicense' ||
+    modeRaw === 'discordMember' ||
+    modeRaw === 'discordRoles' ||
+    modeRaw === 'open'
+      ? modeRaw
+      : DEFAULT_JOIN_ACCESS.mode;
 
   return {
     mode,
-    rejectionMessage: String(value?.rejectionMessage || DEFAULT_JOIN_ACCESS.rejectionMessage).trim(),
+    rejectionMessage: String(
+      value?.rejectionMessage || DEFAULT_JOIN_ACCESS.rejectionMessage,
+    ).trim(),
     approvedLicenses: toUniqueTrimmedList(value?.approvedLicenses),
     approvedDiscordIds: toUniqueTrimmedList(value?.approvedDiscordIds),
     discordRoleIds: toUniqueTrimmedList(value?.discordRoleIds),
   };
 };
 
-const ensureJoinAccessSettingsInObject = (settingsObj: Record<string, unknown>): JoinAccessSettings => {
+const ensureJoinAccessSettingsInObject = (
+  settingsObj: Record<string, unknown>,
+): JoinAccessSettings => {
   const current = settingsObj.joinAccess as Record<string, unknown> | undefined;
   const normalized = sanitizeJoinAccessSettings(current);
   settingsObj.joinAccess = normalized;
@@ -1241,9 +1429,13 @@ const sanitizeDiscordBotSettings = (
   };
 };
 
-const ensureDiscordBotSettingsInObject = (settingsObj: Record<string, unknown>): DiscordBotSettings => {
+const ensureDiscordBotSettingsInObject = (
+  settingsObj: Record<string, unknown>,
+): DiscordBotSettings => {
   const current = settingsObj.discordBot as Record<string, unknown> | undefined;
-  const discordAuth = settingsObj.discordAuth as Record<string, unknown> | undefined;
+  const discordAuth = settingsObj.discordAuth as
+    | Record<string, unknown>
+    | undefined;
   const normalized = sanitizeDiscordBotSettings(current, discordAuth);
   settingsObj.discordBot = normalized;
   settingsObj.discordAuth = {
@@ -1265,7 +1457,9 @@ const sanitizeSupervisorSettings = (
   };
 };
 
-const ensureSupervisorSettingsInObject = (settingsObj: Record<string, unknown>): SupervisorSettings => {
+const ensureSupervisorSettingsInObject = (
+  settingsObj: Record<string, unknown>,
+): SupervisorSettings => {
   const current = settingsObj.supervisor as Record<string, unknown> | undefined;
   const normalized = sanitizeSupervisorSettings(current);
   settingsObj.supervisor = normalized;
@@ -1273,16 +1467,23 @@ const ensureSupervisorSettingsInObject = (settingsObj: Record<string, unknown>):
 };
 
 const getSupervisorSettings = (settings: Settings): SupervisorSettings => {
-  const current = settings.allSettings?.supervisor as Record<string, unknown> | undefined;
+  const current = settings.allSettings?.supervisor as
+    | Record<string, unknown>
+    | undefined;
   return sanitizeSupervisorSettings(current);
 };
 
 const isServerControlAvailable = (settings: Settings): boolean => {
   const supervisor = getSupervisorSettings(settings);
-  return supervisor.enabled && Boolean(supervisor.stopCommand) && Boolean(supervisor.restartCommand);
+  return (
+    supervisor.enabled &&
+    Boolean(supervisor.stopCommand) &&
+    Boolean(supervisor.restartCommand)
+  );
 };
 
-const getServerSettingsPath = (): string => path.resolve('./server-settings.json');
+const getServerSettingsPath = (): string =>
+  path.resolve('./server-settings.json');
 
 const readServerSettingsJson = (): Record<string, unknown> => {
   const settingsPath = getServerSettingsPath();
@@ -1291,9 +1492,15 @@ const readServerSettingsJson = (): Record<string, unknown> => {
   return parsed;
 };
 
-const writeServerSettingsJson = (settingsObj: Record<string, unknown>): void => {
+const writeServerSettingsJson = (
+  settingsObj: Record<string, unknown>,
+): void => {
   const settingsPath = getServerSettingsPath();
-  fs.writeFileSync(settingsPath, JSON.stringify(settingsObj, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(
+    settingsPath,
+    JSON.stringify(settingsObj, null, 2) + '\n',
+    'utf8',
+  );
 };
 
 const clearLegacyAdminUiAuthInServerSettings = (): boolean => {
@@ -1305,7 +1512,10 @@ const clearLegacyAdminUiAuthInServerSettings = (): boolean => {
       return true;
     }
   } catch (e) {
-    console.error('Failed to remove legacy adminUiAuth from server-settings.json:', e);
+    console.error(
+      'Failed to remove legacy adminUiAuth from server-settings.json:',
+      e,
+    );
   }
   return false;
 };
@@ -1314,9 +1524,14 @@ const resolveLanguageByCountryCode = (
   localeRouting: LocaleRoutingSettings,
   countryCodeRaw: string,
 ): string => {
-  const countryCode = String(countryCodeRaw || '').trim().toUpperCase();
+  const countryCode = String(countryCodeRaw || '')
+    .trim()
+    .toUpperCase();
   if (!countryCode) return localeRouting.defaultLanguage;
-  return localeRouting.countryCodeToLanguage[countryCode] || localeRouting.defaultLanguage;
+  return (
+    localeRouting.countryCodeToLanguage[countryCode] ||
+    localeRouting.defaultLanguage
+  );
 };
 
 const mergeAdminCapabilities = (
@@ -1325,20 +1540,42 @@ const mergeAdminCapabilities = (
 ): AdminCapabilities => {
   if (!overrides) return base;
   return {
-    canKick: typeof overrides.canKick === 'boolean' ? overrides.canKick : base.canKick,
-    canBan: typeof overrides.canBan === 'boolean' ? overrides.canBan : base.canBan,
-    canUnban: typeof overrides.canUnban === 'boolean' ? overrides.canUnban : base.canUnban,
-    canConsole: typeof overrides.canConsole === 'boolean' ? overrides.canConsole : base.canConsole,
-    canViewLogs: typeof overrides.canViewLogs === 'boolean' ? overrides.canViewLogs : base.canViewLogs,
-    canMessage: typeof overrides.canMessage === 'boolean' ? overrides.canMessage : base.canMessage,
-    canMute: typeof overrides.canMute === 'boolean' ? overrides.canMute : base.canMute,
-    canUnmute: typeof overrides.canUnmute === 'boolean' ? overrides.canUnmute : base.canUnmute,
-    canManageRespawn: typeof overrides.canManageRespawn === 'boolean' ? overrides.canManageRespawn : base.canManageRespawn,
+    canKick:
+      typeof overrides.canKick === 'boolean' ? overrides.canKick : base.canKick,
+    canBan:
+      typeof overrides.canBan === 'boolean' ? overrides.canBan : base.canBan,
+    canUnban:
+      typeof overrides.canUnban === 'boolean'
+        ? overrides.canUnban
+        : base.canUnban,
+    canConsole:
+      typeof overrides.canConsole === 'boolean'
+        ? overrides.canConsole
+        : base.canConsole,
+    canViewLogs:
+      typeof overrides.canViewLogs === 'boolean'
+        ? overrides.canViewLogs
+        : base.canViewLogs,
+    canMessage:
+      typeof overrides.canMessage === 'boolean'
+        ? overrides.canMessage
+        : base.canMessage,
+    canMute:
+      typeof overrides.canMute === 'boolean' ? overrides.canMute : base.canMute,
+    canUnmute:
+      typeof overrides.canUnmute === 'boolean'
+        ? overrides.canUnmute
+        : base.canUnmute,
+    canManageRespawn:
+      typeof overrides.canManageRespawn === 'boolean'
+        ? overrides.canManageRespawn
+        : base.canManageRespawn,
   };
 };
 
 const normalizeAdminRole = (value: unknown): AdminRole => {
-  if (value === 'admin' || value === 'moderator' || value === 'viewer') return value;
+  if (value === 'admin' || value === 'moderator' || value === 'viewer')
+    return value;
   return 'viewer';
 };
 
@@ -1348,22 +1585,25 @@ const sanitizeAdminUiUsers = (
   if (!value || typeof value !== 'object') return {};
 
   const out: Record<string, AdminUiUserProfile> = {};
-  Object.entries(value as Record<string, unknown>).forEach(([rawUser, rawProfile]) => {
-    const user = String(rawUser || '').trim();
-    if (!user) return;
+  Object.entries(value as Record<string, unknown>).forEach(
+    ([rawUser, rawProfile]) => {
+      const user = String(rawUser || '').trim();
+      if (!user) return;
 
-    const profileObj = rawProfile && typeof rawProfile === 'object'
-      ? rawProfile as Record<string, unknown>
-      : {};
+      const profileObj =
+        rawProfile && typeof rawProfile === 'object'
+          ? (rawProfile as Record<string, unknown>)
+          : {};
 
-    const role = normalizeAdminRole(profileObj.role);
-    const discordId = String(profileObj.discordId || '').trim();
+      const role = normalizeAdminRole(profileObj.role);
+      const discordId = String(profileObj.discordId || '').trim();
 
-    out[user] = {
-      role,
-      ...(discordId ? { discordId } : {}),
-    };
-  });
+      out[user] = {
+        role,
+        ...(discordId ? { discordId } : {}),
+      };
+    },
+  );
 
   return out;
 };
@@ -1371,11 +1611,13 @@ const sanitizeAdminUiUsers = (
 const sanitizeAdminUiRoles = (value: unknown): Record<string, AdminRole> => {
   if (!value || typeof value !== 'object') return {};
   const out: Record<string, AdminRole> = {};
-  Object.entries(value as Record<string, unknown>).forEach(([rawUser, rawRole]) => {
-    const user = String(rawUser || '').trim();
-    if (!user) return;
-    out[user] = normalizeAdminRole(rawRole);
-  });
+  Object.entries(value as Record<string, unknown>).forEach(
+    ([rawUser, rawRole]) => {
+      const user = String(rawUser || '').trim();
+      if (!user) return;
+      out[user] = normalizeAdminRole(rawRole);
+    },
+  );
   return out;
 };
 
@@ -1438,7 +1680,10 @@ const persistMasterAdminUserInServerSettings = (userRaw: string): boolean => {
     writeServerSettingsJson(parsed);
     return true;
   } catch (error) {
-    console.error('Failed to persist master admin user in server-settings.json:', error);
+    console.error(
+      'Failed to persist master admin user in server-settings.json:',
+      error,
+    );
     return false;
   }
 };
@@ -1452,12 +1697,25 @@ const cleanupAdminDiscordOauthStates = (): void => {
   });
 };
 
-const resolveDiscordAdminOauthConfig = (settings: Settings): DiscordAdminOauthConfig => {
-  const cfg = settings.allSettings?.adminUiDiscordAuth as Record<string, unknown> | undefined;
-  const clientId = String(cfg?.clientId || process.env.SKYMP_ADMIN_DISCORD_CLIENT_ID || '').trim();
-  const clientSecret = String(cfg?.clientSecret || process.env.SKYMP_ADMIN_DISCORD_CLIENT_SECRET || '').trim();
-  const redirectUri = String(cfg?.redirectUri || process.env.SKYMP_ADMIN_DISCORD_REDIRECT_URI || '').trim();
-  const scope = String(cfg?.scope || process.env.SKYMP_ADMIN_DISCORD_SCOPE || 'identify').trim() || 'identify';
+const resolveDiscordAdminOauthConfig = (
+  settings: Settings,
+): DiscordAdminOauthConfig => {
+  const cfg = settings.allSettings?.adminUiDiscordAuth as
+    | Record<string, unknown>
+    | undefined;
+  const clientId = String(
+    cfg?.clientId || process.env.SKYMP_ADMIN_DISCORD_CLIENT_ID || '',
+  ).trim();
+  const clientSecret = String(
+    cfg?.clientSecret || process.env.SKYMP_ADMIN_DISCORD_CLIENT_SECRET || '',
+  ).trim();
+  const redirectUri = String(
+    cfg?.redirectUri || process.env.SKYMP_ADMIN_DISCORD_REDIRECT_URI || '',
+  ).trim();
+  const scope =
+    String(
+      cfg?.scope || process.env.SKYMP_ADMIN_DISCORD_SCOPE || 'identify',
+    ).trim() || 'identify';
   return {
     clientId,
     clientSecret,
@@ -1524,7 +1782,9 @@ const clearAdminSessionCookie = (ctx: any): void => {
   });
 };
 
-const decodeBasicAuth = (ctx: any): { user: string; password: string } | null => {
+const decodeBasicAuth = (
+  ctx: any,
+): { user: string; password: string } | null => {
   const authHeader = String(ctx?.headers?.authorization ?? '');
   const m = authHeader.match(/^Basic\s+(.+)$/i);
   if (!m) return null;
@@ -1553,7 +1813,8 @@ const getValidBasicAdminUser = (ctx: any): string => {
 
 const getBasicAuthUser = (ctx: any): string => {
   const sessionUser = ctx?.state?.adminUser;
-  if (typeof sessionUser === 'string' && sessionUser.length > 0) return sessionUser;
+  if (typeof sessionUser === 'string' && sessionUser.length > 0)
+    return sessionUser;
 
   const stateUser = ctx?.state?.user;
   if (typeof stateUser === 'string' && stateUser.length > 0) return stateUser;
@@ -1577,7 +1838,9 @@ const getAdminRoleForUser = (settings: Settings, user: string): AdminRole => {
     return usersMap[user].role;
   }
 
-  const map = settings.allSettings?.adminUiRoles as Record<string, unknown> | undefined;
+  const map = settings.allSettings?.adminUiRoles as
+    | Record<string, unknown>
+    | undefined;
   if (user && map && Object.prototype.hasOwnProperty.call(map, user)) {
     return normalizeAdminRole(map[user]);
   }
@@ -1586,17 +1849,30 @@ const getAdminRoleForUser = (settings: Settings, user: string): AdminRole => {
   return 'viewer';
 };
 
-const getAdminCapabilitiesForRole = (settings: Settings, role: AdminRole): AdminCapabilities => {
-  const roleOverridesMap = settings.allSettings?.adminUiRoleCapabilities as Record<string, Partial<AdminCapabilities>> | undefined;
+const getAdminCapabilitiesForRole = (
+  settings: Settings,
+  role: AdminRole,
+): AdminCapabilities => {
+  const roleOverridesMap = settings.allSettings?.adminUiRoleCapabilities as
+    | Record<string, Partial<AdminCapabilities>>
+    | undefined;
   const roleOverrides = roleOverridesMap?.[role];
-  const legacyGlobalOverrides = settings.allSettings?.adminUiCapabilities as Partial<AdminCapabilities> | undefined;
+  const legacyGlobalOverrides = settings.allSettings?.adminUiCapabilities as
+    | Partial<AdminCapabilities>
+    | undefined;
 
   const fromRoleDefaults = ADMIN_ROLE_DEFAULT_CAPABILITIES[role];
-  const afterRoleOverrides = mergeAdminCapabilities(fromRoleDefaults, roleOverrides);
+  const afterRoleOverrides = mergeAdminCapabilities(
+    fromRoleDefaults,
+    roleOverrides,
+  );
   return mergeAdminCapabilities(afterRoleOverrides, legacyGlobalOverrides);
 };
 
-const getAdminContext = (settings: Settings, ctx: any): {
+const getAdminContext = (
+  settings: Settings,
+  ctx: any,
+): {
   user: string;
   role: AdminRole;
   capabilities: AdminCapabilities;
@@ -1639,7 +1915,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     } else {
       // Auto-detect from Host header
       const host = ctx.request.header.host || 'localhost:8080';
-      const protocol = ctx.request.header['x-forwarded-proto'] || (ctx.secure ? 'https' : 'http');
+      const protocol =
+        ctx.request.header['x-forwarded-proto'] ||
+        (ctx.secure ? 'https' : 'http');
       ctx.state.externalUrl = `${protocol}://${host}`;
     }
     await next();
@@ -1652,7 +1930,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (401 === err.status) {
         ctx.status = 401;
         const realm = ctx.path.startsWith('/admin') ? 'admin' : 'metrics';
-        ctx.set("WWW-Authenticate", `Basic realm="${realm}"`);
+        ctx.set('WWW-Authenticate', `Basic realm="${realm}"`);
       } else {
         throw err;
       }
@@ -1660,11 +1938,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   });
 
   const router = new Router();
-  router.get(new RegExp("/scripts/.*"), (ctx: any) => ctx.throw(403));
-  router.get(new RegExp("\.es[mpl]"), (ctx: any) => ctx.throw(403));
-  router.get(new RegExp("\.bsa"), (ctx: any) => ctx.throw(403));
+  router.get(new RegExp('/scripts/.*'), (ctx: any) => ctx.throw(403));
+  router.get(new RegExp('.es[mpl]'), (ctx: any) => ctx.throw(403));
+  router.get(new RegExp('.bsa'), (ctx: any) => ctx.throw(403));
 
-  router.post("/rpc/:rpcClassName", (ctx: any) => {
+  router.post('/rpc/:rpcClassName', (ctx: any) => {
     const { rpcClassName } = ctx.params;
     const { payload } = ctx.request.body;
 
@@ -1684,30 +1962,38 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     const metrics = Array.isArray(ctx.request.body?.metrics)
       ? ctx.request.body.metrics
       : [];
-    const requestSource = typeof ctx.request.body?.source === 'string'
-      ? String(ctx.request.body.source).slice(0, 80)
-      : undefined;
-    const requestUrl = typeof ctx.request.body?.url === 'string'
-      ? String(ctx.request.body.url).slice(0, 240)
-      : undefined;
-    const requestPath = typeof ctx.request.body?.path === 'string'
-      ? String(ctx.request.body.path).slice(0, 160)
-      : undefined;
-    const requestUserAgent = typeof ctx.request.body?.userAgent === 'string'
-      ? String(ctx.request.body.userAgent).slice(0, 240)
-      : undefined;
-    const requestLanguage = typeof ctx.request.body?.language === 'string'
-      ? String(ctx.request.body.language).slice(0, 40)
-      : undefined;
-    const requestPlatform = typeof ctx.request.body?.platform === 'string'
-      ? String(ctx.request.body.platform).slice(0, 80)
-      : undefined;
-    const requestVisibilityState = typeof ctx.request.body?.visibilityState === 'string'
-      ? String(ctx.request.body.visibilityState).slice(0, 40)
-      : undefined;
-    const requestSessionId = typeof ctx.request.body?.sessionId === 'string'
-      ? String(ctx.request.body.sessionId).slice(0, 64)
-      : undefined;
+    const requestSource =
+      typeof ctx.request.body?.source === 'string'
+        ? String(ctx.request.body.source).slice(0, 80)
+        : undefined;
+    const requestUrl =
+      typeof ctx.request.body?.url === 'string'
+        ? String(ctx.request.body.url).slice(0, 240)
+        : undefined;
+    const requestPath =
+      typeof ctx.request.body?.path === 'string'
+        ? String(ctx.request.body.path).slice(0, 160)
+        : undefined;
+    const requestUserAgent =
+      typeof ctx.request.body?.userAgent === 'string'
+        ? String(ctx.request.body.userAgent).slice(0, 240)
+        : undefined;
+    const requestLanguage =
+      typeof ctx.request.body?.language === 'string'
+        ? String(ctx.request.body.language).slice(0, 40)
+        : undefined;
+    const requestPlatform =
+      typeof ctx.request.body?.platform === 'string'
+        ? String(ctx.request.body.platform).slice(0, 80)
+        : undefined;
+    const requestVisibilityState =
+      typeof ctx.request.body?.visibilityState === 'string'
+        ? String(ctx.request.body.visibilityState).slice(0, 40)
+        : undefined;
+    const requestSessionId =
+      typeof ctx.request.body?.sessionId === 'string'
+        ? String(ctx.request.body.sessionId).slice(0, 64)
+        : undefined;
     const receivedAt = Date.now();
 
     const safeMetrics = metrics.slice(0, 100).map((metric: any) => ({
@@ -1729,17 +2015,26 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     if (safeMetrics.length > 0) {
       addFrontendMetrics(safeMetrics);
 
-      const hasErrorMetrics = safeMetrics.some((metric: FrontendMetricEntry) => {
-        const name = String(metric.name || '').toLowerCase();
-        const source = String(metric.source || '').toLowerCase();
-        return name.includes('error')
-          || source.includes('error')
-          || name.includes('unhandledrejection');
-      });
+      const hasErrorMetrics = safeMetrics.some(
+        (metric: FrontendMetricEntry) => {
+          const name = String(metric.name || '').toLowerCase();
+          const source = String(metric.source || '').toLowerCase();
+          return (
+            name.includes('error') ||
+            source.includes('error') ||
+            name.includes('unhandledrejection')
+          );
+        },
+      );
 
       if (hasErrorMetrics) {
-        console.warn(`[frontend-metrics] error entries detected count=${safeMetrics.length} first=${safeMetrics[0].name}`);
-      } else if (receivedAt - lastFrontendMetricsInfoLogAt >= FRONTEND_METRICS_INFO_LOG_INTERVAL_MS) {
+        console.warn(
+          `[frontend-metrics] error entries detected count=${safeMetrics.length} first=${safeMetrics[0].name}`,
+        );
+      } else if (
+        receivedAt - lastFrontendMetricsInfoLogAt >=
+        FRONTEND_METRICS_INFO_LOG_INTERVAL_MS
+      ) {
         lastFrontendMetricsInfoLogAt = receivedAt;
         console.log('[Status] Server laeuft stabil...');
       }
@@ -1774,13 +2069,20 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        ctx.body = {
+          ok: false,
+          error:
+            'username must be 3-32 chars: letters, numbers, dot, underscore, dash',
+        };
         return;
       }
 
       if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters` };
+        ctx.body = {
+          ok: false,
+          error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters`,
+        };
         return;
       }
 
@@ -1804,13 +2106,21 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       } catch (error: any) {
         storedAdminAuth = null;
         ctx.status = 500;
-        ctx.body = { ok: false, error: `failed to persist admin auth store: ${error?.message ?? 'unknown error'}` };
+        ctx.body = {
+          ok: false,
+          error: `failed to persist admin auth store: ${
+            error?.message ?? 'unknown error'
+          }`,
+        };
         return;
       }
 
       if (!persistMasterAdminUserInServerSettings(user)) {
         ctx.status = 500;
-        ctx.body = { ok: false, error: 'failed to persist master admin user in server-settings.json' };
+        ctx.body = {
+          ok: false,
+          error: 'failed to persist master admin user in server-settings.json',
+        };
         return;
       }
 
@@ -1829,7 +2139,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const hasLegacyConfig = !storedAdminAuth && Boolean(adminAuth);
       if (!hasLegacyConfig) {
         ctx.status = 409;
-        ctx.body = { ok: false, error: 'no legacy auth available for migration' };
+        ctx.body = {
+          ok: false,
+          error: 'no legacy auth available for migration',
+        };
         return;
       }
 
@@ -1847,13 +2160,20 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        ctx.body = {
+          ok: false,
+          error:
+            'username must be 3-32 chars: letters, numbers, dot, underscore, dash',
+        };
         return;
       }
 
       if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters` };
+        ctx.body = {
+          ok: false,
+          error: `password must be at least ${ADMIN_PASSWORD_MIN_LENGTH} characters`,
+        };
         return;
       }
 
@@ -1877,24 +2197,36 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       } catch (error: any) {
         storedAdminAuth = null;
         ctx.status = 500;
-        ctx.body = { ok: false, error: `failed to persist admin auth store: ${error?.message ?? 'unknown error'}` };
+        ctx.body = {
+          ok: false,
+          error: `failed to persist admin auth store: ${
+            error?.message ?? 'unknown error'
+          }`,
+        };
         return;
       }
 
-      const removedLegacyFromSettings = adminAuthSource === 'adminUiAuth'
-        ? clearLegacyAdminUiAuthInServerSettings()
-        : false;
+      const removedLegacyFromSettings =
+        adminAuthSource === 'adminUiAuth'
+          ? clearLegacyAdminUiAuthInServerSettings()
+          : false;
 
       adminAuth = null;
       adminAuthSource = 'none';
 
       if (!persistMasterAdminUserInServerSettings(user)) {
         ctx.status = 500;
-        ctx.body = { ok: false, error: 'failed to persist master admin user in server-settings.json' };
+        ctx.body = {
+          ok: false,
+          error: 'failed to persist master admin user in server-settings.json',
+        };
         return;
       }
 
-      addAdminLog('console', `Migrated legacy admin auth to secure store for user=${user}`);
+      addAdminLog(
+        'console',
+        `Migrated legacy admin auth to secure store for user=${user}`,
+      );
 
       const session = createAdminSession(user);
       setAdminSessionCookie(ctx, session.id);
@@ -1936,7 +2268,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.get('/api/admin/session/discord/config', (ctx: any) => {
       const oauth = resolveDiscordAdminOauthConfig(settings);
-      const enabled = oauth.clientId.length > 0 && oauth.clientSecret.length > 0;
+      const enabled =
+        oauth.clientId.length > 0 && oauth.clientSecret.length > 0;
       ctx.body = {
         ok: true,
         enabled,
@@ -1954,7 +2287,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const state = crypto.randomBytes(20).toString('hex');
       adminDiscordOauthStates.set(state, Date.now());
 
-      const redirectUri = oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
+      const redirectUri =
+        oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
       const params = new URLSearchParams({
         client_id: oauth.clientId,
         response_type: 'code',
@@ -1985,12 +2319,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const stateCreatedAt = adminDiscordOauthStates.get(state);
       adminDiscordOauthStates.delete(state);
-      if (!stateCreatedAt || (Date.now() - stateCreatedAt > ADMIN_DISCORD_OAUTH_STATE_TTL_MS)) {
+      if (
+        !stateCreatedAt ||
+        Date.now() - stateCreatedAt > ADMIN_DISCORD_OAUTH_STATE_TTL_MS
+      ) {
         ctx.redirect('/admin?discord=invalid-state');
         return;
       }
 
-      const redirectUri = oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
+      const redirectUri =
+        oauth.redirectUri || `${ctx.origin}/api/admin/session/discord/callback`;
 
       try {
         const tokenBody = new URLSearchParams({
@@ -2001,12 +2339,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           redirect_uri: redirectUri,
         }).toString();
 
-        const tokenRes = await Axios.post('https://discord.com/api/oauth2/token', tokenBody, {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+        const tokenRes = await Axios.post(
+          'https://discord.com/api/oauth2/token',
+          tokenBody,
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            timeout: 10000,
           },
-          timeout: 10000,
-        });
+        );
 
         const accessToken = String(tokenRes?.data?.access_token || '').trim();
         if (!accessToken) {
@@ -2029,7 +2371,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
         const parsed = readServerSettingsJson();
         const usersMap = resolveAdminUsersFromSettingsObject(parsed);
-        const matched = Object.entries(usersMap).find(([, profile]) => String(profile.discordId || '').trim() === discordId);
+        const matched = Object.entries(usersMap).find(
+          ([, profile]) => String(profile.discordId || '').trim() === discordId,
+        );
         if (!matched) {
           ctx.redirect('/admin?discord=not-authorized');
           return;
@@ -2038,7 +2382,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         const adminUser = matched[0];
         const session = createAdminSession(adminUser);
         setAdminSessionCookie(ctx, session.id);
-        addAdminLog('console', `Discord login succeeded for admin user='${adminUser}'`);
+        addAdminLog(
+          'console',
+          `Discord login succeeded for admin user='${adminUser}'`,
+        );
         ctx.redirect('/admin?devUi=1&admin=1');
       } catch (error) {
         console.error('Discord admin login failed:', error);
@@ -2060,11 +2407,18 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!session) {
         clearAdminSessionCookie(ctx);
         ctx.status = 401;
-        ctx.body = { ok: false, authenticated: false, idleTimeoutMs: ADMIN_SESSION_IDLE_MS };
+        ctx.body = {
+          ok: false,
+          authenticated: false,
+          idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        };
         return;
       }
 
-      const remainingMs = Math.max(0, ADMIN_SESSION_IDLE_MS - (Date.now() - session.lastActivityAt));
+      const remainingMs = Math.max(
+        0,
+        ADMIN_SESSION_IDLE_MS - (Date.now() - session.lastActivityAt),
+      );
       ctx.body = {
         ok: true,
         authenticated: true,
@@ -2079,7 +2433,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!session) {
         clearAdminSessionCookie(ctx);
         ctx.status = 401;
-        ctx.body = { ok: false, authenticated: false, idleTimeoutMs: ADMIN_SESSION_IDLE_MS };
+        ctx.body = {
+          ok: false,
+          authenticated: false,
+          idleTimeoutMs: ADMIN_SESSION_IDLE_MS,
+        };
         return;
       }
 
@@ -2099,7 +2457,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!session) {
         clearAdminSessionCookie(ctx);
         const prefilledAdminUser = getConfiguredAdminUser();
-        const externalUrlJson = JSON.stringify(String(ctx.state.externalUrl || ''));
+        const externalUrlJson = JSON.stringify(
+          String(ctx.state.externalUrl || ''),
+        );
         ctx.type = 'text/html; charset=utf-8';
         ctx.body = `<!doctype html>
 <html lang="en">
@@ -2447,7 +2807,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
 
       ctx.type = 'text/html; charset=utf-8';
-      const externalUrlJson = JSON.stringify(String(ctx.state.externalUrl || ''));
+      const externalUrlJson = JSON.stringify(
+        String(ctx.state.externalUrl || ''),
+      );
       ctx.body = `<!doctype html>
 <html lang="en">
 <head>
@@ -2582,7 +2944,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     router.use('/api/admin', async (ctx: any, next: any) => {
-      if (ctx.path.startsWith('/api/admin/session/') || ctx.path.startsWith('/api/admin/setup/')) {
+      if (
+        ctx.path.startsWith('/api/admin/session/') ||
+        ctx.path.startsWith('/api/admin/setup/')
+      ) {
         await next();
         return;
       }
@@ -2619,7 +2984,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.post('/api/admin/server/control', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
 
-      const action = String(ctx.request.body?.action ?? '').trim().toLowerCase();
+      const action = String(ctx.request.body?.action ?? '')
+        .trim()
+        .toLowerCase();
       if (action !== 'stop' && action !== 'restart') {
         ctx.status = 400;
         ctx.body = { ok: false, error: 'invalid action' };
@@ -2627,9 +2994,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
 
       const supervisor = getSupervisorSettings(settings);
-      const command = action === 'stop'
-        ? supervisor.stopCommand
-        : supervisor.restartCommand;
+      const command =
+        action === 'stop' ? supervisor.stopCommand : supervisor.restartCommand;
 
       if (!supervisor.enabled || !command) {
         ctx.status = 409;
@@ -2640,7 +3006,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
-      addAdminLog('console', `Server ${action} requested from admin dashboard via supervisor`);
+      addAdminLog(
+        'console',
+        `Server ${action} requested from admin dashboard via supervisor`,
+      );
       ctx.body = { ok: true, action, queued: true, via: 'supervisor' };
 
       setTimeout(() => {
@@ -2655,8 +3024,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           });
           child.unref();
         } catch (error: any) {
-          console.error(`Failed to execute supervisor ${action} command:`, error);
-          addAdminLog('console', `Failed to execute supervisor ${action} command: ${error?.message ?? 'unknown error'}`);
+          console.error(
+            `Failed to execute supervisor ${action} command:`,
+            error,
+          );
+          addAdminLog(
+            'console',
+            `Failed to execute supervisor ${action} command: ${
+              error?.message ?? 'unknown error'
+            }`,
+          );
         }
       }, 200);
     });
@@ -2667,7 +3044,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         user,
         role,
         ...capabilities,
-        serverControlAvailable: capabilities.canConsole && isServerControlAvailable(settings),
+        serverControlAvailable:
+          capabilities.canConsole && isServerControlAvailable(settings),
       };
     });
 
@@ -2678,26 +3056,33 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         const parsed = readServerSettingsJson();
         const usersMap = resolveAdminUsersFromSettingsObject(parsed);
         const configuredUser = getConfiguredAdminUser();
-        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, configuredUser);
+        const masterUser = resolveMasterAdminUserFromSettingsObject(
+          parsed,
+          configuredUser,
+        );
         if (masterUser && !usersMap[masterUser]) {
           usersMap[masterUser] = { role: 'admin' };
         }
 
         const currentUser = String(getBasicAuthUser(ctx) || '');
-        const totalPermissions = Object.keys(ADMIN_ROLE_DEFAULT_CAPABILITIES.admin).length;
+        const totalPermissions = Object.keys(
+          ADMIN_ROLE_DEFAULT_CAPABILITIES.admin,
+        ).length;
         const entries = Object.entries(usersMap)
           .map(([user, profile]) => {
             const role = normalizeAdminRole(profile.role);
             const capabilities = getAdminCapabilitiesForRole(settings, role);
-            const permissionsCount = Object.values(capabilities).filter(Boolean).length;
+            const permissionsCount =
+              Object.values(capabilities).filter(Boolean).length;
             return {
               user,
               role,
               discordId: profile.discordId || '',
               permissionsCount,
-              permissionsLabel: permissionsCount >= totalPermissions
-                ? 'all permissions'
-                : `${permissionsCount} permissions`,
+              permissionsLabel:
+                permissionsCount >= totalPermissions
+                  ? 'all permissions'
+                  : `${permissionsCount} permissions`,
               auth: {
                 password: user === masterUser,
                 discord: Boolean(profile.discordId),
@@ -2735,14 +3120,21 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       if (!/^[a-zA-Z0-9._-]{3,32}$/.test(user)) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: 'username must be 3-32 chars: letters, numbers, dot, underscore, dash' };
+        ctx.body = {
+          ok: false,
+          error:
+            'username must be 3-32 chars: letters, numbers, dot, underscore, dash',
+        };
         return;
       }
 
       try {
         const parsed = readServerSettingsJson();
         const usersMap = resolveAdminUsersFromSettingsObject(parsed);
-        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        const masterUser = resolveMasterAdminUserFromSettingsObject(
+          parsed,
+          getConfiguredAdminUser(),
+        );
         usersMap[user] = {
           role: user === masterUser ? 'admin' : role,
           ...(discordId ? { discordId } : {}),
@@ -2757,7 +3149,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         }
 
         const effectiveRole = usersMap[user].role;
-        addAdminLog('console', `Updated admin user '${user}' with role=${effectiveRole}`);
+        addAdminLog(
+          'console',
+          `Updated admin user '${user}' with role=${effectiveRole}`,
+        );
         ctx.body = { ok: true, user, role: effectiveRole, discordId };
       } catch (error) {
         ctx.status = 500;
@@ -2780,7 +3175,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       try {
         const parsed = readServerSettingsJson();
-        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        const masterUser = resolveMasterAdminUserFromSettingsObject(
+          parsed,
+          getConfiguredAdminUser(),
+        );
         if (user === masterUser) {
           ctx.status = 400;
           ctx.body = { ok: false, error: 'cannot delete primary admin user' };
@@ -2819,14 +3217,21 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       try {
         const parsed = readServerSettingsJson() as Record<string, any>;
-        const masterUser = resolveMasterAdminUserFromSettingsObject(parsed, getConfiguredAdminUser());
+        const masterUser = resolveMasterAdminUserFromSettingsObject(
+          parsed,
+          getConfiguredAdminUser(),
+        );
         const updates = ctx.request.body || {};
 
         // Validate and apply updates to server-settings.json
         if (typeof updates.serverName === 'string') {
           parsed.serverName = updates.serverName.trim() || 'Skymp Server';
         }
-        if (typeof updates.port === 'number' && updates.port > 0 && updates.port < 65536) {
+        if (
+          typeof updates.port === 'number' &&
+          updates.port > 0 &&
+          updates.port < 65536
+        ) {
           parsed.port = Math.floor(updates.port);
         }
         if (typeof updates.maxPlayers === 'number' && updates.maxPlayers > 0) {
@@ -2841,19 +3246,22 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           if (!parsed.adminUiDiscordAuth) {
             parsed.adminUiDiscordAuth = {};
           }
-          (parsed.adminUiDiscordAuth as Record<string, any>).clientId = updates.adminUiDiscordAuth_clientId.trim();
+          (parsed.adminUiDiscordAuth as Record<string, any>).clientId =
+            updates.adminUiDiscordAuth_clientId.trim();
         }
         if (typeof updates.adminUiDiscordAuth_clientSecret === 'string') {
           if (!parsed.adminUiDiscordAuth) {
             parsed.adminUiDiscordAuth = {};
           }
-          (parsed.adminUiDiscordAuth as Record<string, any>).clientSecret = updates.adminUiDiscordAuth_clientSecret.trim();
+          (parsed.adminUiDiscordAuth as Record<string, any>).clientSecret =
+            updates.adminUiDiscordAuth_clientSecret.trim();
         }
         if (typeof updates.adminUiDiscordAuth_redirectUri === 'string') {
           if (!parsed.adminUiDiscordAuth) {
             parsed.adminUiDiscordAuth = {};
           }
-          (parsed.adminUiDiscordAuth as Record<string, any>).redirectUri = updates.adminUiDiscordAuth_redirectUri.trim();
+          (parsed.adminUiDiscordAuth as Record<string, any>).redirectUri =
+            updates.adminUiDiscordAuth_redirectUri.trim();
         }
 
         // Ensure master admin is preserved
@@ -2862,7 +3270,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
             parsed.adminUiUsers = {};
           }
           if (!(parsed.adminUiUsers as Record<string, any>)[masterUser]) {
-            (parsed.adminUiUsers as Record<string, any>)[masterUser] = { role: 'admin' };
+            (parsed.adminUiUsers as Record<string, any>)[masterUser] = {
+              role: 'admin',
+            };
           }
         }
 
@@ -2874,12 +3284,17 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           (settings.allSettings as any).serverName = parsed.serverName;
           (settings.allSettings as any).port = parsed.port;
           (settings.allSettings as any).maxPlayers = parsed.maxPlayers;
-          (settings.allSettings as any).defaultLanguage = parsed.defaultLanguage;
-          (settings.allSettings as any).adminUiDiscordAuth = parsed.adminUiDiscordAuth;
+          (settings.allSettings as any).defaultLanguage =
+            parsed.defaultLanguage;
+          (settings.allSettings as any).adminUiDiscordAuth =
+            parsed.adminUiDiscordAuth;
         }
 
         const { user: adminUser } = getAdminContext(settings, ctx);
-        addAdminLog('console', `Updated server settings by admin '${adminUser}'`);
+        addAdminLog(
+          'console',
+          `Updated server settings by admin '${adminUser}'`,
+        );
 
         ctx.body = { ok: true, message: 'Settings updated successfully' };
       } catch (error) {
@@ -2906,7 +3321,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         const colonIndex = identifier.indexOf(':');
         if (colonIndex < 1 || colonIndex >= identifier.length - 1) {
           ctx.status = 400;
-          ctx.body = { ok: false, error: 'identifier must be in format "type:value" (e.g., discord:123456)' };
+          ctx.body = {
+            ok: false,
+            error:
+              'identifier must be in format "type:value" (e.g., discord:123456)',
+          };
           return;
         }
 
@@ -2920,15 +3339,31 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         }
 
         // Supported types
-        const supportedTypes = ['discord', 'steam', 'license', 'licenseea', 'live', 'xblive', 'fal'];
+        const supportedTypes = [
+          'discord',
+          'steam',
+          'license',
+          'licenseea',
+          'live',
+          'xblive',
+          'fal',
+        ];
         if (!supportedTypes.includes(type)) {
           ctx.status = 400;
-          ctx.body = { ok: false, error: `unsupported identifier type: ${type}. Supported: ${supportedTypes.join(', ')}` };
+          ctx.body = {
+            ok: false,
+            error: `unsupported identifier type: ${type}. Supported: ${supportedTypes.join(
+              ', ',
+            )}`,
+          };
           return;
         }
 
         const parsed = readServerSettingsJson() as Record<string, any>;
-        const joinAccess = ensureJoinAccessSettingsInObject(parsed) as Record<string, any>;
+        const joinAccess = ensureJoinAccessSettingsInObject(parsed) as Record<
+          string,
+          any
+        >;
 
         // Add to appropriate list based on type
         if (type === 'discord') {
@@ -2954,9 +3389,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         }
 
         const { user: adminUser } = getAdminContext(settings, ctx);
-        addAdminLog('console', `Added whitelist entry '${identifier}' by admin '${adminUser}'`);
+        addAdminLog(
+          'console',
+          `Added whitelist entry '${identifier}' by admin '${adminUser}'`,
+        );
 
-        ctx.body = { ok: true, message: 'Whitelist entry added successfully', identifier };
+        ctx.body = {
+          ok: true,
+          message: 'Whitelist entry added successfully',
+          identifier,
+        };
       } catch (error) {
         ctx.status = 500;
         ctx.body = {
@@ -2973,16 +3415,26 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const players = getOnlinePlayerIds().map((userId) => {
         const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
         const stats = adminPlayerStats.get(userId);
-        const sessionPlayMs = stats?.activeSessionStartedAt ? Math.max(0, now - stats.activeSessionStartedAt) : 0;
-        const playTimeSec = Math.floor(((stats?.totalPlayMs ?? 0) + sessionPlayMs) / 1000);
+        const sessionPlayMs = stats?.activeSessionStartedAt
+          ? Math.max(0, now - stats.activeSessionStartedAt)
+          : 0;
+        const playTimeSec = Math.floor(
+          ((stats?.totalPlayMs ?? 0) + sessionPlayMs) / 1000,
+        );
 
         return {
           userId,
           actorId,
-          actorName: actorId ? safeCall(() => gScampServer.getActorName(actorId), '') : '',
+          actorName: actorId
+            ? safeCall(() => gScampServer.getActorName(actorId), '')
+            : '',
           ip: safeCall(() => gScampServer.getUserIp(userId), ''),
-          pos: actorId ? safeCall(() => gScampServer.getActorPos(actorId), []) : [],
-          cellOrWorld: actorId ? safeCall(() => gScampServer.getActorCellOrWorld(actorId), 0) : 0,
+          pos: actorId
+            ? safeCall(() => gScampServer.getActorPos(actorId), [])
+            : [],
+          cellOrWorld: actorId
+            ? safeCall(() => gScampServer.getActorCellOrWorld(actorId), 0)
+            : 0,
           firstJoinedAt: stats?.firstJoinedAt ?? null,
           lastConnectionAt: stats?.lastConnectionAt ?? now,
           playTimeSec,
@@ -3001,7 +3453,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
       const onlineInventory = actorId
-        ? safeCall(() => gScampServer.get(actorId, 'inventory'), null as unknown)
+        ? safeCall(
+            () => gScampServer.get(actorId, 'inventory'),
+            null as unknown,
+          )
         : null;
       const onlineProfileId = actorId
         ? safeCall(() => Number(gScampServer.get(actorId, 'profileId')), NaN)
@@ -3023,9 +3478,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const requestedProfileId = Number(ctx.query?.profileId);
       const candidateProfileId = Number.isFinite(requestedProfileId)
         ? requestedProfileId
-        : (Number.isFinite(onlineProfileId) ? onlineProfileId : userId);
+        : Number.isFinite(onlineProfileId)
+        ? onlineProfileId
+        : userId;
 
-      const offlineSnapshot = getOfflineInventorySnapshot(dataDir, candidateProfileId);
+      const offlineSnapshot = getOfflineInventorySnapshot(
+        dataDir,
+        candidateProfileId,
+      );
       if (!offlineSnapshot) {
         ctx.status = 404;
         ctx.body = { ok: false, error: 'inventory snapshot not found' };
@@ -3056,11 +3516,18 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
       const reason = String(ctx.request.body?.reason ?? '').trim();
       const { user: kickAuthor } = getAdminContext(settings, ctx);
-      const kickPlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      const kickPlayerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       safeCall(() => gScampServer.kick(userId), undefined);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       addAdminLog('kick', `Kicked userId=${userId}${reasonSuffix}`);
-      addAdminHistory({ type: 'kick', playerName: kickPlayerName, userId, reason, author: kickAuthor });
+      addAdminHistory({
+        type: 'kick',
+        playerName: kickPlayerName,
+        userId,
+        reason,
+        author: kickAuthor,
+      });
       saveHistory(dataDir);
       ctx.body = { ok: true, userId };
     });
@@ -3076,19 +3543,42 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const durationRaw = Number(ctx.request.body?.durationMinutes);
       const reason = String(ctx.request.body?.reason ?? '').trim();
       const isPermanent = !Number.isFinite(durationRaw) || durationRaw <= 0;
-      const durationMinutes = isPermanent ? 0 : Math.min(365 * 24 * 60, Math.floor(durationRaw));
-      const expiresAt = isPermanent ? null : Date.now() + durationMinutes * 60 * 1000;
+      const durationMinutes = isPermanent
+        ? 0
+        : Math.min(365 * 24 * 60, Math.floor(durationRaw));
+      const expiresAt = isPermanent
+        ? null
+        : Date.now() + durationMinutes * 60 * 1000;
       bannedUsers.set(userId, expiresAt);
       saveBans(dataDir);
       const { user: banAuthor } = getAdminContext(settings, ctx);
-      const banPlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      const banPlayerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       safeCall(() => gScampServer.kick(userId), undefined);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-      const durationNote = isPermanent ? ' (permanent)' : ` for ${durationMinutes}m`;
-      addAdminLog('ban', `Banned userId=${userId}${durationNote}${reasonSuffix}`);
-      addAdminHistory({ type: 'ban', playerName: banPlayerName, userId, reason, author: banAuthor });
+      const durationNote = isPermanent
+        ? ' (permanent)'
+        : ` for ${durationMinutes}m`;
+      addAdminLog(
+        'ban',
+        `Banned userId=${userId}${durationNote}${reasonSuffix}`,
+      );
+      addAdminHistory({
+        type: 'ban',
+        playerName: banPlayerName,
+        userId,
+        reason,
+        author: banAuthor,
+      });
       saveHistory(dataDir);
-      ctx.body = { ok: true, userId, banned: true, permanent: isPermanent, expiresAt, durationMinutes: isPermanent ? null : durationMinutes };
+      ctx.body = {
+        ok: true,
+        userId,
+        banned: true,
+        permanent: isPermanent,
+        expiresAt,
+        durationMinutes: isPermanent ? null : durationMinutes,
+      };
     });
 
     router.delete('/api/admin/players/:userId/ban', (ctx: any) => {
@@ -3116,11 +3606,17 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
-      safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+      safeCall(
+        () => gScampServer.sendChatMessage?.(userId, message),
+        undefined,
+      );
       safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
 
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-      addAdminLog('console', `Message to userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`);
+      addAdminLog(
+        'console',
+        `Message to userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`,
+      );
       ctx.body = { ok: true, userId };
     });
 
@@ -3134,7 +3630,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       });
 
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-      addAdminLog('kick', `Kicked all players count=${userIds.length}${reasonSuffix}`);
+      addAdminLog(
+        'kick',
+        `Kicked all players count=${userIds.length}${reasonSuffix}`,
+      );
       ctx.body = { ok: true, count: userIds.length, userIds };
     });
 
@@ -3150,12 +3649,21 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const userIds = getOnlinePlayerIds();
       userIds.forEach((userId) => {
-        safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+        safeCall(
+          () => gScampServer.sendChatMessage?.(userId, message),
+          undefined,
+        );
         safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
       });
 
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-      addAdminLog('console', `Announcement to ${userIds.length} players: ${message.slice(0, 120)}${reasonSuffix}`);
+      addAdminLog(
+        'console',
+        `Announcement to ${userIds.length} players: ${message.slice(
+          0,
+          120,
+        )}${reasonSuffix}`,
+      );
       ctx.body = { ok: true, count: userIds.length, userIds };
     });
 
@@ -3178,10 +3686,20 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       mutedUsers.set(userId, expiresAt);
       saveMutes(dataDir);
       const { user: muteAuthor } = getAdminContext(settings, ctx);
-      const mutePlayerName = adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      const mutePlayerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-      addAdminLog('mute', `Muted userId=${userId} for ${durationMinutes}m${reasonSuffix}`);
-      addAdminHistory({ type: 'mute', playerName: mutePlayerName, userId, reason, author: muteAuthor });
+      addAdminLog(
+        'mute',
+        `Muted userId=${userId} for ${durationMinutes}m${reasonSuffix}`,
+      );
+      addAdminHistory({
+        type: 'mute',
+        playerName: mutePlayerName,
+        userId,
+        reason,
+        author: muteAuthor,
+      });
       saveHistory(dataDir);
       ctx.body = { ok: true, userId, muted: true, expiresAt, durationMinutes };
     });
@@ -3205,12 +3723,17 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!ensureAdminCapability(settings, ctx, 'canUnban')) return;
       cleanupExpiredBans();
       const now = Date.now();
-      ctx.body = Array.from(bannedUsers.entries()).map(([userId, expiresAt]) => ({
-        userId,
-        permanent: expiresAt === null,
-        expiresAt: expiresAt ?? null,
-        remainingSec: expiresAt !== null ? Math.max(0, Math.floor((expiresAt - now) / 1000)) : null,
-      }));
+      ctx.body = Array.from(bannedUsers.entries()).map(
+        ([userId, expiresAt]) => ({
+          userId,
+          permanent: expiresAt === null,
+          expiresAt: expiresAt ?? null,
+          remainingSec:
+            expiresAt !== null
+              ? Math.max(0, Math.floor((expiresAt - now) / 1000))
+              : null,
+        }),
+      );
     });
 
     router.get('/api/admin/mutes', (ctx: any) => {
@@ -3218,22 +3741,29 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       cleanupExpiredMutes();
 
       const now = Date.now();
-      ctx.body = Array.from(mutedUsers.entries()).map(([userId, expiresAt]) => ({
-        userId,
-        expiresAt,
-        remainingSec: Math.max(0, Math.floor((expiresAt - now) / 1000)),
-      }));
+      ctx.body = Array.from(mutedUsers.entries()).map(
+        ([userId, expiresAt]) => ({
+          userId,
+          expiresAt,
+          remainingSec: Math.max(0, Math.floor((expiresAt - now) / 1000)),
+        }),
+      );
     });
 
     router.get('/api/admin/resources', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
-      const query = String(ctx.query?.query ?? '').trim().toLowerCase();
-      const kindFilter = String(ctx.query?.kind ?? '').trim().toLowerCase();
+      const query = String(ctx.query?.query ?? '')
+        .trim()
+        .toLowerCase();
+      const kindFilter = String(ctx.query?.kind ?? '')
+        .trim()
+        .toLowerCase();
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), 2000)
-        : 500;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), 2000)
+          : 500;
 
       let entries = listAdminResources(settings, dataDir);
 
@@ -3243,9 +3773,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       if (query.length > 0) {
         entries = entries.filter((entry) => {
-          return entry.name.toLowerCase().includes(query)
-            || entry.path.toLowerCase().includes(query)
-            || entry.kind.toLowerCase().includes(query);
+          return (
+            entry.name.toLowerCase().includes(query) ||
+            entry.path.toLowerCase().includes(query) ||
+            entry.kind.toLowerCase().includes(query)
+          );
         });
       }
 
@@ -3312,7 +3844,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       try {
         writeServerSettingsJson(parsed);
-        addAdminLog('console', `Updated server-settings.json (locale=${localeRouting.defaultLanguage}, joinMode=${joinAccess.mode}, discordBot=${discordBot.enabled ? 'on' : 'off'}, supervisor=${supervisor.enabled ? 'on' : 'off'})`);
+        addAdminLog(
+          'console',
+          `Updated server-settings.json (locale=${
+            localeRouting.defaultLanguage
+          }, joinMode=${joinAccess.mode}, discordBot=${
+            discordBot.enabled ? 'on' : 'off'
+          }, supervisor=${supervisor.enabled ? 'on' : 'off'})`,
+        );
       } catch (error) {
         ctx.status = 500;
         ctx.body = {
@@ -3345,7 +3884,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       try {
         const parsed = readServerSettingsJson();
         const localeRouting = ensureLocaleRoutingSettingsInObject(parsed);
-        const language = resolveLanguageByCountryCode(localeRouting, countryCode);
+        const language = resolveLanguageByCountryCode(
+          localeRouting,
+          countryCode,
+        );
         ctx.body = {
           ok: true,
           countryCode: countryCode.toUpperCase(),
@@ -3380,7 +3922,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           resultText: resultText.slice(0, 1000),
         };
       } catch (error) {
-        const errorText = error instanceof Error ? error.message : String(error);
+        const errorText =
+          error instanceof Error ? error.message : String(error);
         addAdminLog('console', `Console error: ${errorText.slice(0, 200)}`);
         ctx.status = 500;
         ctx.body = {
@@ -3395,24 +3938,31 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
       const typeFilter = ctx.query?.type as string | undefined;
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), Math.max(MAX_ADMIN_LOG, MAX_SERVER_LOG))
-        : 100;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(
+              Math.floor(limitRaw),
+              Math.max(MAX_ADMIN_LOG, MAX_SERVER_LOG),
+            )
+          : 100;
 
-      const levelRaw = String(ctx.query?.level ?? '').trim().toLowerCase();
-      const levelFilter: ServerLogLevel | null = (
-        levelRaw === 'info' || levelRaw === 'error'
-      ) ? levelRaw : null;
+      const levelRaw = String(ctx.query?.level ?? '')
+        .trim()
+        .toLowerCase();
+      const levelFilter: ServerLogLevel | null =
+        levelRaw === 'info' || levelRaw === 'error' ? levelRaw : null;
 
       const beforeTsRaw = Number(ctx.query?.beforeTs);
       const beforeTs = Number.isFinite(beforeTsRaw) ? beforeTsRaw : null;
 
       const sinceMinutesRaw = Number(ctx.query?.sinceMinutes);
-      const sinceMinutes = Number.isFinite(sinceMinutesRaw) && sinceMinutesRaw > 0
-        ? sinceMinutesRaw
-        : null;
+      const sinceMinutes =
+        Number.isFinite(sinceMinutesRaw) && sinceMinutesRaw > 0
+          ? sinceMinutesRaw
+          : null;
 
-      const sinceTs = sinceMinutes === null ? null : Date.now() - sinceMinutes * 60 * 1000;
+      const sinceTs =
+        sinceMinutes === null ? null : Date.now() - sinceMinutes * 60 * 1000;
 
       const combinedEntries = [...adminLog, ...serverLog];
 
@@ -3420,17 +3970,22 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ? combinedEntries.filter((e) => e.type === typeFilter)
         : combinedEntries;
 
-      const entriesByLevel = levelFilter === null
-        ? entriesByType
-        : entriesByType.filter((entry) => 'level' in entry && entry.level === levelFilter);
+      const entriesByLevel =
+        levelFilter === null
+          ? entriesByType
+          : entriesByType.filter(
+              (entry) => 'level' in entry && entry.level === levelFilter,
+            );
 
-      const entriesBySince = sinceTs === null
-        ? entriesByLevel
-        : entriesByLevel.filter((e) => e.ts >= sinceTs);
+      const entriesBySince =
+        sinceTs === null
+          ? entriesByLevel
+          : entriesByLevel.filter((e) => e.ts >= sinceTs);
 
-      const entriesByCursor = beforeTs === null
-        ? entriesBySince
-        : entriesBySince.filter((e) => e.ts < beforeTs);
+      const entriesByCursor =
+        beforeTs === null
+          ? entriesBySince
+          : entriesBySince.filter((e) => e.ts < beforeTs);
 
       ctx.body = entriesByCursor
         .slice()
@@ -3441,10 +3996,19 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.get('/api/admin/player-drops', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
       const hoursRaw = Number(ctx.query?.hours);
-      const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 168;
+      const hours =
+        Number.isFinite(hoursRaw) && hoursRaw > 0
+          ? Math.min(hoursRaw, 24 * 30)
+          : 168;
       const crashLimitRaw = Number(ctx.query?.crashLimit);
-      const crashLimit = Number.isFinite(crashLimitRaw) && crashLimitRaw > 0 ? Math.min(Math.floor(crashLimitRaw), 500) : 50;
-      const sortMode = (ctx.query?.sort as string) === 'alphabetical' ? 'alphabetical' : 'count';
+      const crashLimit =
+        Number.isFinite(crashLimitRaw) && crashLimitRaw > 0
+          ? Math.min(Math.floor(crashLimitRaw), 500)
+          : 50;
+      const sortMode =
+        (ctx.query?.sort as string) === 'alphabetical'
+          ? 'alphabetical'
+          : 'count';
 
       const since = Date.now() - hours * 60 * 60 * 1000;
       const periodStart = Math.min(since, processStartedAt);
@@ -3455,21 +4019,27 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       // Resource kicks: drops with a reason starting with 'resource:'
       const resourceKickMap = new Map<string, number>();
-      windowDrops.filter((d) => d.reason?.startsWith('resource:')).forEach((d) => {
-        const res = d.reason!.slice('resource:'.length).trim() || 'unknown';
-        resourceKickMap.set(res, (resourceKickMap.get(res) ?? 0) + 1);
-      });
+      windowDrops
+        .filter((d) => d.reason?.startsWith('resource:'))
+        .forEach((d) => {
+          const res = d.reason!.slice('resource:'.length).trim() || 'unknown';
+          resourceKickMap.set(res, (resourceKickMap.get(res) ?? 0) + 1);
+        });
       const resourceKicks = Array.from(resourceKickMap.entries())
         .map(([resource, count]) => ({ resource, count }))
         .sort((a, b) => b.count - a.count);
 
       // Crash reasons: from unexpected drops with a reason
       const crashMap = new Map<string, number>();
-      unexpected.filter((d) => d.reason).forEach((d) => {
-        const reason = d.reason!.slice(0, 120);
-        crashMap.set(reason, (crashMap.get(reason) ?? 0) + 1);
-      });
-      let crashReasons = Array.from(crashMap.entries()).map(([reason, count]) => ({ reason, count }));
+      unexpected
+        .filter((d) => d.reason)
+        .forEach((d) => {
+          const reason = d.reason!.slice(0, 120);
+          crashMap.set(reason, (crashMap.get(reason) ?? 0) + 1);
+        });
+      let crashReasons = Array.from(crashMap.entries()).map(
+        ([reason, count]) => ({ reason, count }),
+      );
       if (sortMode === 'alphabetical') {
         crashReasons.sort((a, b) => a.reason.localeCompare(b.reason));
       } else {
@@ -3493,18 +4063,32 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.get('/api/admin/history', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
       const typeFilter = (ctx.query?.type as string | undefined) || '';
-      const searchMode = (ctx.query?.searchMode as string | undefined) || 'actionId';
-      const searchQuery = String(ctx.query?.search ?? '').trim().toLowerCase();
-      const authorFilter = String(ctx.query?.author ?? '').trim().toLowerCase();
+      const searchMode =
+        (ctx.query?.searchMode as string | undefined) || 'actionId';
+      const searchQuery = String(ctx.query?.search ?? '')
+        .trim()
+        .toLowerCase();
+      const authorFilter = String(ctx.query?.author ?? '')
+        .trim()
+        .toLowerCase();
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), MAX_ADMIN_HISTORY) : 200;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), MAX_ADMIN_HISTORY)
+          : 200;
 
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const totalWarns = adminHistory.filter((e) => e.type === 'warn').length;
       const totalBans = adminHistory.filter((e) => e.type === 'ban').length;
-      const newWarns7d = adminHistory.filter((e) => e.type === 'warn' && e.ts >= sevenDaysAgo).length;
-      const newBans7d = adminHistory.filter((e) => e.type === 'ban' && e.ts >= sevenDaysAgo).length;
-      const admins = [...new Set(adminHistory.map((e) => e.author))].filter(Boolean);
+      const newWarns7d = adminHistory.filter(
+        (e) => e.type === 'warn' && e.ts >= sevenDaysAgo,
+      ).length;
+      const newBans7d = adminHistory.filter(
+        (e) => e.type === 'ban' && e.ts >= sevenDaysAgo,
+      ).length;
+      const admins = [...new Set(adminHistory.map((e) => e.author))].filter(
+        Boolean,
+      );
 
       let entries = adminHistory.slice();
       if (typeFilter && ['warn', 'ban', 'kick', 'mute'].includes(typeFilter)) {
@@ -3512,20 +4096,40 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
       if (searchQuery) {
         if (searchMode === 'actionId') {
-          entries = entries.filter((e) => e.id.toLowerCase().includes(searchQuery));
+          entries = entries.filter((e) =>
+            e.id.toLowerCase().includes(searchQuery),
+          );
         } else if (searchMode === 'player') {
-          entries = entries.filter((e) => e.playerName.toLowerCase().includes(searchQuery) || String(e.userId).includes(searchQuery));
+          entries = entries.filter(
+            (e) =>
+              e.playerName.toLowerCase().includes(searchQuery) ||
+              String(e.userId).includes(searchQuery),
+          );
         } else if (searchMode === 'reason') {
-          entries = entries.filter((e) => e.reason.toLowerCase().includes(searchQuery));
+          entries = entries.filter((e) =>
+            e.reason.toLowerCase().includes(searchQuery),
+          );
         }
       }
       if (authorFilter && authorFilter !== 'any') {
-        entries = entries.filter((e) => e.author.toLowerCase() === authorFilter);
+        entries = entries.filter(
+          (e) => e.author.toLowerCase() === authorFilter,
+        );
       }
 
-      entries = entries.slice().sort((a, b) => b.ts - a.ts).slice(0, limit);
+      entries = entries
+        .slice()
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, limit);
 
-      ctx.body = { entries, totalWarns, newWarns7d, totalBans, newBans7d, admins };
+      ctx.body = {
+        entries,
+        totalWarns,
+        newWarns7d,
+        totalBans,
+        newBans7d,
+        admins,
+      };
     });
 
     router.post('/api/admin/menu-debug', (ctx: any) => {
@@ -3553,16 +4157,23 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.get('/api/admin/frontend-metrics', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
-      const sourceFilter = String(ctx.query?.source ?? '').trim().toLowerCase();
-      const nameFilter = String(ctx.query?.name ?? '').trim().toLowerCase();
+      const sourceFilter = String(ctx.query?.source ?? '')
+        .trim()
+        .toLowerCase();
+      const nameFilter = String(ctx.query?.name ?? '')
+        .trim()
+        .toLowerCase();
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), 200)
-        : 50;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), 200)
+          : 50;
 
       const filtered = frontendMetrics.filter((entry) => {
-        if (sourceFilter && entry.source.toLowerCase() !== sourceFilter) return false;
-        if (nameFilter && !entry.name.toLowerCase().includes(nameFilter)) return false;
+        if (sourceFilter && entry.source.toLowerCase() !== sourceFilter)
+          return false;
+        if (nameFilter && !entry.name.toLowerCase().includes(nameFilter))
+          return false;
         return true;
       });
 
@@ -3576,24 +4187,37 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.get('/api/admin/client-runtime-events', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
-      const sourceFilter = String(ctx.query?.source ?? '').trim().toLowerCase();
-      const eventFilter = String(ctx.query?.event ?? '').trim().toLowerCase();
-      const levelRaw = String(ctx.query?.level ?? '').trim().toLowerCase();
-      const levelFilter = (levelRaw === 'info' || levelRaw === 'warn' || levelRaw === 'error')
-        ? levelRaw
-        : null;
+      const sourceFilter = String(ctx.query?.source ?? '')
+        .trim()
+        .toLowerCase();
+      const eventFilter = String(ctx.query?.event ?? '')
+        .trim()
+        .toLowerCase();
+      const levelRaw = String(ctx.query?.level ?? '')
+        .trim()
+        .toLowerCase();
+      const levelFilter =
+        levelRaw === 'info' || levelRaw === 'warn' || levelRaw === 'error'
+          ? levelRaw
+          : null;
       const userIdRaw = Number(ctx.query?.userId);
-      const userIdFilter = Number.isFinite(userIdRaw) ? Math.floor(userIdRaw) : null;
+      const userIdFilter = Number.isFinite(userIdRaw)
+        ? Math.floor(userIdRaw)
+        : null;
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), 200)
-        : 50;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), 200)
+          : 50;
 
       const filtered = clientRuntimeEvents.filter((entry) => {
-        if (sourceFilter && entry.source.toLowerCase() !== sourceFilter) return false;
-        if (eventFilter && !entry.event.toLowerCase().includes(eventFilter)) return false;
+        if (sourceFilter && entry.source.toLowerCase() !== sourceFilter)
+          return false;
+        if (eventFilter && !entry.event.toLowerCase().includes(eventFilter))
+          return false;
         if (levelFilter && entry.level !== levelFilter) return false;
-        if (userIdFilter !== null && entry.userId !== userIdFilter) return false;
+        if (userIdFilter !== null && entry.userId !== userIdFilter)
+          return false;
         return true;
       });
 
@@ -3628,7 +4252,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
-      const actorName = safeCall(() => gScampServer.getActorName(actorId), '') || `userId=${safeUserId}`;
+      const actorName =
+        safeCall(() => gScampServer.getActorName(actorId), '') ||
+        `userId=${safeUserId}`;
 
       setActorProperty(actorId, 'isDead', false);
       setActorProperty(actorId, 'canRespawn', true);
@@ -3646,7 +4272,12 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         actorName,
         details: reason || 'Manual revival from admin dashboard',
       });
-      addAdminLog('console', `Revived userId=${safeUserId}${reason ? ` reason=${reason.slice(0, 80)}` : ''}`);
+      addAdminLog(
+        'console',
+        `Revived userId=${safeUserId}${
+          reason ? ` reason=${reason.slice(0, 80)}` : ''
+        }`,
+      );
 
       ctx.body = { ok: true, userId: safeUserId, actorId };
     });
@@ -3655,13 +4286,18 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
       syncRespawnState();
-      const typeFilter = String(ctx.query?.type ?? '').trim().toLowerCase() as '' | RevivalEventType;
+      const typeFilter = String(ctx.query?.type ?? '')
+        .trim()
+        .toLowerCase() as '' | RevivalEventType;
       const limitRaw = Number(ctx.query?.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0
-        ? Math.min(Math.floor(limitRaw), 200)
-        : 100;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), 200)
+          : 100;
 
-      const filtered = revivalEvents.filter((entry) => !typeFilter || entry.type === typeFilter);
+      const filtered = revivalEvents.filter(
+        (entry) => !typeFilter || entry.type === typeFilter,
+      );
       const sliceFrom = Math.max(filtered.length - limit, 0);
       ctx.body = filtered.slice(sliceFrom).reverse();
     });
@@ -3672,23 +4308,30 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   });
 
   if (metricsAuth) {
-    if (metricsAuth.password !== "I know what I'm doing, disable metrics auth") {
-      router.use("/metrics", auth({ name: metricsAuth.user, pass: metricsAuth.password }));
+    if (
+      metricsAuth.password !== "I know what I'm doing, disable metrics auth"
+    ) {
+      router.use(
+        '/metrics',
+        auth({ name: metricsAuth.user, pass: metricsAuth.password }),
+      );
     }
-    router.get("/metrics", async (ctx: any) => {
-      ctx.set("Content-Type", register.contentType);
+    router.get('/metrics', async (ctx: any) => {
+      ctx.set('Content-Type', register.contentType);
       ctx.body = await getAggregatedMetrics(gScampServer);
     });
   } else {
-    router.get("/metrics", async (ctx: any) => {
+    router.get('/metrics', async (ctx: any) => {
       ctx.throw(401);
-      console.error("Metrics endpoint is protected by authentication, but no credentials are configured");
+      console.error(
+        'Metrics endpoint is protected by authentication, but no credentials are configured',
+      );
     });
   }
 
   app.use(router.routes()).use(router.allowedMethods());
-  app.use(serve("ui"));
-  app.use(serve("data"));
+  app.use(serve('ui'));
+  app.use(serve('data'));
   return app;
 };
 
@@ -3696,29 +4339,42 @@ export const setServer = (scampServer: any) => {
   gScampServer = scampServer;
 };
 
-export const pushClientRuntimeEvents = (entries: Array<{
-  userId: number;
-  ip?: string;
-  source: string;
-  sessionId?: string;
-  event: string;
-  level: 'info' | 'warn' | 'error';
-  ts: number;
-  receivedAt: number;
-  details?: string;
-}>): void => {
+export const pushClientRuntimeEvents = (
+  entries: Array<{
+    userId: number;
+    ip?: string;
+    source: string;
+    sessionId?: string;
+    event: string;
+    level: 'info' | 'warn' | 'error';
+    ts: number;
+    receivedAt: number;
+    details?: string;
+  }>,
+): void => {
   const safeEntries = entries.slice(0, 100).map((entry) => ({
     userId: Number.isFinite(entry.userId) ? Math.floor(entry.userId) : 0,
     ip: typeof entry.ip === 'string' ? entry.ip.slice(0, 80) : undefined,
     source: String(entry.source || 'unknown').slice(0, 80),
-    sessionId: typeof entry.sessionId === 'string' ? entry.sessionId.slice(0, 64) : undefined,
+    sessionId:
+      typeof entry.sessionId === 'string'
+        ? entry.sessionId.slice(0, 64)
+        : undefined,
     event: String(entry.event || 'unknown').slice(0, 120),
-    level: entry.level === 'error' || entry.level === 'warn' || entry.level === 'info'
-      ? entry.level
-      : 'info',
+    level:
+      entry.level === 'error' ||
+      entry.level === 'warn' ||
+      entry.level === 'info'
+        ? entry.level
+        : 'info',
     ts: Number.isFinite(entry.ts) ? entry.ts : Date.now(),
-    receivedAt: Number.isFinite(entry.receivedAt) ? entry.receivedAt : Date.now(),
-    details: typeof entry.details === 'string' ? entry.details.slice(0, 500) : undefined,
+    receivedAt: Number.isFinite(entry.receivedAt)
+      ? entry.receivedAt
+      : Date.now(),
+    details:
+      typeof entry.details === 'string'
+        ? entry.details.slice(0, 500)
+        : undefined,
   }));
 
   if (safeEntries.length > 0) {
@@ -3726,7 +4382,10 @@ export const pushClientRuntimeEvents = (entries: Array<{
   }
 };
 
-export const pushServerLogChunk = (level: ServerLogLevel, chunk: string): void => {
+export const pushServerLogChunk = (
+  level: ServerLogLevel,
+  chunk: string,
+): void => {
   pushServerLogChunkInternal(level, chunk);
 };
 
@@ -3742,11 +4401,19 @@ export const setupLiveConsoleWebSocket = (server: http.Server): void => {
   });
 };
 
-export const pushPlayerDrop = (entry: { userId: number; playerName: string; type: 'expected' | 'unexpected'; reason?: string }): void => {
+export const pushPlayerDrop = (entry: {
+  userId: number;
+  playerName: string;
+  type: 'expected' | 'unexpected';
+  reason?: string;
+}): void => {
   addPlayerDrop(entry);
 };
 
-export const pushEnvironmentChange = (type: string, description: string): void => {
+export const pushEnvironmentChange = (
+  type: string,
+  description: string,
+): void => {
   addEnvironmentChange(type, description);
 };
 
@@ -3755,14 +4422,16 @@ export const main = (settings: Settings): void => {
   adminAuthParse(settings);
   const devServerPort = 1234;
 
-  const uiListenHost = (settings.allSettings.uiListenHost as (string | undefined)) || "0.0.0.0";
+  const uiListenHost =
+    (settings.allSettings.uiListenHost as string | undefined) || '0.0.0.0';
   const configuredUiPort = Number(settings.allSettings.uiPort);
-  const uiPort = Number.isFinite(configuredUiPort) && configuredUiPort > 0
-    ? Math.floor(configuredUiPort)
-    : settings.port;
+  const uiPort =
+    Number.isFinite(configuredUiPort) && configuredUiPort > 0
+      ? Math.floor(configuredUiPort)
+      : settings.port;
 
   Axios({
-    method: "get",
+    method: 'get',
     url: `http://localhost:${devServerPort}`,
   })
     .then(() => {
@@ -3774,7 +4443,7 @@ export const main = (settings: Settings): void => {
       const srv = http.createServer(appStatic.callback());
       srv.listen(0, () => {
         // Load koa-proxy only when dev server proxy mode is active.
-        const proxy = require("koa-proxy");
+        const proxy = require('koa-proxy');
         const { port } = srv.address() as AddressInfo;
         state.port = port;
         const appProxy = new Koa();
@@ -3788,7 +4457,7 @@ export const main = (settings: Settings): void => {
               console.log(`proxy ${path} => ${resultPath}`);
               return resultPath;
             },
-          })
+          }),
         );
         console.log(`Server resources folder is listening on ${uiPort}`);
         http.createServer(appProxy.callback()).listen(uiPort, uiListenHost);

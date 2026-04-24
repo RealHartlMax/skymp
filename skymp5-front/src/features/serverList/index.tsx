@@ -1,28 +1,48 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
+
 import { FrameButton } from '../../components/FrameButton/FrameButton';
-import { collectServerTags, getVisibleServers, isValidHostOrIp, isValidPort, pingClass, pingLabel, SortKey } from './utils';
-import { fetchLatestUpdate, fetchServerList, LatestUpdateDto, ReleaseChannel } from './api';
 import {
-  getAutoConnectLast,
+  LatestUpdateDto,
+  ReleaseChannel,
+  fetchLatestUpdate,
+  fetchServerList,
+} from './api';
+import {
   clearLauncherIgnoredUpdateVersion,
+  getAutoConnectLast,
   getCachedServers,
   getFavoriteServerIds,
-  getLauncherIgnoredUpdateVersion,
   getLastServerRef,
   getLauncherApiEndpoint,
   getLauncherDarkMode,
+  getLauncherIgnoredUpdateVersion,
   getLauncherReleaseChannel,
   setAutoConnectLast,
   setCachedServers,
   setFavoriteServerIds,
-  setLauncherIgnoredUpdateVersion,
   setLastServerRef,
   setLauncherApiEndpoint,
   setLauncherDarkMode,
+  setLauncherIgnoredUpdateVersion,
   setLauncherReleaseChannel,
 } from './preferences';
 import './styles.scss';
+import {
+  SortKey,
+  collectServerTags,
+  getVisibleServers,
+  isValidHostOrIp,
+  isValidPort,
+  pingClass,
+  pingLabel,
+} from './utils';
 
 const CLIENT_VERSION = '1.0.0';
 
@@ -56,7 +76,7 @@ const demoServers: ServerEntry[] = [
     description: 'Official SkyMP server. PvE, crafting, economy.',
     tags: ['pve', 'crafting', 'economy', 'eu'],
     online: true,
-    passwordProtected: false
+    passwordProtected: false,
   },
   {
     id: 'demo-2',
@@ -70,7 +90,7 @@ const demoServers: ServerEntry[] = [
     description: 'Competitive PvP server with ranking system.',
     tags: ['pvp', 'competitive', 'na'],
     online: true,
-    passwordProtected: false
+    passwordProtected: false,
   },
   {
     id: 'demo-3',
@@ -84,8 +104,8 @@ const demoServers: ServerEntry[] = [
     description: 'Immersive roleplay experience.',
     tags: ['rp', 'immersive', 'eu'],
     online: true,
-    passwordProtected: true
-  }
+    passwordProtected: true,
+  },
 ];
 
 const resolveInitialTheme = (): boolean => {
@@ -103,12 +123,12 @@ const isReleaseChannel = (value: unknown): value is ReleaseChannel => {
   return value === 'stable' || value === 'beta' || value === 'nightly';
 };
 
-const normalizeUpdateNotes = (value: string[] | string | undefined): string[] => {
+const normalizeUpdateNotes = (
+  value: string[] | string | undefined,
+): string[] => {
   if (!value) return [];
   if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item).trim())
-      .filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
 
   return value
@@ -131,14 +151,24 @@ const ServerList = () => {
   const [tagFilter, setTagFilter] = useState('');
   const [directIp, setDirectIp] = useState('');
   const [directPort, setDirectPort] = useState('');
-  const [favoriteIds, setFavoriteIdsState] = useState<string[]>(getFavoriteServerIds());
-  const [autoConnectLast, setAutoConnectLastState] = useState(getAutoConnectLast());
-  const [apiEndpointInput, setApiEndpointInput] = useState(getLauncherApiEndpoint());
+  const [favoriteIds, setFavoriteIdsState] = useState<string[]>(
+    getFavoriteServerIds(),
+  );
+  const [autoConnectLast, setAutoConnectLastState] = useState(
+    getAutoConnectLast(),
+  );
+  const [apiEndpointInput, setApiEndpointInput] = useState(
+    getLauncherApiEndpoint(),
+  );
   const [apiEndpoint, setApiEndpoint] = useState(getLauncherApiEndpoint());
   const [serverSource, setServerSource] = useState<ServerSource>('demo');
-  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
   const [isDarkMode, setIsDarkMode] = useState(resolveInitialTheme());
-  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>(getLauncherReleaseChannel());
+  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>(
+    getLauncherReleaseChannel(),
+  );
   const [didAutoConnect, setDidAutoConnect] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const [updateInfo, setUpdateInfo] = useState<LatestUpdateDto | null>(null);
@@ -148,24 +178,36 @@ const ServerList = () => {
   const availableTags = useMemo(() => collectServerTags(servers), [servers]);
   const updateChannel = useMemo<ReleaseChannel>(() => {
     if (!updateInfo?.channel) return releaseChannel;
-    return isReleaseChannel(updateInfo.channel) ? updateInfo.channel : releaseChannel;
+    return isReleaseChannel(updateInfo.channel)
+      ? updateInfo.channel
+      : releaseChannel;
   }, [releaseChannel, updateInfo]);
   const updateNotes = useMemo(() => {
     if (!updateInfo) return [];
-    const notes = normalizeUpdateNotes(updateInfo.changelog ?? updateInfo.notes);
+    const notes = normalizeUpdateNotes(
+      updateInfo.changelog ?? updateInfo.notes,
+    );
     return notes.slice(0, 3);
   }, [updateInfo]);
   const hiddenNoteCount = useMemo(() => {
     if (!updateInfo) return 0;
-    const allNotes = normalizeUpdateNotes(updateInfo.changelog ?? updateInfo.notes);
+    const allNotes = normalizeUpdateNotes(
+      updateInfo.changelog ?? updateInfo.notes,
+    );
     return Math.max(0, allNotes.length - 3);
   }, [updateInfo]);
 
   const checkForUpdate = useCallback(async () => {
     try {
-      const data = await fetchLatestUpdate(apiEndpoint, releaseChannel, CLIENT_VERSION);
+      const data = await fetchLatestUpdate(
+        apiEndpoint,
+        releaseChannel,
+        CLIENT_VERSION,
+      );
       if (data && data.version !== CLIENT_VERSION) {
-        const channel = isReleaseChannel(data.channel) ? data.channel : releaseChannel;
+        const channel = isReleaseChannel(data.channel)
+          ? data.channel
+          : releaseChannel;
         const ignoredVersion = getLauncherIgnoredUpdateVersion(channel);
         if (ignoredVersion && ignoredVersion === data.version) {
           setUpdateInfo(null);
@@ -223,8 +265,8 @@ const ServerList = () => {
     setLastServerRef({ id: server.id, ip: server.ip, port: server.port });
     window.dispatchEvent(
       new CustomEvent('serverList:connect', {
-        detail: { ip: server.ip, port: server.port }
-      })
+        detail: { ip: server.ip, port: server.port },
+      }),
     );
     setVisible(false);
   }, []);
@@ -239,7 +281,7 @@ const ServerList = () => {
 
     setLastServerRef({ ip: host, port });
     window.dispatchEvent(
-      new CustomEvent('serverList:connect', { detail: { ip: host, port } })
+      new CustomEvent('serverList:connect', { detail: { ip: host, port } }),
     );
     setVisible(false);
   }, [directIp, directPort, t]);
@@ -275,22 +317,26 @@ const ServerList = () => {
     }
   }, [apiEndpoint, selected, t]);
 
-  const runAutoConnectIfNeeded = useCallback((serverList: ServerEntry[]) => {
-    if (!autoConnectLast || didAutoConnect) return;
+  const runAutoConnectIfNeeded = useCallback(
+    (serverList: ServerEntry[]) => {
+      if (!autoConnectLast || didAutoConnect) return;
 
-    const last = getLastServerRef();
-    if (!last) return;
+      const last = getLastServerRef();
+      if (!last) return;
 
-    const match = serverList.find((item) => (
-      (last.id && item.id === last.id)
-      || (item.ip === last.ip && item.port === last.port)
-    ));
+      const match = serverList.find(
+        (item) =>
+          (last.id && item.id === last.id) ||
+          (item.ip === last.ip && item.port === last.port),
+      );
 
-    if (match) {
-      setDidAutoConnect(true);
-      connect(match);
-    }
-  }, [autoConnectLast, connect, didAutoConnect]);
+      if (match) {
+        setDidAutoConnect(true);
+        connect(match);
+      }
+    },
+    [autoConnectLast, connect, didAutoConnect],
+  );
 
   useEffect(() => {
     if (servers.length > 0 && visible) {
@@ -378,8 +424,17 @@ const ServerList = () => {
   if (!visible) return <></>;
 
   return (
-    <div className="server-overlay" role="dialog" aria-modal="true" aria-label={t('serverList.title')}>
-      <div className={`server-list ${isDarkMode ? 'server-list--dark' : 'server-list--light'}`}>
+    <div
+      className="server-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('serverList.title')}
+    >
+      <div
+        className={`server-list ${
+          isDarkMode ? 'server-list--dark' : 'server-list--light'
+        }`}
+      >
         <div className="server-list__header">
           <div className="server-list__header-text">
             <h1 className="server-list__title">{t('serverList.title')}</h1>
@@ -392,7 +447,9 @@ const ServerList = () => {
               onClick={() => setIsDarkMode((prev) => !prev)}
               aria-label={t('serverList.toggleTheme')}
             >
-              {isDarkMode ? t('serverList.themeLight') : t('serverList.themeDark')}
+              {isDarkMode
+                ? t('serverList.themeLight')
+                : t('serverList.themeDark')}
             </button>
             <FrameButton
               name="closeServerList"
@@ -405,11 +462,23 @@ const ServerList = () => {
           </div>
         </div>
 
-        <div className="server-list__status-row" aria-live="polite" role="status">
-          <span className={`server-list__status-pill server-list__status-pill--${isOnline ? 'online' : 'offline'}`}>
-            {isOnline ? t('serverList.onlineStatus') : t('serverList.offlineStatus')}
+        <div
+          className="server-list__status-row"
+          aria-live="polite"
+          role="status"
+        >
+          <span
+            className={`server-list__status-pill server-list__status-pill--${
+              isOnline ? 'online' : 'offline'
+            }`}
+          >
+            {isOnline
+              ? t('serverList.onlineStatus')
+              : t('serverList.offlineStatus')}
           </span>
-          <span className="server-list__status-pill">{t(`serverList.source_${serverSource}`)}</span>
+          <span className="server-list__status-pill">
+            {t(`serverList.source_${serverSource}`)}
+          </span>
           <label className="server-list__auto-connect">
             <input
               type="checkbox"
@@ -436,7 +505,9 @@ const ServerList = () => {
           <select
             className="server-list__channel-select"
             value={releaseChannel}
-            onChange={(e) => setReleaseChannel(e.target.value as ReleaseChannel)}
+            onChange={(e) =>
+              setReleaseChannel(e.target.value as ReleaseChannel)
+            }
             aria-label={t('serverList.releaseChannel')}
           >
             <option value="stable">{t('serverList.channel_stable')}</option>
@@ -450,7 +521,11 @@ const ServerList = () => {
           >
             {t('serverList.resetIgnoredUpdate')}
           </button>
-          <button type="button" className="server-list__api-apply" onClick={applyApiEndpoint}>
+          <button
+            type="button"
+            className="server-list__api-apply"
+            onClick={applyApiEndpoint}
+          >
             {t('serverList.applyApiEndpoint')}
           </button>
         </div>
@@ -466,12 +541,16 @@ const ServerList = () => {
             aria-label={t('serverList.searchPlaceholder')}
           />
           <div className="server-list__sort">
-            <span className="server-list__sort-label">{t('serverList.sortBy')}:</span>
+            <span className="server-list__sort-label">
+              {t('serverList.sortBy')}:
+            </span>
             {(['players', 'ping', 'name'] as SortKey[]).map((key) => (
               <button
                 key={key}
                 type="button"
-                className={`server-list__sort-btn ${sortKey === key ? 'server-list__sort-btn--active' : ''}`}
+                className={`server-list__sort-btn ${
+                  sortKey === key ? 'server-list__sort-btn--active' : ''
+                }`}
                 onClick={() => setSortKey(key)}
                 aria-pressed={sortKey === key}
               >
@@ -506,18 +585,30 @@ const ServerList = () => {
           >
             <option value="">{t('serverList.allTags')}</option>
             {availableTags.map((tag) => (
-              <option key={tag} value={tag}>{tag}</option>
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
             ))}
           </select>
         </div>
 
         <div className="server-list__main">
           <div className="server-list__table-wrap">
-            {loading && <div className="server-list__loading">{t('serverList.loading')}</div>}
-            {!loading && filtered.length === 0 && <div className="server-list__empty">{t('serverList.noServers')}</div>}
+            {loading && (
+              <div className="server-list__loading">
+                {t('serverList.loading')}
+              </div>
+            )}
+            {!loading && filtered.length === 0 && (
+              <div className="server-list__empty">
+                {t('serverList.noServers')}
+              </div>
+            )}
             {!loading && filtered.length > 0 && (
               <table className="server-list__table">
-                <caption className="server-list__sr-only">{t('serverList.title')}</caption>
+                <caption className="server-list__sr-only">
+                  {t('serverList.title')}
+                </caption>
                 <thead>
                   <tr>
                     <th scope="col">{t('serverList.colName')}</th>
@@ -533,48 +624,91 @@ const ServerList = () => {
                     return (
                       <tr
                         key={server.id}
-                        className={`server-list__row ${selected?.id === server.id ? 'server-list__row--selected' : ''}`}
+                        className={`server-list__row ${
+                          selected?.id === server.id
+                            ? 'server-list__row--selected'
+                            : ''
+                        }`}
                         onClick={() => setSelected(server)}
                         onDoubleClick={() => connect(server)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') connect(server);
-                          if (e.key.toLowerCase() === 'f') toggleFavorite(server.id);
+                          if (e.key.toLowerCase() === 'f')
+                            toggleFavorite(server.id);
                         }}
                         tabIndex={0}
                         aria-selected={selected?.id === server.id}
                         aria-label={`${server.name} ${server.players}/${server.maxPlayers}`}
                       >
                         <td className="server-list__col-name">
-                          <span className={`server-list__dot ${server.online ? 'server-list__dot--online' : 'server-list__dot--offline'}`} />
+                          <span
+                            className={`server-list__dot ${
+                              server.online
+                                ? 'server-list__dot--online'
+                                : 'server-list__dot--offline'
+                            }`}
+                          />
                           {server.passwordProtected && (
-                            <span className="server-list__lock" title={t('serverList.passwordProtected')}>🔒</span>
+                            <span
+                              className="server-list__lock"
+                              title={t('serverList.passwordProtected')}
+                            >
+                              🔒
+                            </span>
                           )}
-                          <span className="server-list__name">{server.name}</span>
-                          {server.tags && server.tags.map((tag) => (
-                            <span key={tag} className="server-list__tag">{tag}</span>
-                          ))}
+                          <span className="server-list__name">
+                            {server.name}
+                          </span>
+                          {server.tags &&
+                            server.tags.map((tag) => (
+                              <span key={tag} className="server-list__tag">
+                                {tag}
+                              </span>
+                            ))}
                         </td>
                         <td className="server-list__col-players">
-                          <span className={server.players >= server.maxPlayers ? 'server-list__players--full' : ''}>
+                          <span
+                            className={
+                              server.players >= server.maxPlayers
+                                ? 'server-list__players--full'
+                                : ''
+                            }
+                          >
                             {server.players}
                           </span>
-                          <span className="server-list__players-max">/{server.maxPlayers}</span>
+                          <span className="server-list__players-max">
+                            /{server.maxPlayers}
+                          </span>
                         </td>
                         <td>
-                          <span className={`server-list__ping ${pingClass(server.ping)}`}>
+                          <span
+                            className={`server-list__ping ${pingClass(
+                              server.ping,
+                            )}`}
+                          >
                             {pingLabel(server.ping)}
                           </span>
                         </td>
-                        <td className="server-list__col-version">{server.version}</td>
+                        <td className="server-list__col-version">
+                          {server.version}
+                        </td>
                         <td className="server-list__actions-cell">
                           <button
                             type="button"
-                            className={`server-list__favorite-btn ${isFavorite ? 'server-list__favorite-btn--active' : ''}`}
+                            className={`server-list__favorite-btn ${
+                              isFavorite
+                                ? 'server-list__favorite-btn--active'
+                                : ''
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleFavorite(server.id);
                             }}
-                            aria-label={isFavorite ? t('serverList.removeFavorite') : t('serverList.addFavorite')}
+                            aria-label={
+                              isFavorite
+                                ? t('serverList.removeFavorite')
+                                : t('serverList.addFavorite')
+                            }
                           >
                             {isFavorite ? '★' : '☆'}
                           </button>
@@ -602,20 +736,28 @@ const ServerList = () => {
               <h3 className="server-list__detail-name">{selected.name}</h3>
               <div className="server-list__detail-row">
                 <span>{t('serverList.detailIp')}:</span>
-                <span>{selected.ip}:{selected.port}</span>
+                <span>
+                  {selected.ip}:{selected.port}
+                </span>
               </div>
               <div className="server-list__detail-row">
                 <span>{t('serverList.colPlayers')}:</span>
-                <span>{selected.players}/{selected.maxPlayers}</span>
+                <span>
+                  {selected.players}/{selected.maxPlayers}
+                </span>
               </div>
               <div className="server-list__detail-row">
                 <span>{t('serverList.colPing')}:</span>
-                <span className={`server-list__ping ${pingClass(selected.ping)}`}>
+                <span
+                  className={`server-list__ping ${pingClass(selected.ping)}`}
+                >
                   {pingLabel(selected.ping)}
                 </span>
               </div>
               {selected.description && (
-                <p className="server-list__detail-desc">{selected.description}</p>
+                <p className="server-list__detail-desc">
+                  {selected.description}
+                </p>
               )}
               {versionMismatch && (
                 <div className="server-list__version-warn" role="alert">
@@ -635,7 +777,9 @@ const ServerList = () => {
         </div>
 
         <div className="server-list__direct">
-          <span className="server-list__direct-label">{t('serverList.directConnect')}:</span>
+          <span className="server-list__direct-label">
+            {t('serverList.directConnect')}:
+          </span>
           <input
             className="server-list__direct-input"
             type="text"
@@ -654,12 +798,20 @@ const ServerList = () => {
             max={65535}
             aria-label={t('serverList.directPortPlaceholder')}
           />
-          <button type="button" className="server-list__direct-btn" onClick={connectDirect}>
+          <button
+            type="button"
+            className="server-list__direct-btn"
+            onClick={connectDirect}
+          >
             {t('serverList.connect')}
           </button>
         </div>
 
-        {error && <div className="server-list__error" role="alert">{error}</div>}
+        {error && (
+          <div className="server-list__error" role="alert">
+            {error}
+          </div>
+        )}
       </div>
       {!updateDismissed && updateInfo && (
         <div className="server-list__update-banner" role="status">
@@ -667,12 +819,14 @@ const ServerList = () => {
             <span>
               {t('serverList.updateAvailable', {
                 version: updateInfo.version,
-                channel: t(`serverList.channel_${updateChannel}`)
+                channel: t(`serverList.channel_${updateChannel}`),
               })}
             </span>
             {updateNotes.length > 0 && (
               <div className="server-list__update-notes-wrap">
-                <span className="server-list__update-notes-title">{t('serverList.updateNotesTitle')}</span>
+                <span className="server-list__update-notes-title">
+                  {t('serverList.updateNotesTitle')}
+                </span>
                 <ul className="server-list__update-notes">
                   {updateNotes.map((note) => (
                     <li key={note}>{note}</li>
@@ -680,7 +834,9 @@ const ServerList = () => {
                 </ul>
                 {hiddenNoteCount > 0 && (
                   <span className="server-list__update-notes-more">
-                    {t('serverList.updateNotesMore', { count: hiddenNoteCount })}
+                    {t('serverList.updateNotesMore', {
+                      count: hiddenNoteCount,
+                    })}
                   </span>
                 )}
               </div>

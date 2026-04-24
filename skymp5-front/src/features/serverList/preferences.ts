@@ -62,19 +62,22 @@ const writeJson = <T>(key: string, value: T): void => {
   }
 };
 
-export const getFavoriteServerIds = (): string[] => readJson<string[]>(KEYS.favorites, []);
+export const getFavoriteServerIds = (): string[] =>
+  readJson<string[]>(KEYS.favorites, []);
 
 export const setFavoriteServerIds = (ids: string[]): void => {
   writeJson(KEYS.favorites, ids);
 };
 
-export const getAutoConnectLast = (): boolean => readJson<boolean>(KEYS.autoConnect, false);
+export const getAutoConnectLast = (): boolean =>
+  readJson<boolean>(KEYS.autoConnect, false);
 
 export const setAutoConnectLast = (value: boolean): void => {
   writeJson(KEYS.autoConnect, value);
 };
 
-export const getLastServerRef = (): LauncherServerRef | null => readJson<LauncherServerRef | null>(KEYS.lastServer, null);
+export const getLastServerRef = (): LauncherServerRef | null =>
+  readJson<LauncherServerRef | null>(KEYS.lastServer, null);
 
 export const setLastServerRef = (server: LauncherServerRef): void => {
   writeJson(KEYS.lastServer, server);
@@ -94,13 +97,15 @@ export const setLauncherApiEndpoint = (value: string): void => {
   writeJson(KEYS.apiEndpoint, value.trim());
 };
 
-export const getCachedServers = (): CachedServerEntry[] => readJson<CachedServerEntry[]>(KEYS.cachedServers, []);
+export const getCachedServers = (): CachedServerEntry[] =>
+  readJson<CachedServerEntry[]>(KEYS.cachedServers, []);
 
 export const setCachedServers = (servers: CachedServerEntry[]): void => {
   writeJson(KEYS.cachedServers, servers);
 };
 
-export const getLauncherDarkMode = (): boolean | null => readJson<boolean | null>(KEYS.darkMode, null);
+export const getLauncherDarkMode = (): boolean | null =>
+  readJson<boolean | null>(KEYS.darkMode, null);
 
 export const setLauncherDarkMode = (enabled: boolean): void => {
   writeJson(KEYS.darkMode, enabled);
@@ -112,23 +117,32 @@ export const getLauncherReleaseChannel = (): 'stable' | 'beta' | 'nightly' => {
   return 'stable';
 };
 
-export const setLauncherReleaseChannel = (channel: 'stable' | 'beta' | 'nightly'): void => {
+export const setLauncherReleaseChannel = (
+  channel: 'stable' | 'beta' | 'nightly',
+): void => {
   writeJson(KEYS.releaseChannel, channel);
 };
 
-export const getLauncherIgnoredUpdateVersion = (channel: 'stable' | 'beta' | 'nightly'): string | null => {
+export const getLauncherIgnoredUpdateVersion = (
+  channel: 'stable' | 'beta' | 'nightly',
+): string | null => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   const value = map[channel];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 };
 
-export const setLauncherIgnoredUpdateVersion = (channel: 'stable' | 'beta' | 'nightly', version: string): void => {
+export const setLauncherIgnoredUpdateVersion = (
+  channel: 'stable' | 'beta' | 'nightly',
+  version: string,
+): void => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   const next: IgnoredUpdatesMap = { ...map, [channel]: version.trim() };
   writeJson(KEYS.ignoredUpdates, next);
 };
 
-export const clearLauncherIgnoredUpdateVersion = (channel: 'stable' | 'beta' | 'nightly'): void => {
+export const clearLauncherIgnoredUpdateVersion = (
+  channel: 'stable' | 'beta' | 'nightly',
+): void => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   if (!(channel in map)) return;
 
