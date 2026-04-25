@@ -467,6 +467,7 @@ runs:
         path: ${{github.workspace}}/build/dist/server
 
     - uses: actions/upload-artifact@v7
+      if: ${{ inputs.RUN_TESTS == 'true' }}
       with:
         name: coverage (${{ inputs.DESCRIPTION }})
         path: ${{github.workspace}}/build/__coverage
@@ -494,6 +495,7 @@ runs:
         path: ${{github.workspace}}/build/nexus/sp/data/*
 
     - uses: actions/upload-artifact@v7
+      if: ${{ inputs.SP_NEXUS_ARTIFACT_NAME != 'nope' }}
       with:
         name: papyrus-vm-nexus (${{ inputs.DESCRIPTION }})
         # Data folder is skipped for mod managers

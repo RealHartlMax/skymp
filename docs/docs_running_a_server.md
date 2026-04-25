@@ -16,6 +16,8 @@ Downloaded server builds should be unpacked into a dedicated server folder. Futu
 
 `launch_server.bat` now includes restart protection: before starting a new server process it checks for an already running `dist_back/skymp5-server.js` process and terminates it automatically.
 
+`launch_server.bat` also validates runtime dependencies on startup: if `node` is missing it attempts automatic installation (via `winget` when available), and if `node_modules` is missing it installs runtime packages automatically.
+
 ### Linux
 
 Linux server support is prepared for source builds.
@@ -23,6 +25,8 @@ Linux server support is prepared for source builds.
 If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
 
 Downloaded server builds can be updated in place with `update_server.sh --package /path/to/release.tar.gz` from the server package root. The script backs up and preserves `data` and `server-settings.json`.
+
+`launch_server.sh` validates runtime dependencies on startup: if `node` is missing it attempts package-manager based installation, and if `node_modules` is missing it installs runtime packages automatically.
 
 Client support remains Windows-first, but the dedicated server can be prepared for Linux environments.
 
