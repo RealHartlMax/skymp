@@ -231,6 +231,8 @@ interface AdminCapabilities {
   canMute: boolean;
   canUnmute: boolean;
   canManageRespawn: boolean;
+  canManageRespawn: boolean;
+  canWarn?: boolean;
 }
 
 interface JoinAccessForm {
@@ -647,7 +649,7 @@ const AdminDashboard = () => {
   const [adminRole, setAdminRole] = useState<AdminRole>('viewer');
   const [adminUser, setAdminUser] = useState('');
   const [capabilities, setCapabilities] =
-    useState<AdminCapabilities>(DEFAULT_CAPABILITIES);
+    useState<AdminCapabilities>({ ...DEFAULT_CAPABILITIES, canWarn: false });
   const [playerSearch, setPlayerSearch] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
@@ -1140,9 +1142,65 @@ const AdminDashboard = () => {
             ? payload.canUnmute
             : DEFAULT_CAPABILITIES.canUnmute,
         canManageRespawn:
+        canManageRespawn:
           typeof payload?.canManageRespawn === 'boolean'
             ? payload.canManageRespawn
             : DEFAULT_CAPABILITIES.canManageRespawn,
+        canWarn:
+          typeof payload?.canWarn === 'boolean'
+            ? payload.canWarn
+            : false,
+        // --- Warn Player ---
+        const [warnDialogOpen, setWarnDialogOpen] = useState(false);
+        const [warnTargetId, setWarnTargetId] = useState<number | null>(null);
+        const [warnTargetName, setWarnTargetName] = useState('');
+        const [warnMessage, setWarnMessage] = useState('');
+        const [warnReason, setWarnReason] = useState('');
+        const [warnSending, setWarnSending] = useState(false);
+
+        const openWarnDialog = (userId: number, actorName: string) => {
+          setWarnTargetId(userId);
+          setWarnTargetName(actorName || String(userId));
+          setWarnMessage('');
+          setWarnReason('');
+          setWarnDialogOpen(true);
+        };
+
+        const closeWarnDialog = () => {
+          setWarnDialogOpen(false);
+          setWarnTargetId(null);
+          setWarnTargetName('');
+          setWarnMessage('');
+          setWarnReason('');
+          setWarnSending(false);
+        };
+
+        const sendWarn = async () => {
+          if (warnTargetId === null || !capabilities.canWarn) return;
+          const message = warnMessage.trim();
+          const reason = warnReason.trim();
+          if (!message) {
+            setStatusMsg(t('adminDashboard.warnMessageRequired', { defaultValue: 'Warn-Nachricht erforderlich.' }));
+            return;
+          }
+          setWarnSending(true);
+          try {
+            const res = await fetch(`/api/admin/players/${warnTargetId}/warn`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(reason ? { message, reason } : { message }),
+            });
+            setForbiddenAwareStatus(res, t('adminDashboard.warnSent', { defaultValue: 'Warnung gesendet.' }));
+            if (res.ok) {
+              closeWarnDialog();
+              await fetchTopbarHistory();
+            }
+          } catch {
+            setStatusMsg(t('adminDashboard.apiError'));
+          } finally {
+            setWarnSending(false);
+          }
+        };
       });
     } catch {
       // silently ignore
@@ -3722,6 +3780,114 @@ const AdminDashboard = () => {
 
           <main className="admin-dashboard__main">
             <div className="admin-dashboard__main-header">
+                          {activeTab === 'players' && activeMenuSurface === 'sidebar' && (
+                            <div className="admin-dashboard__players-table-wrap">
+                              <table className="admin-dashboard__players-table">
+                                <thead>
+                                  <tr>
+                                    <th>{t('adminDashboard.playerName', { defaultValue: 'Name' })}</th>
+                                    <th>{t('adminDashboard.playerId', { defaultValue: 'User ID' })}</th>
+                                    <th>{t('adminDashboard.playerActions', { defaultValue: 'Aktionen' })}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {filteredPlayers.map((player) => (
+                                    <tr key={`player-row-${player.userId}`}>
+                                      <td>{player.actorName || `userId=${player.userId}`}</td>
+                                      <td>{player.userId}</td>
+                                      <td>
+                                        {capabilities.canKick && (
+                                          <button type="button" onClick={() => kickPlayer(player.userId)}>
+                                            {t('adminDashboard.kick', { defaultValue: 'Kick' })}
+                                          </button>
+                                        )}
+                                        {capabilities.canBan && (
+                                          <button type="button" onClick={() => banPlayer(player.userId)}>
+                                            {t('adminDashboard.ban', { defaultValue: 'Ban' })}
+                                          </button>
+                                        )}
+                                        {capabilities.canMute && (
+                                          <button type="button" onClick={() => mutePlayer(player.userId)}>
+                                            {t('adminDashboard.mute', { defaultValue: 'Mute' })}
+                                          </button>
+                                        )}
+                                        {capabilities.canMessage && (
+                                          <button type="button" onClick={() => { setSendMsgTargetId(player.userId); setSendMsgTargetName(player.actorName || `userId=${player.userId}`); }}>
+                                            {t('adminDashboard.message', { defaultValue: 'Nachricht' })}
+                                          </button>
+                                        )}
+                                        {capabilities.canWarn && (
+                                          <button
+                                            type="button"
+                                            style={{ color: '#e6b800', borderColor: '#e6b800', marginLeft: 4 }}
+                                            onClick={() => openWarnDialog(player.userId, player.actorName || `userId=${player.userId}`)}
+                                          >
+                                            {t('adminDashboard.warn', { defaultValue: 'Warnen' })}
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {filteredPlayers.length === 0 && (
+                                    <tr>
+                                      <td colSpan={3}>{t('adminDashboard.noPlayers')}</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          {/* Warn Dialog */}
+                          {warnDialogOpen && (
+                            <div className="admin-dashboard__warn-modal-backdrop" onClick={closeWarnDialog}>
+                              <div className="admin-dashboard__warn-modal" onClick={e => e.stopPropagation()}>
+                                <div className="admin-dashboard__warn-modal-head">
+                                  <h3>{t('adminDashboard.warnTitle', { defaultValue: 'Warnen' })}</h3>
+                                  <button type="button" onClick={closeWarnDialog} disabled={warnSending}>×</button>
+                                </div>
+                                <div className="admin-dashboard__warn-modal-body">
+                                  <div>{t('adminDashboard.warnTarget', { defaultValue: 'Spieler:' })} <b>{warnTargetName}</b></div>
+                                  <label>
+                                    {t('adminDashboard.warnMessage', { defaultValue: 'Nachricht' })}
+                                    <input
+                                      type="text"
+                                      value={warnMessage}
+                                      onChange={e => setWarnMessage(e.target.value)}
+                                      placeholder={t('adminDashboard.warnMessagePlaceholder', { defaultValue: 'Bitte Nachricht eingeben...' })}
+                                      disabled={warnSending}
+                                      autoFocus
+                                    />
+                                  </label>
+                                  <label>
+                                    {t('adminDashboard.warnReason', { defaultValue: 'Grund (optional)' })}
+                                    <input
+                                      type="text"
+                                      value={warnReason}
+                                      onChange={e => setWarnReason(e.target.value)}
+                                      placeholder={t('adminDashboard.warnReasonPlaceholder', { defaultValue: 'Optionaler Grund...' })}
+                                      disabled={warnSending}
+                                    />
+                                  </label>
+                                </div>
+                                <div className="admin-dashboard__warn-modal-foot">
+                                  <button type="button" onClick={closeWarnDialog} disabled={warnSending}>
+                                    {t('adminDashboard.cancel', { defaultValue: 'Abbrechen' })}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-dashboard__warn-submit"
+                                    onClick={sendWarn}
+                                    disabled={warnSending || !warnMessage.trim()}
+                                  >
+                                    {warnSending
+                                      ? t('adminDashboard.sending', { defaultValue: 'Sende...' })
+                                      : t('adminDashboard.warnSend', { defaultValue: 'Warnen' })}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
               <div>
                 <h2 className="admin-dashboard__main-title">
                   {currentMainTitle}

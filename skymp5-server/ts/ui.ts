@@ -434,6 +434,7 @@ interface AdminCapabilities {
   canMute: boolean;
   canUnmute: boolean;
   canManageRespawn: boolean;
+  canWarn: boolean;
 }
 
 type AdminRole = 'admin' | 'moderator' | 'viewer';
@@ -464,6 +465,7 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMute: true,
     canUnmute: true,
     canManageRespawn: true,
+    canWarn: true,
   },
   moderator: {
     canKick: true,
@@ -475,9 +477,46 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMute: true,
     canUnmute: true,
     canManageRespawn: true,
+    canWarn: true,
   },
   viewer: {
     canKick: false,
+      canWarn: false,
+        // --- WARN ENDPOINT ---
+        router.post('/api/admin/players/:userId/warn', (ctx: any) => {
+          if (!ensureAdminCapability(settings, ctx, 'canWarn')) return;
+          const userId = Number(ctx.params.userId);
+          const message = String(ctx.request.body?.message ?? '').trim();
+          const reason = String(ctx.request.body?.reason ?? '').trim();
+          if (!Number.isFinite(userId) || !message) {
+            ctx.status = 400;
+            ctx.body = { ok: false, error: 'invalid payload' };
+            return;
+          }
+
+          // Send warning message to player
+          safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+          safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+
+          // Audit log/history
+          const { user: warnAuthor } = getAdminContext(settings, ctx);
+          const warnPlayerName =
+            adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+          const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+          addAdminLog(
+            'warn',
+            `Warned userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`,
+          );
+          addAdminHistory({
+            type: 'warn',
+            playerName: warnPlayerName,
+            userId,
+            reason: reason || message,
+            author: warnAuthor,
+          });
+          saveHistory(dataDir);
+          ctx.body = { ok: true, userId };
+        });
     canBan: false,
     canUnban: false,
     canConsole: false,
@@ -3368,59 +3407,35 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       }
     });
 
+
     router.post('/api/admin/cfg/server-settings', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
 
+      const jsonRaw = String(ctx.request.body?.json ?? '').trim();
+      if (!jsonRaw) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'json payload is required' };
+        return;
+      }
+
+      let parsed: Record<string, unknown>;
       try {
-        const parsed = readServerSettingsJson() as Record<string, any>;
+        parsed = JSON.parse(jsonRaw) as Record<string, unknown>;
+      } catch (error) {
+        ctx.status = 400;
+        ctx.body = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        return;
+      }
+
+      // Ensure master admin is preserved
+      try {
         const masterUser = resolveMasterAdminUserFromSettingsObject(
           parsed,
           getConfiguredAdminUser(),
         );
-        const updates = ctx.request.body || {};
-
-        // Validate and apply updates to server-settings.json
-        if (typeof updates.serverName === 'string') {
-          parsed.serverName = updates.serverName.trim() || 'Skymp Server';
-        }
-        if (
-          typeof updates.port === 'number' &&
-          updates.port > 0 &&
-          updates.port < 65536
-        ) {
-          parsed.port = Math.floor(updates.port);
-        }
-        if (typeof updates.maxPlayers === 'number' && updates.maxPlayers > 0) {
-          parsed.maxPlayers = Math.floor(updates.maxPlayers);
-        }
-        if (typeof updates.defaultLanguage === 'string') {
-          parsed.defaultLanguage = updates.defaultLanguage;
-        }
-
-        // Discord OAuth config
-        if (typeof updates.adminUiDiscordAuth_clientId === 'string') {
-          if (!parsed.adminUiDiscordAuth) {
-            parsed.adminUiDiscordAuth = {};
-          }
-          (parsed.adminUiDiscordAuth as Record<string, any>).clientId =
-            updates.adminUiDiscordAuth_clientId.trim();
-        }
-        if (typeof updates.adminUiDiscordAuth_clientSecret === 'string') {
-          if (!parsed.adminUiDiscordAuth) {
-            parsed.adminUiDiscordAuth = {};
-          }
-          (parsed.adminUiDiscordAuth as Record<string, any>).clientSecret =
-            updates.adminUiDiscordAuth_clientSecret.trim();
-        }
-        if (typeof updates.adminUiDiscordAuth_redirectUri === 'string') {
-          if (!parsed.adminUiDiscordAuth) {
-            parsed.adminUiDiscordAuth = {};
-          }
-          (parsed.adminUiDiscordAuth as Record<string, any>).redirectUri =
-            updates.adminUiDiscordAuth_redirectUri.trim();
-        }
-
-        // Ensure master admin is preserved
         if (masterUser) {
           if (!parsed.adminUiUsers) {
             parsed.adminUiUsers = {};
@@ -3432,24 +3447,17 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           }
         }
 
-        // Write back to file
         writeServerSettingsJson(parsed);
 
         // Update in-memory settings
         if (settings.allSettings && typeof settings.allSettings === 'object') {
-          (settings.allSettings as any).serverName = parsed.serverName;
-          (settings.allSettings as any).port = parsed.port;
-          (settings.allSettings as any).maxPlayers = parsed.maxPlayers;
-          (settings.allSettings as any).defaultLanguage =
-            parsed.defaultLanguage;
-          (settings.allSettings as any).adminUiDiscordAuth =
-            parsed.adminUiDiscordAuth;
+          Object.assign(settings.allSettings, parsed);
         }
 
         const { user: adminUser } = getAdminContext(settings, ctx);
         addAdminLog(
           'console',
-          `Updated server settings by admin '${adminUser}'`,
+          `Updated server settings by admin '${adminUser}' (full JSON)`,
         );
 
         ctx.body = { ok: true, message: 'Settings updated successfully' };
