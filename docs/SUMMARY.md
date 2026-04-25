@@ -34,6 +34,7 @@
 - [Skyrim Platform](docs_skyrim_platform.md)
 - [Server Data Directory](docs_server_data_directory.md)
 - [Resource Auto-Download](docs_resource_auto_download.md)
+- [Multi-Character System Plan](docs_multicharacter_system_plan.md)
 
 ## Game Mechanics
 

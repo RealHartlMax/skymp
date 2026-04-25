@@ -1,5 +1,13 @@
 # Usage: "cmake -P generate_server_settings.cmake -DESM_PREFIX=<prefix_here> -DSERVER_SETTINGS_JSON_PATH=<path_to_server_settings.json> -DOFFLINE_MODE=<true_or_false>"
 
+if(NOT DEFINED MASTER_URL OR "${MASTER_URL}" STREQUAL "")
+    set(MASTER_URL "https://api.skymp-worlds.net")
+endif()
+
+if(NOT DEFINED MASTER_HEARTBEAT_INTERVAL_MS OR "${MASTER_HEARTBEAT_INTERVAL_MS}" STREQUAL "")
+    set(MASTER_HEARTBEAT_INTERVAL_MS "15000")
+endif()
+
 # read current server-settings.json
 if(EXISTS "${SERVER_SETTINGS_JSON_PATH}")
     file(READ "${SERVER_SETTINGS_JSON_PATH}" SERVER_SETTINGS_JSON)
@@ -60,7 +68,33 @@ if(OFFLINE_MODE)
     string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "master" "\"\"")
 else()
     string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "offlineMode" "false")
-    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "master" "\"https://gateway.skymp.net\"")
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "master" "\"${MASTER_URL}\"")
+endif()
+
+string(JSON _MASTER_HEARTBEAT_INTERVAL_VALUE ERROR_VARIABLE _MASTER_HEARTBEAT_INTERVAL_ERROR GET "${SERVER_SETTINGS_JSON}" "masterHeartbeatIntervalMs")
+if(_MASTER_HEARTBEAT_INTERVAL_ERROR)
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "masterHeartbeatIntervalMs" "${MASTER_HEARTBEAT_INTERVAL_MS}")
+endif()
+
+if(DEFINED DEFAULT_GAMEMODE AND NOT "${DEFAULT_GAMEMODE}" STREQUAL "")
+    string(JSON _GAMEMODE_VALUE ERROR_VARIABLE _GAMEMODE_ERROR GET "${SERVER_SETTINGS_JSON}" "gamemode")
+    if(_GAMEMODE_ERROR)
+        string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "gamemode" "\"${DEFAULT_GAMEMODE}\"")
+    endif()
+endif()
+
+if(DEFINED DEFAULT_COUNTRY_CODE AND NOT "${DEFAULT_COUNTRY_CODE}" STREQUAL "")
+    string(JSON _COUNTRY_CODE_VALUE ERROR_VARIABLE _COUNTRY_CODE_ERROR GET "${SERVER_SETTINGS_JSON}" "countryCode")
+    if(_COUNTRY_CODE_ERROR)
+        string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "countryCode" "\"${DEFAULT_COUNTRY_CODE}\"")
+    endif()
+endif()
+
+if(DEFINED DEFAULT_PUBLIC_HOST AND NOT "${DEFAULT_PUBLIC_HOST}" STREQUAL "")
+    string(JSON _PUBLIC_HOST_VALUE ERROR_VARIABLE _PUBLIC_HOST_ERROR GET "${SERVER_SETTINGS_JSON}" "publicHost")
+    if(_PUBLIC_HOST_ERROR)
+        string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "publicHost" "\"${DEFAULT_PUBLIC_HOST}\"")
+    endif()
 endif()
 
 string(JSON _JOIN_MODE_VALUE ERROR_VARIABLE _JOIN_MODE_ERROR GET "${SERVER_SETTINGS_JSON}" "joinAccess" "mode")
@@ -80,6 +114,30 @@ if(_DISCORD_BOT_ENABLED_ERROR)
     string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "discordBot" "token" "\"\"")
     string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "discordBot" "guildId" "\"\"")
     string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "discordBot" "warningsChannelId" "\"\"")
+endif()
+
+# Ensure Admin UI networking keys exist for packaged builds.
+# If these keys are missing, `/admin` can become hard to discover because
+# UI HTTP falls back to gameplay `port` and adminApi metadata is absent.
+string(JSON _UI_PORT_VALUE ERROR_VARIABLE _UI_PORT_ERROR GET "${SERVER_SETTINGS_JSON}" "uiPort")
+if(_UI_PORT_ERROR)
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "uiPort" "8080")
+endif()
+
+string(JSON _UI_LISTEN_HOST_VALUE ERROR_VARIABLE _UI_LISTEN_HOST_ERROR GET "${SERVER_SETTINGS_JSON}" "uiListenHost")
+if(_UI_LISTEN_HOST_ERROR)
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "uiListenHost" "\"0.0.0.0\"")
+endif()
+
+string(JSON _ADMIN_API_ENABLED_VALUE ERROR_VARIABLE _ADMIN_API_ENABLED_ERROR GET "${SERVER_SETTINGS_JSON}" "adminApi" "enabled")
+if(_ADMIN_API_ENABLED_ERROR)
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "adminApi" "{}")
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "adminApi" "enabled" "true")
+endif()
+
+string(JSON _ADMIN_API_EXTERNAL_URL_VALUE ERROR_VARIABLE _ADMIN_API_EXTERNAL_URL_ERROR GET "${SERVER_SETTINGS_JSON}" "adminApi" "externalUrl")
+if(_ADMIN_API_EXTERNAL_URL_ERROR)
+    string(JSON SERVER_SETTINGS_JSON SET "${SERVER_SETTINGS_JSON}" "adminApi" "externalUrl" "\"\"")
 endif()
 
 file(WRITE "${SERVER_SETTINGS_JSON_PATH}" "${SERVER_SETTINGS_JSON}")

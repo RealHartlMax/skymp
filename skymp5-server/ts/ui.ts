@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as koaBody from 'koa-body';
+import * as os from 'os';
 import * as path from 'path';
 import Axios from 'axios';
 import { spawn } from 'child_process';
@@ -4637,6 +4638,43 @@ export const pushEnvironmentChange = (
   addEnvironmentChange(type, description);
 };
 
+const getLanIpv4Addresses = (): string[] => {
+  const interfaces = os.networkInterfaces();
+  const result = new Set<string>();
+
+  Object.values(interfaces).forEach((entries) => {
+    (entries || []).forEach((entry) => {
+      if (!entry || entry.internal || entry.family !== 'IPv4') return;
+      result.add(entry.address);
+    });
+  });
+
+  return Array.from(result.values());
+};
+
+const logDashboardUrls = (uiPort: number, uiListenHost: string): void => {
+  const path = '/admin?devUi=1&admin=1';
+  console.log(`[Admin] Dashboard (localhost): http://localhost:${uiPort}${path}`);
+
+  if (uiListenHost === '0.0.0.0') {
+    const lanIps = getLanIpv4Addresses();
+    if (lanIps.length > 0) {
+      lanIps.forEach((ip) => {
+        console.log(`[Admin] Dashboard (LAN): http://${ip}:${uiPort}${path}`);
+      });
+    } else {
+      console.log(
+        `[Admin] Dashboard (LAN): no IPv4 interface detected on this device`,
+      );
+    }
+    return;
+  }
+
+  console.log(
+    `[Admin] Dashboard (host): http://${uiListenHost}:${uiPort}${path}`,
+  );
+};
+
 export const main = (settings: Settings): void => {
   metricsAuthParse(settings);
   adminAuthParse(settings);
@@ -4680,7 +4718,9 @@ export const main = (settings: Settings): void => {
           }),
         );
         console.log(`Server resources folder is listening on ${uiPort}`);
-        http.createServer(appProxy.callback()).listen(uiPort, uiListenHost);
+        http.createServer(appProxy.callback()).listen(uiPort, uiListenHost, () => {
+          logDashboardUrls(uiPort, uiListenHost);
+        });
       });
     })
     .catch(() => {
@@ -4689,6 +4729,7 @@ export const main = (settings: Settings): void => {
       const server = http.createServer(app.callback());
       server.listen(uiPort, uiListenHost, () => {
         setupLiveConsoleWebSocket(server);
+        logDashboardUrls(uiPort, uiListenHost);
       });
     });
 };

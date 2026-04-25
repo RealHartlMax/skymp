@@ -293,6 +293,14 @@ endif()
 
 message(STATUS "esm_prefix is '${esm_prefix}'")
 
+# Defaults for custom launcher/master deployments.
+# These can be overridden via -D on CMake configure.
+set(SKYMP_MASTER_URL "https://api.skymp-worlds.net" CACHE STRING "Master API base URL for server heartbeats and session APIs")
+set(SKYMP_MASTER_HEARTBEAT_INTERVAL_MS "15000" CACHE STRING "Heartbeat interval in milliseconds (clamped by runtime to 10-30s)")
+set(SKYMP_DEFAULT_GAMEMODE "" CACHE STRING "Optional default gamemode sent in heartbeats")
+set(SKYMP_DEFAULT_COUNTRY_CODE "" CACHE STRING "Optional default ISO country code sent in heartbeats (e.g. DE)")
+set(SKYMP_DEFAULT_PUBLIC_HOST "" CACHE STRING "Optional public host/IP override for heartbeat announcements")
+
 set(server_data_source_dir "")
 if(SKYRIM_DIR)
   set(server_data_source_dir "${SKYRIM_DIR}/Data")
@@ -307,7 +315,16 @@ if(TARGET ${PROJECT_NAME})
   # Using absolute CI build paths here would break the packaged release.
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX= -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMAND ${CMAKE_COMMAND}
+      -DESM_PREFIX=
+      -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json
+      -DOFFLINE_MODE=${OFFLINE_MODE}
+      -DMASTER_URL=${SKYMP_MASTER_URL}
+      -DMASTER_HEARTBEAT_INTERVAL_MS=${SKYMP_MASTER_HEARTBEAT_INTERVAL_MS}
+      -DDEFAULT_GAMEMODE=${SKYMP_DEFAULT_GAMEMODE}
+      -DDEFAULT_COUNTRY_CODE=${SKYMP_DEFAULT_COUNTRY_CODE}
+      -DDEFAULT_PUBLIC_HOST=${SKYMP_DEFAULT_PUBLIC_HOST}
+      -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
     COMMENT "Generating dist/server/server-settings.json (relative loadOrder)"
   )
 
@@ -315,7 +332,16 @@ if(TARGET ${PROJECT_NAME})
   # ESM_PREFIX so the server can resolve Skyrim data files directly.
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX=${esm_prefix} -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMAND ${CMAKE_COMMAND}
+      -DESM_PREFIX=${esm_prefix}
+      -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json
+      -DOFFLINE_MODE=${OFFLINE_MODE}
+      -DMASTER_URL=${SKYMP_MASTER_URL}
+      -DMASTER_HEARTBEAT_INTERVAL_MS=${SKYMP_MASTER_HEARTBEAT_INTERVAL_MS}
+      -DDEFAULT_GAMEMODE=${SKYMP_DEFAULT_GAMEMODE}
+      -DDEFAULT_COUNTRY_CODE=${SKYMP_DEFAULT_COUNTRY_CODE}
+      -DDEFAULT_PUBLIC_HOST=${SKYMP_DEFAULT_PUBLIC_HOST}
+      -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
     COMMENT "Generating server-settings-base.json (local dev with ESM_PREFIX)"
   )
 
