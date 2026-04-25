@@ -140,6 +140,119 @@ interface DownedPlayerEntry {
   canRespawn: boolean;
 }
 
+interface InstalledReleaseInfo {
+  version: string | null;
+  commitSha?: string | null;
+  builtAt?: string | null;
+  source?: string | null;
+}
+
+interface CachedLatestReleaseInfo {
+  fetchedAt: number;
+  payload: {
+    latestVersion: string | null;
+    releaseUrl: string;
+    publishedAt: string | null;
+    changelog: string;
+  };
+}
+
+const RELEASE_INFO_FILE = 'release-info.json';
+const LATEST_RELEASE_CACHE_MS = 15 * 60 * 1000;
+let latestReleaseCache: CachedLatestReleaseInfo | null = null;
+
+const parseReleaseVersion = (
+  value: string | null | undefined,
+): [number, number, number] | null => {
+  const match = String(value || '')
+    .trim()
+    .match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+};
+
+const isReleaseNewer = (
+  installedVersion: string | null,
+  latestVersion: string | null,
+): boolean => {
+  const installed = parseReleaseVersion(installedVersion);
+  const latest = parseReleaseVersion(latestVersion);
+  if (!installed || !latest) return false;
+
+  for (let i = 0; i < 3; i++) {
+    if (latest[i] > installed[i]) return true;
+    if (latest[i] < installed[i]) return false;
+  }
+
+  return false;
+};
+
+const readInstalledReleaseInfo = (): InstalledReleaseInfo => {
+  try {
+    const filePath = path.join(process.cwd(), RELEASE_INFO_FILE);
+    if (!fs.existsSync(filePath)) {
+      return { version: null };
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return {
+      version:
+        typeof parsed?.version === 'string' && parsed.version.trim().length > 0
+          ? parsed.version.trim()
+          : null,
+      commitSha:
+        typeof parsed?.commitSha === 'string' ? parsed.commitSha : null,
+      builtAt: typeof parsed?.builtAt === 'string' ? parsed.builtAt : null,
+      source: typeof parsed?.source === 'string' ? parsed.source : null,
+    };
+  } catch (error) {
+    console.error('Failed to read installed release info:', error);
+    return { version: null };
+  }
+};
+
+const fetchLatestReleaseInfo = async (): Promise<CachedLatestReleaseInfo['payload']> => {
+  if (
+    latestReleaseCache &&
+    Date.now() - latestReleaseCache.fetchedAt < LATEST_RELEASE_CACHE_MS
+  ) {
+    return latestReleaseCache.payload;
+  }
+
+  const response = await Axios.get(
+    'https://api.github.com/repos/skyrim-multiplayer/skymp/releases/latest',
+    {
+      timeout: 5000,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'SkyMP-AdminDashboard',
+      },
+    },
+  );
+
+  const payload = {
+    latestVersion:
+      typeof response.data?.tag_name === 'string'
+        ? response.data.tag_name
+        : null,
+    releaseUrl:
+      typeof response.data?.html_url === 'string' ? response.data.html_url : '',
+    publishedAt:
+      typeof response.data?.published_at === 'string'
+        ? response.data.published_at
+        : null,
+    changelog:
+      typeof response.data?.body === 'string' ? response.data.body : '',
+  };
+
+  latestReleaseCache = {
+    fetchedAt: Date.now(),
+    payload,
+  };
+
+  return payload;
+};
+
 interface TrackedRespawnState {
   actorName: string;
   isDead: boolean;
@@ -2979,6 +3092,38 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         port: settings.port,
         uptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
       };
+    });
+
+    router.get('/api/admin/update-status', async (ctx: any) => {
+      const installed = readInstalledReleaseInfo();
+
+      try {
+        const latest = await fetchLatestReleaseInfo();
+        ctx.body = {
+          ok: true,
+          installedVersion: installed.version,
+          installedCommitSha: installed.commitSha || null,
+          installedBuiltAt: installed.builtAt || null,
+          latestVersion: latest.latestVersion,
+          updateAvailable: isReleaseNewer(installed.version, latest.latestVersion),
+          releaseUrl: latest.releaseUrl,
+          publishedAt: latest.publishedAt,
+          changelog: latest.changelog,
+        };
+      } catch (error: any) {
+        ctx.body = {
+          ok: true,
+          installedVersion: installed.version,
+          installedCommitSha: installed.commitSha || null,
+          installedBuiltAt: installed.builtAt || null,
+          latestVersion: null,
+          updateAvailable: false,
+          releaseUrl: '',
+          publishedAt: null,
+          changelog: '',
+          error: error?.message || 'failed to fetch latest release',
+        };
+      }
     });
 
     router.post('/api/admin/server/control', (ctx: any) => {

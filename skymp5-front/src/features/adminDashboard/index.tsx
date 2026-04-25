@@ -149,6 +149,18 @@ interface AdminStatus {
   uptimeSec: number;
 }
 
+interface AdminUpdateStatus {
+  installedVersion: string | null;
+  installedCommitSha: string | null;
+  installedBuiltAt: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  publishedAt: string | null;
+  changelog: string;
+  error?: string;
+}
+
 interface PlayerPos {
   x: number;
   y: number;
@@ -480,6 +492,17 @@ const EMPTY_TOPBAR_ADMIN_FORM: TopbarAdminFormState = {
   user: '',
   role: 'moderator',
   discordId: '',
+};
+
+const EMPTY_ADMIN_UPDATE_STATUS: AdminUpdateStatus = {
+  installedVersion: null,
+  installedCommitSha: null,
+  installedBuiltAt: null,
+  latestVersion: null,
+  updateAvailable: false,
+  releaseUrl: '',
+  publishedAt: null,
+  changelog: '',
 };
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -830,6 +853,11 @@ const AdminDashboard = () => {
   const [topbarPlayersSearch, setTopbarPlayersSearch] = useState('');
   const [cfgEditorTab, setCfgEditorTab] = useState<CfgEditorTab>('general');
   const [cfgEditorSaving, setCfgEditorSaving] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<AdminUpdateStatus>(
+    EMPTY_ADMIN_UPDATE_STATUS,
+  );
+  const [updateStatusLoading, setUpdateStatusLoading] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [topbarPlayersSearchMode, setTopbarPlayersSearchMode] = useState<
     'name' | 'id'
   >('name');
@@ -1214,6 +1242,43 @@ const AdminDashboard = () => {
       });
     } catch {
       // silently ignore
+    }
+  }, []);
+
+  const fetchUpdateStatus = useCallback(async () => {
+    setUpdateStatusLoading(true);
+    try {
+      const res = await fetch('/api/admin/update-status');
+      if (!res.ok) return;
+      const payload = (await res.json()) as Partial<AdminUpdateStatus>;
+      setUpdateStatus({
+        installedVersion:
+          typeof payload.installedVersion === 'string'
+            ? payload.installedVersion
+            : null,
+        installedCommitSha:
+          typeof payload.installedCommitSha === 'string'
+            ? payload.installedCommitSha
+            : null,
+        installedBuiltAt:
+          typeof payload.installedBuiltAt === 'string'
+            ? payload.installedBuiltAt
+            : null,
+        latestVersion:
+          typeof payload.latestVersion === 'string'
+            ? payload.latestVersion
+            : null,
+        updateAvailable: Boolean(payload.updateAvailable),
+        releaseUrl: typeof payload.releaseUrl === 'string' ? payload.releaseUrl : '',
+        publishedAt:
+          typeof payload.publishedAt === 'string' ? payload.publishedAt : null,
+        changelog: typeof payload.changelog === 'string' ? payload.changelog : '',
+        error: typeof payload.error === 'string' ? payload.error : undefined,
+      });
+    } catch {
+      // silently ignore update status failures to keep dashboard usable offline
+    } finally {
+      setUpdateStatusLoading(false);
     }
   }, []);
 
@@ -2516,10 +2581,15 @@ const AdminDashboard = () => {
   const show = useCallback(async () => {
     setVisible(true);
     setLoading(true);
-    await Promise.all([fetchData(), fetchCapabilities(), fetchBans()]);
+    await Promise.all([
+      fetchData(),
+      fetchCapabilities(),
+      fetchBans(),
+      fetchUpdateStatus(),
+    ]);
     setLoading(false);
     intervalRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
-  }, [fetchBans, fetchCapabilities, fetchData]);
+  }, [fetchBans, fetchCapabilities, fetchData, fetchUpdateStatus]);
 
   const hide = useCallback(() => {
     setVisible(false);
@@ -2558,6 +2628,8 @@ const AdminDashboard = () => {
     setTopbarAdminForm(EMPTY_TOPBAR_ADMIN_FORM);
     setTopbarAdminSaving(false);
     setTopbarSystemStatus(null);
+    setUpdateStatus(EMPTY_ADMIN_UPDATE_STATUS);
+    setUpdateModalOpen(false);
     setSendMsgTargetId(null);
     setSendMsgText('');
     setModerationReason('');
@@ -3353,6 +3425,22 @@ const AdminDashboard = () => {
       return 'warn' as const;
     return 'ok' as const;
   }, [topbarSystemStatus]);
+  const installedVersionLabel =
+    updateStatus.installedVersion ||
+    t('adminDashboard.updateUnknownInstalled', {
+      defaultValue: 'unknown',
+    });
+  const latestVersionLabel =
+    updateStatus.latestVersion ||
+    t('adminDashboard.updateUnknownLatest', {
+      defaultValue: 'unavailable',
+    });
+  const formattedReleasePublishedAt = useMemo(() => {
+    if (!updateStatus.publishedAt) return '';
+    const parsed = new Date(updateStatus.publishedAt);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString();
+  }, [updateStatus.publishedAt]);
 
   if (!visible) return <></>;
 
@@ -3746,6 +3834,162 @@ const AdminDashboard = () => {
                 )}
               </div>
             </div>
+
+            <section
+              className={`admin-dashboard__update-banner${
+                updateStatus.updateAvailable
+                  ? ' admin-dashboard__update-banner--available'
+                  : ''
+              }`}
+              aria-label={t('adminDashboard.updateBannerTitle', {
+                defaultValue: 'Server update status',
+              })}
+            >
+              <div className="admin-dashboard__update-banner-copy">
+                <strong className="admin-dashboard__update-banner-title">
+                  {updateStatus.updateAvailable
+                    ? t('adminDashboard.updateAvailableTitle', {
+                        defaultValue: 'New server version available',
+                      })
+                    : t('adminDashboard.updateCurrentTitle', {
+                        defaultValue: 'Server version status',
+                      })}
+                </strong>
+                <span className="admin-dashboard__update-banner-text">
+                  {t('adminDashboard.updateInstalledLabel', {
+                    defaultValue: 'Installed',
+                  })}
+                  : {installedVersionLabel} · {t('adminDashboard.updateLatestLabel', {
+                    defaultValue: 'Latest',
+                  })}
+                  : {latestVersionLabel}
+                  {formattedReleasePublishedAt
+                    ? ` · ${t('adminDashboard.updatePublishedLabel', {
+                        defaultValue: 'Published',
+                      })}: ${formattedReleasePublishedAt}`
+                    : ''}
+                </span>
+              </div>
+              <div className="admin-dashboard__update-banner-actions">
+                <button
+                  type="button"
+                  className="admin-dashboard__update-btn"
+                  onClick={() => setUpdateModalOpen(true)}
+                >
+                  {t('adminDashboard.updateViewChangelog', {
+                    defaultValue: 'View changelog',
+                  })}
+                </button>
+                {updateStatus.releaseUrl && (
+                  <a
+                    className="admin-dashboard__update-btn admin-dashboard__update-btn--link"
+                    href={updateStatus.releaseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t('adminDashboard.updateOpenRelease', {
+                      defaultValue: 'Open release',
+                    })}
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="admin-dashboard__update-btn admin-dashboard__update-btn--secondary"
+                  onClick={() => {
+                    void fetchUpdateStatus();
+                  }}
+                  disabled={updateStatusLoading}
+                >
+                  {updateStatusLoading
+                    ? t('adminDashboard.loading')
+                    : t('adminDashboard.updateRefresh', {
+                        defaultValue: 'Refresh',
+                      })}
+                </button>
+              </div>
+            </section>
+
+            {updateModalOpen && (
+              <div
+                className="admin-dashboard__update-modal-backdrop"
+                onClick={() => setUpdateModalOpen(false)}
+              >
+                <div
+                  className="admin-dashboard__update-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={t('adminDashboard.updateModalTitle', {
+                    defaultValue: 'Server update changelog',
+                  })}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="admin-dashboard__update-modal-head">
+                    <div>
+                      <h3>
+                        {t('adminDashboard.updateModalTitle', {
+                          defaultValue: 'Server update changelog',
+                        })}
+                      </h3>
+                      <p>
+                        {t('adminDashboard.updateInstalledLabel', {
+                          defaultValue: 'Installed',
+                        })}
+                        : {installedVersionLabel} · {t(
+                          'adminDashboard.updateLatestLabel',
+                          {
+                            defaultValue: 'Latest',
+                          },
+                        )}
+                        : {latestVersionLabel}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUpdateModalOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="admin-dashboard__update-modal-body">
+                    {updateStatus.error && (
+                      <p className="admin-dashboard__update-modal-error">
+                        {t('adminDashboard.updateFetchError', {
+                          defaultValue:
+                            'Latest release information is currently unavailable.',
+                        })}
+                      </p>
+                    )}
+                    <pre className="admin-dashboard__update-modal-changelog">
+                      {updateStatus.changelog ||
+                        t('adminDashboard.updateNoChangelog', {
+                          defaultValue: 'No changelog text available for the latest release.',
+                        })}
+                    </pre>
+                  </div>
+                  <div className="admin-dashboard__update-modal-foot">
+                    {updateStatus.releaseUrl && (
+                      <a
+                        className="admin-dashboard__update-btn admin-dashboard__update-btn--link"
+                        href={updateStatus.releaseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t('adminDashboard.updateOpenRelease', {
+                          defaultValue: 'Open release',
+                        })}
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      className="admin-dashboard__update-btn admin-dashboard__update-btn--secondary"
+                      onClick={() => setUpdateModalOpen(false)}
+                    >
+                      {t('adminDashboard.exit')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* System Dropdown Subsections */}
             {systemSectionActive && (

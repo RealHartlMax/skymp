@@ -12,6 +12,8 @@ You obviously need to have 64-bit Windows version since the server is 64-bit pro
 
 You are able to build whole project from sources. Server build would be in `build/dist/server`. Use `launch_server.bat` to launch. A convenience launcher is also generated as `build/launch_server.bat`.
 
+Downloaded server builds should be unpacked into a dedicated server folder. Future updates can be applied with `update_server.ps1` from the server package root while preserving `data` and `server-settings.json`.
+
 `launch_server.bat` now includes restart protection: before starting a new server process it checks for an already running `dist_back/skymp5-server.js` process and terminates it automatically.
 
 ### Linux
@@ -19,6 +21,8 @@ You are able to build whole project from sources. Server build would be in `buil
 Linux server support is prepared for source builds.
 
 If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
+
+Downloaded server builds can be updated in place with `update_server.sh --package /path/to/release.tar.gz` from the server package root. The script backs up and preserves `data` and `server-settings.json`.
 
 Client support remains Windows-first, but the dedicated server can be prepared for Linux environments.
 

@@ -102,6 +102,16 @@ file(CHMOD ${CMAKE_BINARY_DIR}/dist/server/launch_server.sh
     WORLD_READ WORLD_EXECUTE
 )
 
+configure_file(${CMAKE_SOURCE_DIR}/misc/update/update_server.sh ${CMAKE_BINARY_DIR}/dist/server/update_server.sh COPYONLY)
+file(CHMOD ${CMAKE_BINARY_DIR}/dist/server/update_server.sh
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
+configure_file(${CMAKE_SOURCE_DIR}/misc/update/update_server.ps1 ${CMAKE_BINARY_DIR}/dist/server/update_server.ps1 COPYONLY)
+
 set(launch_server_sh_dev "#!/usr/bin/env sh\n")
 set(launch_server_sh_dev "${launch_server_sh_dev}set -eu\n")
 set(launch_server_sh_dev "${launch_server_sh_dev}SCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\n")

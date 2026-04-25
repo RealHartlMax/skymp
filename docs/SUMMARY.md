@@ -20,6 +20,7 @@
 ## Server Usage
 
 - [Running A Server](docs_running_a_server.md)
+- [Server Update Playbook](docs_server_update_playbook.md)
 - [Server Configuration Reference](docs_server_configuration_reference.md)
 - [Server Command Line Api](docs_server_command_line_api.md)
 - [Admin Discord OAuth](docs_admin_discord_oauth.md)

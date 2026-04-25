@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+      changelog: ${{ steps.version.outputs.changelog }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -38,51 +40,141 @@ jobs:
         id: version
         run: |
           latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          range_spec="HEAD"
+          if [ -n "$latest_tag" ]; then
+            range_spec="${latest_tag}..HEAD"
+          fi
+
+          commit_count=$(git rev-list --count "$range_spec")
+          if [ "$commit_count" -eq 0 ]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "changelog<<EOF"
+              echo "No commits found for release range."
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "No commits in range, skipping release."
+            exit 0
+          fi
+
+          major_entries=""
+          feat_entries=""
+          patch_entries=""
+          other_entries=""
+
+          while IFS='|' read -r subject sha; do
+            [ -z "$subject" ] && continue
+            full_message=$(git show -s --format=%B "$sha")
+            entry="- ${subject} (${sha})"
+
+            if echo "$full_message" | grep -Eiq 'BREAKING CHANGE|^[a-z]+(\([^)]+\))?!:|^(major|breaking)(\([^)]+\))?:'; then
+              major_entries="${major_entries}${entry}\n"
+            elif echo "$subject" | grep -Eiq '^feat(\([^)]+\))?:'; then
+              feat_entries="${feat_entries}${entry}\n"
+            elif echo "$subject" | grep -Eiq '^(fix|perf|refactor)(\([^)]+\))?:'; then
+              patch_entries="${patch_entries}${entry}\n"
+            else
+              other_entries="${other_entries}${entry}\n"
+            fi
+          done < <(git log --format='%s|%h' "$range_spec")
+
+          should_release="false"
 
           if [ -z "$latest_tag" ]; then
-            new_version="v1.0.0"
-            bump="initial"
+            base_major=0
+            base_minor=0
+            base_patch=0
           else
-            major=$(echo "$latest_tag" | sed 's/v\([0-9]*\)\..*/\1/')
-            minor=$(echo "$latest_tag" | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/')
-            patch=$(echo "$latest_tag" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/')
-
-            commit_messages=$(git log --format=%B "${latest_tag}..HEAD")
-
-            # Conventional Commits-style bump rules:
-            # - major: BREAKING CHANGE footer, type!:, major:, or breaking:
-            # - minor: feat:
-            # - patch: fix:/perf:/refactor: (default when nothing matches)
-            if echo "$commit_messages" | grep -Eiq 'BREAKING CHANGE|^(major|breaking)(\([^)]+\))?:|^[a-z]+(\([^)]+\))?!:'; then
-              bump="major"
-            elif echo "$commit_messages" | grep -Eiq '^feat(\([^)]+\))?:'; then
-              bump="minor"
-            elif echo "$commit_messages" | grep -Eiq '^(fix|perf|refactor)(\([^)]+\))?:'; then
-              bump="patch"
-            else
-              bump="patch"
-            fi
-
-            if [ "$bump" = "major" ]; then
-              major=$((major + 1))
-              minor=0
-              patch=0
-            elif [ "$bump" = "minor" ]; then
-              minor=$((minor + 1))
-              patch=0
-            else
-              patch=$((patch + 1))
-            fi
-
-            new_version="v${major}.${minor}.${patch}"
+            base_major=$(echo "$latest_tag" | sed 's/v\([0-9]*\)\..*/\1/')
+            base_minor=$(echo "$latest_tag" | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/')
+            base_patch=$(echo "$latest_tag" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/')
           fi
+
+          if [ -n "$major_entries" ]; then
+            bump="major"
+            should_release="true"
+          elif [ -n "$feat_entries" ]; then
+            bump="minor"
+            should_release="true"
+          elif [ -n "$patch_entries" ]; then
+            bump="patch"
+            should_release="true"
+          else
+            bump="none"
+          fi
+
+          if [ "$should_release" = "true" ]; then
+            if [ -z "$latest_tag" ]; then
+              new_version="v1.0.0"
+            elif [ "$bump" = "major" ]; then
+              base_major=$((base_major + 1))
+              base_minor=0
+              base_patch=0
+              new_version="v${base_major}.${base_minor}.${base_patch}"
+            elif [ "$bump" = "minor" ]; then
+              base_minor=$((base_minor + 1))
+              base_patch=0
+              new_version="v${base_major}.${base_minor}.${base_patch}"
+            else
+              base_patch=$((base_patch + 1))
+              new_version="v${base_major}.${base_minor}.${base_patch}"
+            fi
+          else
+            new_version=""
+          fi
+
+          since_label="project start"
+          if [ -n "$latest_tag" ]; then
+            since_label="$latest_tag"
+          fi
+
+          changelog_file=$(mktemp)
+          {
+            echo "## Changes since ${since_label}"
+            echo
+            if [ -n "$major_entries" ]; then
+              echo "### Major"
+              printf "%b" "$major_entries"
+              echo
+            fi
+            if [ -n "$feat_entries" ]; then
+              echo "### Features"
+              printf "%b" "$feat_entries"
+              echo
+            fi
+            if [ -n "$patch_entries" ]; then
+              echo "### Fixes and Improvements"
+              printf "%b" "$patch_entries"
+              echo
+            fi
+            if [ -n "$other_entries" ]; then
+              echo "### Other Changes"
+              printf "%b" "$other_entries"
+              echo
+            fi
+          } > "$changelog_file"
+
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          {
+            echo "changelog<<EOF"
+            cat "$changelog_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
           echo "Bump type: $bump"
-          echo "Next version: $new_version"
+          echo "Should release: $should_release"
+          if [ "$should_release" = "true" ]; then
+            echo "Next version: $new_version"
+          else
+            echo "No release trigger detected (accepted: fix/feat/major/breaking/!)."
+          fi
 
   windows-server-files:
     name: Windows server files
     needs: determine-version
+    if: needs.determine-version.outputs.should_release == 'true'
     runs-on: windows-2022
     permissions:
       contents: read
@@ -107,12 +199,14 @@ jobs:
           DEPLOY_BRANCH: ""
           DIST_ARTIFACT_NAME: running_server_files_windows_dist
           SERVER_DIST_ARTIFACT_NAME: running_server_files_windows_server_dist
+          RELEASE_VERSION: ${{ needs.determine-version.outputs.version }}
           SKYMP5_PATCHES_PAT: ${{ github.token }}
           NUGET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   linux-server-files:
     name: Linux server files
     needs: determine-version
+    if: needs.determine-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     env:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}
@@ -159,6 +253,17 @@ jobs:
             "$SKYMP_VCPKG_DEPS_IMAGE" \
               ./build.sh --build --target skymp5-server
 
+      - name: Write server release metadata
+        run: |
+          cat > "${{ github.workspace }}/build/dist/server/release-info.json" <<EOF
+          {
+            "version": "${{ needs.determine-version.outputs.version }}",
+            "commitSha": "${{ github.sha }}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "source": "github-actions"
+          }
+          EOF
+
       - name: Pack server files
         run: |
           cd "${{ github.workspace }}/build"
@@ -173,6 +278,7 @@ jobs:
   release-server-files:
     name: Release server files
     needs: [determine-version, windows-server-files, linux-server-files]
+    if: needs.determine-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download Windows server artifact
@@ -197,6 +303,7 @@ jobs:
         with:
           tag_name: ${{ needs.determine-version.outputs.version }}
           name: ${{ needs.determine-version.outputs.version }}
+          body: ${{ needs.determine-version.outputs.changelog }}
           draft: false
           prerelease: false
           files: |
