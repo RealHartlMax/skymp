@@ -181,7 +181,7 @@ jobs:
       packages: write
     env:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}
-      VCPKG_BINARY_SOURCES: clear;nuget,GitHub,readwrite
+      VCPKG_BINARY_SOURCES: ${{ github.repository_owner == 'skyrim-multiplayer' && 'clear;nuget,GitHub,readwrite' || 'clear;nuget,GitHub,read' }}
       VCPKG_FEATURE_FLAGS: manifests
     steps:
       - uses: actions/checkout@v6
@@ -274,6 +274,15 @@ jobs:
         with:
           name: running_server_files_linux_server_dist
           path: ${{ github.workspace }}/build/running_server_files_linux_server_dist.tar.gz
+
+      - name: Upload vcpkg logs (Linux)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: running_server_files_linux_vcpkg_logs
+          path: |
+            ${{github.workspace}}/build/vcpkg-bootstrap.log
+            ${{github.workspace}}/vcpkg/buildtrees/**/*.log
 
   release-server-files:
     name: Release server files

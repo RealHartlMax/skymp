@@ -226,6 +226,17 @@ runs:
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+    - name: Enforce read-only NuGet cache on forks
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        if ("${{ github.repository_owner }}" -ne "skyrim-multiplayer" -and $env:VCPKG_BINARY_SOURCES -like '*readwrite*') {
+          $adjusted = $env:VCPKG_BINARY_SOURCES -replace 'readwrite', 'read'
+          "VCPKG_BINARY_SOURCES=$adjusted" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          $env:VCPKG_BINARY_SOURCES = $adjusted
+          Write-Host "Fork repository detected. Using read-only vcpkg binary cache mode: $adjusted"
+        }
+
     - name: Setup NuGet Credentials (PowerShell)
       if: runner.os == 'Windows'
       shell: powershell
