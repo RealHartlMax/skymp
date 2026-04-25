@@ -37,17 +37,47 @@ jobs:
       - name: Compute next version
         id: version
         run: |
-          latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+
           if [ -z "$latest_tag" ]; then
             new_version="v1.0.0"
+            bump="initial"
           else
             major=$(echo "$latest_tag" | sed 's/v\([0-9]*\)\..*/\1/')
             minor=$(echo "$latest_tag" | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/')
             patch=$(echo "$latest_tag" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/')
-            new_patch=$((patch + 1))
-            new_version="v${major}.${minor}.${new_patch}"
+
+            commit_messages=$(git log --format=%B "${latest_tag}..HEAD")
+
+            # Conventional Commits-style bump rules:
+            # - major: BREAKING CHANGE footer, type!:, major:, or breaking:
+            # - minor: feat:
+            # - patch: fix:/perf:/refactor: (default when nothing matches)
+            if echo "$commit_messages" | grep -Eiq 'BREAKING CHANGE|^(major|breaking)(\([^)]+\))?:|^[a-z]+(\([^)]+\))?!:'; then
+              bump="major"
+            elif echo "$commit_messages" | grep -Eiq '^feat(\([^)]+\))?:'; then
+              bump="minor"
+            elif echo "$commit_messages" | grep -Eiq '^(fix|perf|refactor)(\([^)]+\))?:'; then
+              bump="patch"
+            else
+              bump="patch"
+            fi
+
+            if [ "$bump" = "major" ]; then
+              major=$((major + 1))
+              minor=0
+              patch=0
+            elif [ "$bump" = "minor" ]; then
+              minor=$((minor + 1))
+              patch=0
+            else
+              patch=$((patch + 1))
+            fi
+
+            new_version="v${major}.${minor}.${patch}"
           fi
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "Bump type: $bump"
           echo "Next version: $new_version"
 
   windows-server-files:
@@ -149,7 +179,12 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: running_server_files_windows_server_dist
-          path: ./artifacts
+          path: ./artifacts/windows_server_files
+
+      - name: Pack Windows server artifact
+        run: |
+          cd ./artifacts/windows_server_files
+          zip -r ../running_server_files_windows_server_dist.zip .
 
       - name: Download Linux server artifact
         uses: actions/download-artifact@v8
