@@ -102,6 +102,8 @@ Optional automatic restart after file copy:
 - Windows: add `-StartAfter`
 - Linux: add `--start-after`
 
+When auto-restart is used, both update scripts start the packaged launcher (`launch_server.bat` / `launch_server.sh`) instead of invoking `node` directly. This keeps launcher-side safety checks active, including stale-process cleanup on Windows and runtime dependency bootstrap on first start.
+
 Both scripts preserve:
 
 - `data/`
@@ -110,6 +112,8 @@ Both scripts preserve:
 - `server-settings-merged.json`
 
 Both scripts also create a timestamped backup under `./backups/` before replacing runtime files.
+
+For downloaded builds, `node_modules` is allowed to be absent in the archive. The packaged launchers install runtime npm dependencies on first start when needed.
 
 ## Rollback Procedure
 

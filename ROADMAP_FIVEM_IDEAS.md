@@ -4,7 +4,7 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ---
 
-## ✅ Completed & Implemented Patterns
+## Completed & Implemented Patterns
 
 ### Property Binding Architecture
 
@@ -17,7 +17,7 @@ This roadmap translates key architectural concepts and best practices from FiveM
 ### Configuration-Driven Gameplay
 
 - **Implementation:** `startSpawn`, `starterInventory` configurable via server-settings.json
-- **Pattern:** Settings interface → CMake generation → Runtime property binding
+- **Pattern:** Settings interface -> CMake generation -> Runtime property binding
 - **Benefit:** Non-technical server admins can customize spawn points and starter gear without code changes
 - **Related Files:** settings.ts, spawn.ts, generate_server_settings.cmake
 
@@ -30,19 +30,51 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ---
 
-## 1. Resource Diagnostics & Validation Endpoint
+## 1. Resource Distribution API (Phase 1 - Done)
 
-**Goal:** Add a diagnostics endpoint (CLI or admin dashboard) to validate resource integrity, manifest correctness, and missing/corrupt files for both server and client.
+**Goal:** Public HTTP endpoints so clients can fetch the server's resource manifest and download individual files, forming the foundation for FiveM-style auto-download.
 
-- **Effort:** Medium
-- **Risk:** Low (isolated, non-intrusive)
-- **Affected Files:** skymp5-server, admin dashboard, manifestGen.ts, dataDir scripts
+- **Status:** Implemented -- `GET /api/resources/manifest` and `GET /api/resources/download/:name` in `skymp5-server/ts/ui.ts`
+- **Manifest response:** JSON with `version`, `generatedAt`, and per-resource `name/kind/size/sha256 hash`
+- **Download endpoint:** Streams the file after path-traversal validation; sets `X-Resource-Hash` header
+- **Security:** Path restricted to known resource roots (`dataDir`, `./scripts`, `./data`, `./skymp5-gamemode`)
+- **See:** `docs/docs_resource_auto_download.md` for full architecture
 
 ---
 
-## 2. State Bag System (Key-Value Sync)
+## 2. Resource Diagnostics & Validation Panel
 
-**Goal:** Implement a lightweight, extensible state bag system for per-entity, per-player, and global key-value sync, inspired by FiveM’s state bags. Enables efficient, granular sync and reduces heavy entity replication.
+**Goal:** Wire the manifest data into the admin dashboard with a dedicated panel: show per-resource hash, size, kind; highlight missing or corrupt files; allow manual refresh.
+
+- **Effort:** Medium
+- **Risk:** Low (isolated, non-intrusive)
+- **Affected Files:** skymp5-front admin dashboard, `ui.ts`
+
+---
+
+## 3. Client-Side Resource Sync (Phase 2)
+
+**Goal:** On connect, the client fetches `/api/resources/manifest`, compares hashes with its local cache (`dataDir/cache/resources/`), downloads missing or changed files, and loads them before entering the world.
+
+- **Effort:** High
+- **Risk:** Medium (requires changes in `skymp5-client`)
+- **Affected Files:** `skymp5-client/src/services/services/remoteServer.ts`, cache manager, resource loader
+
+---
+
+## 4. Resource Manifest & Dependency System (Phase 3)
+
+**Goal:** Extend the manifest with explicit dependency declarations, semantic versioning, and load-order constraints. Enables operators to declare `"requires": ["Skyrim.esm"]` style rules.
+
+- **Effort:** Medium
+- **Risk:** Medium (touches resource loading)
+- **Affected Files:** `manifestGen.ts`, dataDir, resource loader scripts
+
+---
+
+## 5. State Bag System (Key-Value Sync)
+
+**Goal:** Implement a lightweight, extensible state bag system for per-entity, per-player, and global key-value sync, inspired by FiveM's state bags. Enables efficient, granular sync and reduces heavy entity replication.
 
 - **Effort:** High
 - **Risk:** Medium-High (core sync changes)
@@ -50,29 +82,9 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ---
 
-## 3. Resource Manifest & Dependency System
+## 6. Entity Relevancy & Ownership Migration
 
-**Goal:** Refactor resource manifest to support explicit dependencies, versioning, and integrity checks. Enables robust resource management and future auto-download.
-
-- **Effort:** Medium
-- **Risk:** Medium (touches resource loading)
-- **Affected Files:** manifestGen.ts, dataDir, resource loader scripts
-
----
-
-## 4. Resource Auto-Download & Caching
-
-**Goal:** Implement server-driven resource/mod auto-download and client-side caching, similar to FiveM’s resource system. Players receive required mods/assets automatically.
-
-- **Effort:** High
-- **Risk:** High (security, bandwidth, UX)
-- **Affected Files:** skymp5-client, skymp5-server, resource loader, dataDir
-
----
-
-## 5. Entity Relevancy & Ownership Migration
-
-**Goal:** Introduce entity relevancy/culling and explicit ownership migration for efficient network sync and server authority, inspired by FiveM’s entity scoping and migration.
+**Goal:** Introduce entity relevancy/culling and explicit ownership migration for efficient network sync and server authority, inspired by FiveM's entity scoping and migration.
 
 - **Effort:** High
 - **Risk:** High (core sync/ownership logic)
@@ -82,11 +94,12 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ## Prioritization & Next Steps
 
-1. Start with Resource Diagnostics (low risk, high visibility)
-2. Prepare design docs for State Bag and Resource Manifest refactor
-3. Prototype Resource Auto-Download in a feature branch
-4. Plan for incremental rollout of Entity Relevancy/Ownership
+1. **Phase 1 done** -- Public manifest + download endpoints live in `ui.ts`; see `docs/docs_resource_auto_download.md`
+2. **Next** -- Admin dashboard panel for resource diagnostics (item 2, low risk)
+3. **Phase 2** -- Client-side manifest fetch, cache, and download on connect (item 3)
+4. **Phase 3** -- Dependency declarations and load-order in manifest (item 4)
+5. **Later** -- State Bag System and Entity Relevancy/Ownership
 
 ---
 
-_This roadmap is based on a deep analysis of FiveM’s architecture and tailored to SkyMP’s current pain points and future goals. Each task can be further broken down into subtasks as needed._
+_This roadmap is based on a deep analysis of FiveM's architecture and tailored to SkyMP's current pain points and future goals. Each task can be further broken down into subtasks as needed._

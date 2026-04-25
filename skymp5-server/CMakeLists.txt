@@ -301,9 +301,22 @@ elseif(UNIT_DATA_DIR)
 endif()
 
 if(TARGET ${PROJECT_NAME})
+  # Generate dist/server/server-settings.json with EMPTY ESM_PREFIX so that
+  # loadOrder entries are always relative filenames (e.g. "Skyrim.esm").
+  # The 'dataDir' field already tells the server where to find the files.
+  # Using absolute CI build paths here would break the packaged release.
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX=${esm_prefix} -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json -DSERVER_SETTINGS_BASE_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX= -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMENT "Generating dist/server/server-settings.json (relative loadOrder)"
+  )
+
+  # Generate server-settings-base.json for local dev/testing with the full
+  # ESM_PREFIX so the server can resolve Skyrim data files directly.
+  add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX=${esm_prefix} -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMENT "Generating server-settings-base.json (local dev with ESM_PREFIX)"
   )
 
   add_custom_command(

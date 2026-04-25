@@ -44,6 +44,14 @@ export const generateManifest = (settings: Settings): void => {
       ? loadOrderElement
       : path.join(settings.dataDir, espmName);
 
+    if (!fs.existsSync(espmPath)) {
+      console.warn(
+        `[manifestGen] Skipping missing file: ${espmPath}` +
+        ` (check that 'dataDir' in server-settings.json points to your Skyrim Data folder)`,
+      );
+      return;
+    }
+
     const buf: Uint8Array = fs.readFileSync(espmPath);
     manifest.mods.push({
       crc32: crc32.buf(buf),

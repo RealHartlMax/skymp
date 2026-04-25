@@ -111,6 +111,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | _Code Formatting_                | ✅ Done                           | ESLint configured; formatting conventions documented in CONTRIBUTING.md                                                  |
 | _Git Hooks_                      | ✅ Done                           | Husky + lint-staged for pre-commit checks                                                                                |
 | _Windows Launch Script Safety_   | ✅ Done                           | Generated `launch_server.bat` now terminates stale `dist_back/skymp5-server.js` processes before starting a new instance |
+| _Runtime Dependency Bootstrap_   | ✅ Done                           | Packaged `launch_server.bat` / `launch_server.sh` now validate Node.js availability and install missing runtime npm dependencies on first start when possible |
 | **IN PROGRESS:**                 | **Currently being worked on.**    |                                                                                                                          |
 | _Documentation_                  | 🔄 In Progress                    | Updated CONTRIBUTING.md with frontend setup and dev guidelines                                                           |
 | **TODO:**                        | **Planned features.**             |                                                                                                                          |
@@ -120,7 +121,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | _Build Optimization_             | 📋 Planned                        | Code splitting, lazy loading, bundle analysis                                                                            |
 | _Docker Support_                 | 📋 Planned                        | Dockerfile for frontend build and dev containers                                                                         |
 | _Environment Configuration_      | 📋 Planned                        | .env variables for API endpoints, feature flags                                                                          |
-| _Release Process_                | 📋 Planned                        | Semantic versioning, changelog automation, deployment steps                                                              |
+| _Release Process_                | ✅ Done (Repo-level)              | The server release workflow derives semantic versions from commits, gates releases on trigger commits, and generates grouped changelog text for release notes |
 | _Storybook_                      | 📋 Planned                        | Component library documentation and interactive examples                                                                 |
 | _Performance Profiling_          | 📋 Planned                        | Webpack Bundle Analyzer, React DevTools profiler guide                                                                   |
 
@@ -249,7 +250,7 @@ See `skymp5-front/package.json` for complete dependency list.
 3. **Week 3-4**: Expand admin resources/config track (resource actions, locale-routing form UX, guarded save policies) and add E2E scenarios
 4. **Week 4-5**: Complete mobile and accessibility pass for launcher/admin critical paths and add automated a11y checks
 5. **Week 5-6**: Implement build optimization track (code splitting/lazy loading) and baseline bundle monitoring
-6. **Week 6+**: CI/CD hardening and release process automation (artifacts, changelog discipline, deployment gates)
+6. **Week 6+**: CI/CD hardening and broader frontend verification gates (artifacts, lint/test/build enforcement, deployment discipline)
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
-import * as http from 'http';
+
 import * as os from 'os';
 import * as path from 'path';
 // @ts-ignore
@@ -339,22 +339,22 @@ const main = async () => {
 
   setupStreams(scampNative.getScampNative());
 
-  manifestGen.generateManifest(settingsObject);
+  try {
+    manifestGen.generateManifest(settingsObject);
+  } catch (e) {
+    console.error(
+      '[manifestGen] Failed to generate manifest (server will continue):',
+      e instanceof Error ? e.message : e,
+    );
+    console.error(
+      '[manifestGen] Make sure \'dataDir\' in server-settings.json points to your Skyrim Data folder',
+    );
+  }
   ui.main(settingsObject);
 
   let server: any;
-  let httpServer: http.Server | null = null;
 
   try {
-    // Start Koa HTTP server first (for WebSocket upgrade)
-    const app = require('./ui').default || require('./ui');
-    httpServer = app.listen(settingsObject.port, () => {
-      console.log(`HTTP server listening on port ${settingsObject.port}`);
-    });
-    // Setup WebSocket for live console
-    if (ui.setupLiveConsoleWebSocket) {
-      ui.setupLiveConsoleWebSocket(httpServer);
-    }
     server = createScampServer(settingsObject.allSettings);
     ui.setServer(server);
   } catch (e) {

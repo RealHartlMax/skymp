@@ -111,7 +111,7 @@ try {
 
     if ($StartAfter) {
         Write-Host '[SkyMP] Starting server...'
-        Start-Process -FilePath 'node' -ArgumentList 'dist_back/skymp5-server.js' -WorkingDirectory $resolvedInstallDir | Out-Null
+        Start-Process -FilePath (Join-Path $resolvedInstallDir 'launch_server.bat') -WorkingDirectory $resolvedInstallDir | Out-Null
     } else {
         Write-Host '[SkyMP] Update finished. Start the server with .\launch_server.bat'
     }

@@ -14,6 +14,8 @@ You are able to build whole project from sources. Server build would be in `buil
 
 Downloaded server builds should be unpacked into a dedicated server folder. Future updates can be applied with `update_server.ps1` from the server package root while preserving `data` and `server-settings.json`.
 
+If you use `update_server.ps1 -StartAfter`, the script starts the packaged `launch_server.bat`, so the same restart protection and runtime dependency bootstrap are reused after the update.
+
 `launch_server.bat` now includes restart protection: before starting a new server process it checks for an already running `dist_back/skymp5-server.js` process and terminates it automatically.
 
 `launch_server.bat` also validates runtime dependencies on startup: if `node` is missing it attempts automatic installation (via `winget` when available), and if `node_modules` is missing it installs runtime packages automatically.
@@ -25,6 +27,8 @@ Linux server support is prepared for source builds.
 If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
 
 Downloaded server builds can be updated in place with `update_server.sh --package /path/to/release.tar.gz` from the server package root. The script backs up and preserves `data` and `server-settings.json`.
+
+If you add `--start-after`, the update script starts the packaged `launch_server.sh`, so the same runtime dependency bootstrap path is reused after file replacement.
 
 `launch_server.sh` validates runtime dependencies on startup: if `node` is missing it attempts package-manager based installation, and if `node_modules` is missing it installs runtime packages automatically.
 

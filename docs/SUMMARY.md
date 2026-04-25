@@ -33,6 +33,7 @@
 - [Custom Respawn Control System](docs_respawn_control_system.md)
 - [Skyrim Platform](docs_skyrim_platform.md)
 - [Server Data Directory](docs_server_data_directory.md)
+- [Resource Auto-Download](docs_resource_auto_download.md)
 
 ## Game Mechanics
 

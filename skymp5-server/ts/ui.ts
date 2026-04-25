@@ -1245,6 +1245,16 @@ const resourceKindByExt = (ext: string): 'mod' | 'script' | null => {
   return null;
 };
 
+const computeResourceHash = (filePath: string): string => {
+  try {
+    const absPath = path.resolve(filePath);
+    const content = fs.readFileSync(absPath);
+    return 'sha256:' + crypto.createHash('sha256').update(content).digest('hex');
+  } catch {
+    return '';
+  }
+};
+
 const addResourceFromPath = (
   filePath: string,
   resources: Map<string, AdminResourceEntry>,
@@ -4474,6 +4484,71 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Public Resource Distribution API (FiveM-style auto-download, Phase 1)
+  // No authentication required — clients use this to sync resources on connect
+  // ---------------------------------------------------------------------------
+  router.get('/api/resources/manifest', (ctx: any) => {
+    const entries = listAdminResources(settings, dataDir);
+    const resources = entries.map((entry) => ({
+      name: entry.name,
+      kind: entry.kind,
+      size: entry.size,
+      hash: computeResourceHash(entry.path),
+    }));
+    ctx.body = {
+      version: '1',
+      generatedAt: new Date().toISOString(),
+      resources,
+    };
+  });
+
+  router.get('/api/resources/download/:name', (ctx: any) => {
+    // Reject any path separators to prevent directory traversal
+    const requestedName = path.basename(String(ctx.params.name ?? ''));
+    if (!requestedName || requestedName !== String(ctx.params.name ?? '')) {
+      ctx.status = 400;
+      ctx.body = { ok: false, error: 'invalid resource name' };
+      return;
+    }
+
+    const entries = listAdminResources(settings, dataDir);
+    const entry = entries.find((e) => e.name === requestedName);
+    if (!entry) {
+      ctx.status = 404;
+      ctx.body = { ok: false, error: 'resource not found' };
+      return;
+    }
+
+    const absPath = path.resolve(entry.path);
+    const allowedRoots = [
+      path.resolve(dataDir),
+      path.resolve('./'),
+      path.resolve('./scripts'),
+      path.resolve('./data'),
+      path.resolve('./skymp5-gamemode'),
+    ];
+    const isAllowed = allowedRoots.some(
+      (root) => absPath === root || absPath.startsWith(root + path.sep),
+    );
+    if (!isAllowed) {
+      ctx.status = 403;
+      ctx.body = { ok: false, error: 'access denied' };
+      return;
+    }
+
+    if (!fs.existsSync(absPath)) {
+      ctx.status = 404;
+      ctx.body = { ok: false, error: 'file not found on disk' };
+      return;
+    }
+
+    ctx.set('Content-Disposition', `attachment; filename="${entry.name}"`);
+    ctx.set('Content-Type', 'application/octet-stream');
+    ctx.set('X-Resource-Hash', computeResourceHash(entry.path));
+    ctx.body = fs.createReadStream(absPath);
+  });
+
   app.use(router.routes()).use(router.allowedMethods());
   app.use(serve('ui'));
   app.use(serve('data'));
@@ -4612,6 +4687,8 @@ export const main = (settings: Settings): void => {
       const app = createApp(settings, () => uiPort);
       console.log(`Server resources folder is listening on ${uiPort}`);
       const server = http.createServer(app.callback());
-      server.listen(uiPort, uiListenHost);
+      server.listen(uiPort, uiListenHost, () => {
+        setupLiveConsoleWebSocket(server);
+      });
     });
 };
