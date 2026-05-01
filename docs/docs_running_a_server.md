@@ -47,6 +47,22 @@ The admin dashboard is available at `http://<host>:<uiPort>/admin`.
 - `adminApi.externalUrl` can be left empty so the server auto-detects the external URL from `Host` and `X-Forwarded-Proto` headers.
 - Stop/Restart actions in the Admin dashboard are only enabled when a server supervisor is explicitly configured.
 
+### Runtime Readiness API (international support)
+
+For troubleshooting fresh installations, the admin API exposes a runtime readiness report at:
+
+- `GET /api/admin/runtime-readiness`
+
+The response contains language-neutral `code` values and an `overall` state (`ok`, `warn`, `error`) so operators can automate checks regardless of UI language.
+
+It validates common first-start requirements such as:
+
+- Launcher script presence (`launch_server.bat` / `launch_server.sh`)
+- `package.json` and server entrypoint availability (`dist_back/skymp5-server.js`)
+- `node` and `npm` availability
+- `node_modules` bootstrap state
+- `release-info.json` parse validity
+
 ## Configuration
 
 Once you build the server, you should be able to launch it. But default config values are only usable to verify that server works. After launching the server you will see a server called `My Server` in the master list: https://skymp.io/api/servers.

@@ -652,6 +652,69 @@ $admin-line: #2c4552;
     font-size: 13px;
   }
 
+  &__runtime-readiness {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(8, 12, 18, 0.38);
+  }
+
+  &__runtime-readiness-title {
+    margin: 0;
+    color: #f4f7fb;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  &__runtime-readiness-meta,
+  &__runtime-readiness-empty {
+    margin: 6px 0 0;
+    color: #a7b6ca;
+    font-size: 12px;
+  }
+
+  &__runtime-readiness-list {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__runtime-readiness-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.4;
+
+    &--ok {
+      color: #cff7e2;
+    }
+
+    &--warn {
+      color: #ffe8b8;
+    }
+
+    &--error {
+      color: #ffb8b8;
+    }
+  }
+
+  &__runtime-readiness-item-status {
+    min-width: 58px;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    opacity: 0.92;
+  }
+
+  &__runtime-readiness-item-text {
+    color: inherit;
+  }
+
   &__update-modal-changelog {
     margin: 0;
     white-space: pre-wrap;
@@ -926,6 +989,21 @@ $admin-line: #2c4552;
     tbody tr:last-child td {
       border-bottom: none;
     }
+  }
+
+  &__top-player-offline-badge {
+    display: inline-flex;
+    margin-left: 8px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #b4c4d8;
+    border: 1px solid rgba(180, 196, 216, 0.45);
+    background: rgba(180, 196, 216, 0.12);
+    vertical-align: middle;
   }
 
   // ---------------------------------------------------------------------------

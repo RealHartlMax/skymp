@@ -5,7 +5,7 @@ import * as koaBody from 'koa-body';
 import * as os from 'os';
 import * as path from 'path';
 import Axios from 'axios';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { AddressInfo } from 'net';
 import { WebSocket, WebSocketServer } from 'ws';
 
@@ -158,9 +158,77 @@ interface CachedLatestReleaseInfo {
   };
 }
 
+type RuntimeReadinessLevel = 'ok' | 'warn' | 'error';
+
+interface RuntimeReadinessCheck {
+  id:
+    | 'launcher'
+    | 'packageJson'
+    | 'entrypoint'
+    | 'node'
+    | 'npm'
+    | 'nodeModules'
+    | 'releaseInfo';
+  level: RuntimeReadinessLevel;
+  code: string;
+  message: string;
+}
+
+interface RuntimeReadinessReport {
+  checkedAt: string;
+  overall: RuntimeReadinessLevel;
+  checks: RuntimeReadinessCheck[];
+}
+
+interface CachedRuntimeReadiness {
+  fetchedAt: number;
+  payload: RuntimeReadinessReport;
+}
+
 const RELEASE_INFO_FILE = 'release-info.json';
 const LATEST_RELEASE_CACHE_MS = 15 * 60 * 1000;
+const RUNTIME_READINESS_CACHE_MS = 30 * 1000;
+const SERVER_ENTRYPOINT = path.join('dist_back', 'skymp5-server.js');
 let latestReleaseCache: CachedLatestReleaseInfo | null = null;
+let runtimeReadinessCache: CachedRuntimeReadiness | null = null;
+
+const stripBom = (text: string): string =>
+  text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+
+const parseInstalledReleaseInfoPayload = (text: string): any =>
+  JSON.parse(stripBom(text));
+
+const decodeBufferAsUtf16Be = (buffer: Buffer): string => {
+  const evenLength = buffer.length - (buffer.length % 2);
+  const swapped = Buffer.from(buffer.subarray(0, evenLength));
+  swapped.swap16();
+  return swapped.toString('utf16le');
+};
+
+const parseInstalledReleaseInfoFile = (filePath: string): any => {
+  const raw = fs.readFileSync(filePath);
+
+  const decodeAttempts: string[] = [];
+  if (raw.length >= 2 && raw[0] === 0xff && raw[1] === 0xfe) {
+    decodeAttempts.push(raw.subarray(2).toString('utf16le'));
+  }
+  if (raw.length >= 2 && raw[0] === 0xfe && raw[1] === 0xff) {
+    decodeAttempts.push(decodeBufferAsUtf16Be(raw.subarray(2)));
+  }
+  decodeAttempts.push(raw.toString('utf8'));
+  decodeAttempts.push(raw.toString('utf16le'));
+
+  let lastError: unknown = null;
+  for (const candidate of decodeAttempts) {
+    try {
+      return parseInstalledReleaseInfoPayload(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
 
 const parseReleaseVersion = (
   value: string | null | undefined,
@@ -195,7 +263,7 @@ const readInstalledReleaseInfo = (): InstalledReleaseInfo => {
       return { version: null };
     }
 
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const parsed = parseInstalledReleaseInfoFile(filePath);
     return {
       version:
         typeof parsed?.version === 'string' && parsed.version.trim().length > 0
@@ -210,6 +278,216 @@ const readInstalledReleaseInfo = (): InstalledReleaseInfo => {
     console.error('Failed to read installed release info:', error);
     return { version: null };
   }
+};
+
+const getCommandVersion = (
+  command: string,
+  args: string[] = ['--version'],
+): string | null => {
+  try {
+    const result = spawnSync(command, args, {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0) {
+      return null;
+    }
+
+    const output = String(result.stdout || result.stderr || '')
+      .trim()
+      .split(/\r?\n/)[0]
+      .trim();
+    return output || 'ok';
+  } catch {
+    return null;
+  }
+};
+
+const getRuntimeReadinessOverall = (
+  checks: RuntimeReadinessCheck[],
+): RuntimeReadinessLevel => {
+  if (checks.some((check) => check.level === 'error')) {
+    return 'error';
+  }
+  if (checks.some((check) => check.level === 'warn')) {
+    return 'warn';
+  }
+  return 'ok';
+};
+
+const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
+  const cwd = process.cwd();
+  const checks: RuntimeReadinessCheck[] = [];
+
+  const launchServerBat = path.join(cwd, 'launch_server.bat');
+  const launchServerSh = path.join(cwd, 'launch_server.sh');
+  const hasLauncher =
+    fs.existsSync(launchServerBat) || fs.existsSync(launchServerSh);
+  checks.push(
+    hasLauncher
+      ? {
+          id: 'launcher',
+          level: 'ok',
+          code: 'launcher_found',
+          message: 'Server launcher script is present.',
+        }
+      : {
+          id: 'launcher',
+          level: 'error',
+          code: 'launcher_missing',
+          message: 'No launch_server script was found in the server directory.',
+        },
+  );
+
+  const packageJsonPath = path.join(cwd, 'package.json');
+  const hasPackageJson = fs.existsSync(packageJsonPath);
+  checks.push(
+    hasPackageJson
+      ? {
+          id: 'packageJson',
+          level: 'ok',
+          code: 'package_json_found',
+          message: 'package.json is present.',
+        }
+      : {
+          id: 'packageJson',
+          level: 'error',
+          code: 'package_json_missing',
+          message: 'package.json is missing. Runtime dependencies cannot be resolved.',
+        },
+  );
+
+  const entrypointPath = path.join(cwd, SERVER_ENTRYPOINT);
+  const hasEntrypoint = fs.existsSync(entrypointPath);
+  checks.push(
+    hasEntrypoint
+      ? {
+          id: 'entrypoint',
+          level: 'ok',
+          code: 'entrypoint_found',
+          message: `${SERVER_ENTRYPOINT} is present.`,
+        }
+      : {
+          id: 'entrypoint',
+          level: 'error',
+          code: 'entrypoint_missing',
+          message: `${SERVER_ENTRYPOINT} is missing. Build output is incomplete.`,
+        },
+  );
+
+  const nodeVersion = getCommandVersion('node');
+  checks.push(
+    nodeVersion
+      ? {
+          id: 'node',
+          level: 'ok',
+          code: 'node_found',
+          message: `Node.js is available (${nodeVersion}).`,
+        }
+      : {
+          id: 'node',
+          level: 'warn',
+          code: 'node_not_found',
+          message:
+            'Node.js was not found in PATH. The launcher may auto-install it on supported systems.',
+        },
+  );
+
+  const npmVersion = getCommandVersion('npm');
+  checks.push(
+    npmVersion
+      ? {
+          id: 'npm',
+          level: 'ok',
+          code: 'npm_found',
+          message: `npm is available (${npmVersion}).`,
+        }
+      : {
+          id: 'npm',
+          level: 'warn',
+          code: 'npm_not_found',
+          message:
+            'npm was not found in PATH. Runtime dependencies may not auto-install on first launch.',
+        },
+  );
+
+  const hasNodeModules = fs.existsSync(path.join(cwd, 'node_modules'));
+  checks.push(
+    hasNodeModules
+      ? {
+          id: 'nodeModules',
+          level: 'ok',
+          code: 'node_modules_found',
+          message: 'node_modules directory is present.',
+        }
+      : {
+          id: 'nodeModules',
+          level: hasPackageJson ? 'warn' : 'error',
+          code: hasPackageJson
+            ? 'node_modules_missing_bootstrap_expected'
+            : 'node_modules_missing_no_package_json',
+          message: hasPackageJson
+            ? 'node_modules is missing. The launcher should install runtime dependencies on first start.'
+            : 'node_modules is missing and package.json is not available for dependency bootstrap.',
+        },
+  );
+
+  const releaseInfoPath = path.join(cwd, RELEASE_INFO_FILE);
+  if (!fs.existsSync(releaseInfoPath)) {
+    checks.push({
+      id: 'releaseInfo',
+      level: 'warn',
+      code: 'release_info_missing',
+      message:
+        'release-info.json is missing. Update-status metadata will be unavailable.',
+    });
+  } else {
+    try {
+      const parsed = parseInstalledReleaseInfoFile(releaseInfoPath);
+      const version =
+        typeof parsed?.version === 'string' && parsed.version.trim().length > 0
+          ? parsed.version.trim()
+          : null;
+      checks.push({
+        id: 'releaseInfo',
+        level: version ? 'ok' : 'warn',
+        code: version ? 'release_info_valid' : 'release_info_missing_version',
+        message: version
+          ? `release-info.json parsed successfully (${version}).`
+          : 'release-info.json parsed but does not contain a valid version string.',
+      });
+    } catch {
+      checks.push({
+        id: 'releaseInfo',
+        level: 'error',
+        code: 'release_info_invalid_json',
+        message:
+          'release-info.json exists but is not valid JSON (encoding/content issue).',
+      });
+    }
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    overall: getRuntimeReadinessOverall(checks),
+    checks,
+  };
+};
+
+const getRuntimeReadinessReport = (): RuntimeReadinessReport => {
+  if (
+    runtimeReadinessCache &&
+    Date.now() - runtimeReadinessCache.fetchedAt < RUNTIME_READINESS_CACHE_MS
+  ) {
+    return runtimeReadinessCache.payload;
+  }
+
+  const payload = buildRuntimeReadinessReport();
+  runtimeReadinessCache = {
+    fetchedAt: Date.now(),
+    payload,
+  };
+  return payload;
 };
 
 const fetchLatestReleaseInfo = async (): Promise<CachedLatestReleaseInfo['payload']> => {
@@ -3146,6 +3424,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.get('/api/admin/update-status', async (ctx: any) => {
       const installed = readInstalledReleaseInfo();
+      const runtimeReadiness = getRuntimeReadinessReport();
 
       try {
         const latest = await fetchLatestReleaseInfo();
@@ -3159,6 +3438,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           releaseUrl: latest.releaseUrl,
           publishedAt: latest.publishedAt,
           changelog: latest.changelog,
+          runtimeReadiness,
         };
       } catch (error: any) {
         ctx.body = {
@@ -3172,8 +3452,17 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           publishedAt: null,
           changelog: '',
           error: error?.message || 'failed to fetch latest release',
+          runtimeReadiness,
         };
       }
+    });
+
+    router.get('/api/admin/runtime-readiness', (ctx: any) => {
+      const runtimeReadiness = getRuntimeReadinessReport();
+      ctx.body = {
+        ok: true,
+        ...runtimeReadiness,
+      };
     });
 
     router.post('/api/admin/server/control', (ctx: any) => {
@@ -3576,7 +3865,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       updatePlayerStatsSnapshot(dataDir);
       const now = Date.now();
 
-      const players = getOnlinePlayerIds().map((userId) => {
+      const playersByUserId = new Map<number, any>();
+
+      getOnlinePlayerIds().forEach((userId) => {
         const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
         const stats = adminPlayerStats.get(userId);
         const sessionPlayMs = stats?.activeSessionStartedAt
@@ -3586,12 +3877,15 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           ((stats?.totalPlayMs ?? 0) + sessionPlayMs) / 1000,
         );
 
-        return {
+        playersByUserId.set(userId, {
           userId,
           actorId,
+          online: true,
           actorName: actorId
-            ? safeCall(() => gScampServer.getActorName(actorId), '')
-            : '',
+            ? safeCall(() => gScampServer.getActorName(actorId), '') ||
+              stats?.lastDisplayName ||
+              `userId=${userId}`
+            : stats?.lastDisplayName || `userId=${userId}`,
           ip: safeCall(() => gScampServer.getUserIp(userId), ''),
           pos: actorId
             ? safeCall(() => gScampServer.getActorPos(actorId), [])
@@ -3602,8 +3896,39 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           firstJoinedAt: stats?.firstJoinedAt ?? null,
           lastConnectionAt: stats?.lastConnectionAt ?? now,
           playTimeSec,
-        };
+        });
       });
+
+      adminPlayerStats.forEach((stats, userId) => {
+        if (playersByUserId.has(userId)) return;
+
+        const playTimeSec = Math.floor(Math.max(0, stats.totalPlayMs) / 1000);
+        playersByUserId.set(userId, {
+          userId,
+          actorId: 0,
+          online: false,
+          actorName: stats.lastDisplayName || `userId=${userId}`,
+          ip: '',
+          pos: [],
+          cellOrWorld: 0,
+          firstJoinedAt: stats.firstJoinedAt,
+          lastConnectionAt: stats.lastConnectionAt,
+          playTimeSec,
+        });
+      });
+
+      const players = Array.from(playersByUserId.values()).sort((a, b) => {
+        if (Boolean(a.online) !== Boolean(b.online)) {
+          return a.online ? -1 : 1;
+        }
+
+        const aLast = Number(a.lastConnectionAt || 0);
+        const bLast = Number(b.lastConnectionAt || 0);
+        if (aLast !== bLast) return bLast - aLast;
+
+        return Number(a.userId || 0) - Number(b.userId || 0);
+      });
+
       ctx.body = players;
     });
 

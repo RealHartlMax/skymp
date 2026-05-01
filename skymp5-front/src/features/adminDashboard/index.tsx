@@ -62,7 +62,28 @@ interface AdminUpdateStatus {
   releaseUrl: string;
   publishedAt: string | null;
   changelog: string;
+  runtimeReadiness: RuntimeReadinessReport | null;
   error?: string;
+}
+
+interface RuntimeReadinessCheck {
+  id:
+    | 'launcher'
+    | 'packageJson'
+    | 'entrypoint'
+    | 'node'
+    | 'npm'
+    | 'nodeModules'
+    | 'releaseInfo';
+  level: 'ok' | 'warn' | 'error';
+  code: string;
+  message: string;
+}
+
+interface RuntimeReadinessReport {
+  checkedAt: string;
+  overall: 'ok' | 'warn' | 'error';
+  checks: RuntimeReadinessCheck[];
 }
 
 interface PlayerPos {
@@ -74,6 +95,7 @@ interface PlayerPos {
 interface AdminPlayer {
   userId: number;
   actorId: number;
+  online?: boolean;
   actorName: string;
   ip: string;
   pos: PlayerPos | number[];
@@ -409,6 +431,7 @@ const EMPTY_ADMIN_UPDATE_STATUS: AdminUpdateStatus = {
   releaseUrl: '',
   publishedAt: null,
   changelog: '',
+  runtimeReadiness: null,
 };
 
 const REFRESH_INTERVAL_MS = 5000;
@@ -768,7 +791,7 @@ const AdminDashboard = () => {
     'name' | 'id'
   >('name');
   const [topbarPlayersFilter, setTopbarPlayersFilter] = useState<
-    'none' | 'online'
+    'none' | 'online' | 'offline'
   >('none');
   const [eventTypeFilter, setEventTypeFilter] = useState<
     '' | RevivalEventEntry['type']
@@ -1213,6 +1236,14 @@ const AdminDashboard = () => {
       const res = await fetch('/api/admin/update-status');
       if (!res.ok) return;
       const payload = (await res.json()) as Partial<AdminUpdateStatus>;
+
+      const runtimeReadinessRaw =
+        payload.runtimeReadiness &&
+        typeof payload.runtimeReadiness === 'object' &&
+        Array.isArray((payload.runtimeReadiness as any).checks)
+          ? (payload.runtimeReadiness as RuntimeReadinessReport)
+          : null;
+
       setUpdateStatus({
         installedVersion:
           typeof payload.installedVersion === 'string'
@@ -1235,6 +1266,7 @@ const AdminDashboard = () => {
         publishedAt:
           typeof payload.publishedAt === 'string' ? payload.publishedAt : null,
         changelog: typeof payload.changelog === 'string' ? payload.changelog : '',
+        runtimeReadiness: runtimeReadinessRaw,
         error: typeof payload.error === 'string' ? payload.error : undefined,
       });
     } catch {
@@ -2895,9 +2927,19 @@ const AdminDashboard = () => {
   }, [filteredCatalogItems]);
 
   const filteredPlayers = filterAdminPlayers(players, playerSearch);
+  const isPlayerOnline = useCallback(
+    (player: AdminPlayer): boolean =>
+      player.online === true || Number(player.actorId) > 0,
+    [],
+  );
   const filteredTopbarPlayers = useMemo(() => {
     const needle = topbarPlayersSearch.trim().toLowerCase();
-    const source = topbarPlayersFilter === 'online' ? players : players;
+    const source =
+      topbarPlayersFilter === 'online'
+        ? players.filter((player) => isPlayerOnline(player))
+        : topbarPlayersFilter === 'offline'
+          ? players.filter((player) => !isPlayerOnline(player))
+          : players;
     if (!needle) return source;
 
     if (topbarPlayersSearchMode === 'id') {
@@ -2909,6 +2951,7 @@ const AdminDashboard = () => {
       return name.includes(needle);
     });
   }, [
+    isPlayerOnline,
     players,
     topbarPlayersFilter,
     topbarPlayersSearch,
@@ -3338,7 +3381,9 @@ const AdminDashboard = () => {
       tone: downedPlayers.length > 0 ? 'warn' : 'neutral',
     },
   ];
-  const visibleRailPlayers = filteredPlayers.slice(0, 12);
+  const visibleRailPlayers = filteredPlayers
+    .filter((player) => isPlayerOnline(player))
+    .slice(0, 12);
   const selectedInventoryEntries = useMemo(() => {
     const rawEntries = playerInventory?.inventory?.entries;
     return Array.isArray(rawEntries) ? rawEntries : [];
@@ -3403,6 +3448,15 @@ const AdminDashboard = () => {
     if (Number.isNaN(parsed.getTime())) return '';
     return parsed.toLocaleString();
   }, [updateStatus.publishedAt]);
+  const runtimeReadiness = updateStatus.runtimeReadiness;
+  const runtimeOverall = runtimeReadiness?.overall || null;
+  const runtimeChecks = runtimeReadiness?.checks || [];
+  const runtimeCheckedAt = useMemo(() => {
+    if (!runtimeReadiness?.checkedAt) return '';
+    const parsed = new Date(runtimeReadiness.checkedAt);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString();
+  }, [runtimeReadiness?.checkedAt]);
 
   if (!visible) return <></>;
 
@@ -3830,7 +3884,11 @@ const AdminDashboard = () => {
                                   ))}
                                   {filteredPlayers.length === 0 && (
                                     <tr>
-                                      <td colSpan={3}>{t('adminDashboard.noPlayers')}</td>
+                                      <td colSpan={3}>
+                                        {t('adminDashboard.noPlayersStored', {
+                                          defaultValue: 'No players found yet',
+                                        })}
+                                      </td>
                                     </tr>
                                   )}
                                 </tbody>
@@ -3938,6 +3996,13 @@ const AdminDashboard = () => {
                         defaultValue: 'Published',
                       })}: ${formattedReleasePublishedAt}`
                     : ''}
+                  {runtimeOverall
+                    ? ` · ${t('adminDashboard.runtimeReadinessOverall', {
+                        defaultValue: 'Runtime',
+                      })}: ${t(`adminDashboard.runtimeStatus_${runtimeOverall}`, {
+                        defaultValue: runtimeOverall,
+                      })}`
+                    : ''}
                 </span>
               </div>
               <div className="admin-dashboard__update-banner-actions">
@@ -4029,6 +4094,48 @@ const AdminDashboard = () => {
                         })}
                       </p>
                     )}
+                    <section className="admin-dashboard__runtime-readiness">
+                      <h4 className="admin-dashboard__runtime-readiness-title">
+                        {t('adminDashboard.runtimeReadinessTitle', {
+                          defaultValue: 'Runtime readiness',
+                        })}
+                      </h4>
+                      {runtimeCheckedAt && (
+                        <p className="admin-dashboard__runtime-readiness-meta">
+                          {t('adminDashboard.runtimeReadinessCheckedAt', {
+                            defaultValue: 'Checked at',
+                          })}
+                          : {runtimeCheckedAt}
+                        </p>
+                      )}
+                      {runtimeChecks.length === 0 ? (
+                        <p className="admin-dashboard__runtime-readiness-empty">
+                          {t('adminDashboard.runtimeReadinessNoData', {
+                            defaultValue: 'No runtime readiness data available.',
+                          })}
+                        </p>
+                      ) : (
+                        <ul className="admin-dashboard__runtime-readiness-list">
+                          {runtimeChecks.map((check) => (
+                            <li
+                              key={`${check.id}:${check.code}`}
+                              className={`admin-dashboard__runtime-readiness-item admin-dashboard__runtime-readiness-item--${check.level}`}
+                            >
+                              <span className="admin-dashboard__runtime-readiness-item-status">
+                                {t(`adminDashboard.runtimeStatus_${check.level}`, {
+                                  defaultValue: check.level,
+                                })}
+                              </span>
+                              <span className="admin-dashboard__runtime-readiness-item-text">
+                                {t(`adminDashboard.runtimeCheckCode_${check.code}`, {
+                                  defaultValue: check.message,
+                                })}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
                     <pre className="admin-dashboard__update-modal-changelog">
                       {updateStatus.changelog ||
                         t('adminDashboard.updateNoChangelog', {
@@ -4507,7 +4614,7 @@ const AdminDashboard = () => {
                               value={topbarPlayersFilter}
                               onChange={(e) =>
                                 setTopbarPlayersFilter(
-                                  e.target.value as 'none' | 'online',
+                                  e.target.value as 'none' | 'online' | 'offline',
                                 )
                               }
                               aria-label={t('adminDashboard.topPlayersFilter', {
@@ -4522,6 +4629,11 @@ const AdminDashboard = () => {
                               <option value="online">
                                 {t('adminDashboard.topPlayersFilterOnline', {
                                   defaultValue: 'Only online',
+                                })}
+                              </option>
+                              <option value="offline">
+                                {t('adminDashboard.topPlayersFilterOffline', {
+                                  defaultValue: 'Only offline',
                                 })}
                               </option>
                             </select>
@@ -4575,6 +4687,13 @@ const AdminDashboard = () => {
                                   <td>
                                     {player.actorName ||
                                       `userId=${player.userId}`}
+                                    {!isPlayerOnline(player) && (
+                                      <span className="admin-dashboard__top-player-offline-badge">
+                                        {t('adminDashboard.topPlayersOffline', {
+                                          defaultValue: 'offline',
+                                        })}
+                                      </span>
+                                    )}
                                   </td>
                                   <td>
                                     {formatAdminUptime(
@@ -4605,7 +4724,9 @@ const AdminDashboard = () => {
                               {filteredTopbarPlayers.length === 0 && (
                                 <tr>
                                   <td colSpan={4}>
-                                    {t('adminDashboard.noPlayers')}
+                                    {t('adminDashboard.noPlayersStored', {
+                                      defaultValue: 'No players found yet',
+                                    })}
                                   </td>
                                 </tr>
                               )}
