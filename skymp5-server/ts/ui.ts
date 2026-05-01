@@ -1972,6 +1972,8 @@ const mergeAdminCapabilities = (
       typeof overrides.canUnmute === 'boolean'
         ? overrides.canUnmute
         : base.canUnmute,
+    canWarn:
+      typeof overrides.canWarn === 'boolean' ? overrides.canWarn : base.canWarn,
     canManageRespawn:
       typeof overrides.canManageRespawn === 'boolean'
         ? overrides.canManageRespawn

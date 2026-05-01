@@ -49,6 +49,10 @@ inputs:
     description: 'Set to false to skip ctest execution in packaging-only workflows'
     required: false
     default: 'true'
+  BUILD_FRONTEND_PRECHECK:
+    description: 'Set to false to skip early skymp5-front yarn build precheck'
+    required: false
+    default: 'true'
   RELEASE_VERSION:
     description: 'Optional release version string written into dist/server/release-info.json'
     required: false
@@ -62,6 +66,15 @@ runs:
       run: |
         $sha = git rev-parse HEAD
         echo "sha=$sha" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Setup Node.js with Yarn cache
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'yarn'
+        cache-dependency-path: |
+          ${{ github.workspace }}/skymp5-client/yarn.lock
+          ${{ github.workspace }}/skymp5-front/yarn.lock
 
     - name: Gather PRs
       if: ${{ inputs.DEPLOY_BRANCH != '' }}
@@ -106,7 +119,7 @@ runs:
       shell: powershell
 
     - name: Early build skymp5-front
-      if: ${{ inputs.EMSCRIPTEN != 'true' }}
+      if: ${{ inputs.EMSCRIPTEN != 'true' && inputs.BUILD_FRONTEND_PRECHECK == 'true' }}
       run: |
         cd ${{github.workspace}}/skymp5-front
         yarn install --frozen-lockfile
@@ -339,7 +352,7 @@ runs:
         throw "cef_sandbox.lib was not found in expected cef-prebuilt locations. Check NuGet auth/binary cache and cef-prebuilt overlay port installation."
 
     - name: Upload vcpkg logs (non-Windows)
-      if: ${{ always() && runner.os != 'Windows' }}
+      if: ${{ failure() && runner.os != 'Windows' }}
       uses: actions/upload-artifact@v7
       with:
         name: vcpkg_logs
@@ -349,7 +362,7 @@ runs:
 
     # actions/upload-artifact will not work for C:/vcpkg because it's not under github.workspace
     - name: Prepare vcpkg logs (Windows)
-      if: ${{ always() && runner.os == 'Windows' }}
+      if: ${{ failure() && runner.os == 'Windows' }}
       shell: powershell
       run: |
         $logDir = "${{ github.workspace }}\vcpkg_logs"
@@ -367,7 +380,7 @@ runs:
         }
 
     - name: Upload vcpkg logs (Windows)
-      if: ${{ always() && runner.os == 'Windows' }}
+      if: ${{ failure() && runner.os == 'Windows' }}
       uses: actions/upload-artifact@v7
       with:
         name: vcpkg_logs

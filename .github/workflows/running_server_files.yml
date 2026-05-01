@@ -194,6 +194,7 @@ jobs:
           DESCRIPTION: running_server_files-windows
           SKYRIM_VR_FLAG: OFF
           RUN_TESTS: false
+          BUILD_FRONTEND_PRECHECK: false
           SP_NEXUS_ARTIFACT_NAME: nope
           OFFLINE_MODE: OFF
           DEPLOY_BRANCH: ""
@@ -219,6 +220,13 @@ jobs:
       - name: Resolve base build image
         run: |
           cat ${{ github.workspace }}/misc/github_env_linux >> "$GITHUB_ENV"
+
+      - name: Setup Node.js with Yarn cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+          cache-dependency-path: ${{ github.workspace }}/skymp5-front/yarn.lock
 
       - name: Prepare workspace owner
         run: |
@@ -276,7 +284,7 @@ jobs:
           path: ${{ github.workspace }}/build/running_server_files_linux_server_dist.tar.gz
 
       - name: Upload vcpkg logs (Linux)
-        if: ${{ always() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v7
         with:
           name: running_server_files_linux_vcpkg_logs
