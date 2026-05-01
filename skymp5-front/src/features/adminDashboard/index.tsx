@@ -253,8 +253,7 @@ interface AdminCapabilities {
   canMute: boolean;
   canUnmute: boolean;
   canManageRespawn: boolean;
-  canManageRespawn: boolean;
-  canWarn?: boolean;
+  canWarn: boolean;
 }
 
 interface JoinAccessForm {
@@ -374,6 +373,7 @@ const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canMute: true,
   canUnmute: true,
   canManageRespawn: true,
+  canWarn: false,
 };
 
 const EMPTY_FRONTEND_METRICS_SUMMARY: FrontendMetricsSummary = {
@@ -672,7 +672,7 @@ const AdminDashboard = () => {
   const [adminRole, setAdminRole] = useState<AdminRole>('viewer');
   const [adminUser, setAdminUser] = useState('');
   const [capabilities, setCapabilities] =
-    useState<AdminCapabilities>({ ...DEFAULT_CAPABILITIES, canWarn: false });
+    useState<AdminCapabilities>(DEFAULT_CAPABILITIES);
   const [playerSearch, setPlayerSearch] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
@@ -801,6 +801,12 @@ const AdminDashboard = () => {
   const [sendMsgTargetName, setSendMsgTargetName] = useState('');
   const [sendMsgText, setSendMsgText] = useState('');
   const [sendMsgSending, setSendMsgSending] = useState(false);
+  const [warnDialogOpen, setWarnDialogOpen] = useState(false);
+  const [warnTargetId, setWarnTargetId] = useState<number | null>(null);
+  const [warnTargetName, setWarnTargetName] = useState('');
+  const [warnMessage, setWarnMessage] = useState('');
+  const [warnReason, setWarnReason] = useState('');
+  const [warnSending, setWarnSending] = useState(false);
   const [inventoryTargetUserId, setInventoryTargetUserId] = useState<
     number | null
   >(null);
@@ -1165,65 +1171,13 @@ const AdminDashboard = () => {
             ? payload.canUnmute
             : DEFAULT_CAPABILITIES.canUnmute,
         canManageRespawn:
-        canManageRespawn:
           typeof payload?.canManageRespawn === 'boolean'
             ? payload.canManageRespawn
             : DEFAULT_CAPABILITIES.canManageRespawn,
         canWarn:
           typeof payload?.canWarn === 'boolean'
             ? payload.canWarn
-            : false,
-        // --- Warn Player ---
-        const [warnDialogOpen, setWarnDialogOpen] = useState(false);
-        const [warnTargetId, setWarnTargetId] = useState<number | null>(null);
-        const [warnTargetName, setWarnTargetName] = useState('');
-        const [warnMessage, setWarnMessage] = useState('');
-        const [warnReason, setWarnReason] = useState('');
-        const [warnSending, setWarnSending] = useState(false);
-
-        const openWarnDialog = (userId: number, actorName: string) => {
-          setWarnTargetId(userId);
-          setWarnTargetName(actorName || String(userId));
-          setWarnMessage('');
-          setWarnReason('');
-          setWarnDialogOpen(true);
-        };
-
-        const closeWarnDialog = () => {
-          setWarnDialogOpen(false);
-          setWarnTargetId(null);
-          setWarnTargetName('');
-          setWarnMessage('');
-          setWarnReason('');
-          setWarnSending(false);
-        };
-
-        const sendWarn = async () => {
-          if (warnTargetId === null || !capabilities.canWarn) return;
-          const message = warnMessage.trim();
-          const reason = warnReason.trim();
-          if (!message) {
-            setStatusMsg(t('adminDashboard.warnMessageRequired', { defaultValue: 'Warn-Nachricht erforderlich.' }));
-            return;
-          }
-          setWarnSending(true);
-          try {
-            const res = await fetch(`/api/admin/players/${warnTargetId}/warn`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(reason ? { message, reason } : { message }),
-            });
-            setForbiddenAwareStatus(res, t('adminDashboard.warnSent', { defaultValue: 'Warnung gesendet.' }));
-            if (res.ok) {
-              closeWarnDialog();
-              await fetchTopbarHistory();
-            }
-          } catch {
-            setStatusMsg(t('adminDashboard.apiError'));
-          } finally {
-            setWarnSending(false);
-          }
-        };
+            : DEFAULT_CAPABILITIES.canWarn,
       });
     } catch {
       // silently ignore
@@ -2291,6 +2245,57 @@ const AdminDashboard = () => {
       setStatusMsg(t('adminDashboard.apiError'));
     } finally {
       setSendMsgSending(false);
+    }
+  };
+
+  const openWarnDialog = (userId: number, actorName: string) => {
+    setWarnTargetId(userId);
+    setWarnTargetName(actorName || String(userId));
+    setWarnMessage('');
+    setWarnReason('');
+    setWarnDialogOpen(true);
+  };
+
+  const closeWarnDialog = () => {
+    setWarnDialogOpen(false);
+    setWarnTargetId(null);
+    setWarnTargetName('');
+    setWarnMessage('');
+    setWarnReason('');
+    setWarnSending(false);
+  };
+
+  const sendWarn = async () => {
+    if (warnTargetId === null || !capabilities.canWarn) return;
+    const message = warnMessage.trim();
+    const reason = warnReason.trim();
+    if (!message) {
+      setStatusMsg(
+        t('adminDashboard.warnMessageRequired', {
+          defaultValue: 'Warn-Nachricht erforderlich.',
+        }),
+      );
+      return;
+    }
+    setWarnSending(true);
+    try {
+      const res = await fetch(`/api/admin/players/${warnTargetId}/warn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { message, reason } : { message }),
+      });
+      setForbiddenAwareStatus(
+        res,
+        t('adminDashboard.warnSent', { defaultValue: 'Warnung gesendet.' }),
+      );
+      if (res.ok) {
+        closeWarnDialog();
+        await fetchTopbarHistory();
+      }
+    } catch {
+      setStatusMsg(t('adminDashboard.apiError'));
+    } finally {
+      setWarnSending(false);
     }
   };
 

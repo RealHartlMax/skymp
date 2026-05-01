@@ -759,42 +759,6 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
   },
   viewer: {
     canKick: false,
-      canWarn: false,
-        // --- WARN ENDPOINT ---
-        router.post('/api/admin/players/:userId/warn', (ctx: any) => {
-          if (!ensureAdminCapability(settings, ctx, 'canWarn')) return;
-          const userId = Number(ctx.params.userId);
-          const message = String(ctx.request.body?.message ?? '').trim();
-          const reason = String(ctx.request.body?.reason ?? '').trim();
-          if (!Number.isFinite(userId) || !message) {
-            ctx.status = 400;
-            ctx.body = { ok: false, error: 'invalid payload' };
-            return;
-          }
-
-          // Send warning message to player
-          safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
-          safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
-
-          // Audit log/history
-          const { user: warnAuthor } = getAdminContext(settings, ctx);
-          const warnPlayerName =
-            adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
-          const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
-          addAdminLog(
-            'warn',
-            `Warned userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`,
-          );
-          addAdminHistory({
-            type: 'warn',
-            playerName: warnPlayerName,
-            userId,
-            reason: reason || message,
-            author: warnAuthor,
-          });
-          saveHistory(dataDir);
-          ctx.body = { ok: true, userId };
-        });
     canBan: false,
     canUnban: false,
     canConsole: false,
@@ -803,6 +767,7 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
     canMute: false,
     canUnmute: false,
     canManageRespawn: false,
+    canWarn: false,
   },
 };
 
@@ -4106,6 +4071,39 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         'console',
         `Message to userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`,
       );
+      ctx.body = { ok: true, userId };
+    });
+
+    router.post('/api/admin/players/:userId/warn', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canWarn')) return;
+      const userId = Number(ctx.params.userId);
+      const message = String(ctx.request.body?.message ?? '').trim();
+      const reason = String(ctx.request.body?.reason ?? '').trim();
+      if (!Number.isFinite(userId) || !message) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid payload' };
+        return;
+      }
+
+      safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+      safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+
+      const { user: warnAuthor } = getAdminContext(settings, ctx);
+      const warnPlayerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
+      addAdminLog(
+        'console',
+        `Warned userId=${userId}: ${message.slice(0, 120)}${reasonSuffix}`,
+      );
+      addAdminHistory({
+        type: 'warn',
+        playerName: warnPlayerName,
+        userId,
+        reason: reason || message,
+        author: warnAuthor,
+      });
+      saveHistory(dataDir);
       ctx.body = { ok: true, userId };
     });
 
