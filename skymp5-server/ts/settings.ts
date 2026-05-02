@@ -17,6 +17,32 @@ export interface DiscordAuthSettings {
   guilds: DiscordGuildConfig[];
 }
 
+export interface StartSpawnPoint {
+  pos: number[];
+  worldOrCell: string;
+  angleZ: number;
+}
+
+export interface StarterInventoryEntry {
+  baseId: number;
+  count: number;
+  health?: number;
+  enchantmentId?: number;
+  maxCharge?: number;
+  removeEnchantmentOnUnequip?: boolean;
+  chargePercent?: number;
+  name?: string;
+  soul?: 0 | 1 | 2 | 3 | 4 | 5;
+  poisonId?: number;
+  poisonCount?: number;
+  worn?: boolean;
+  wornLeft?: boolean;
+}
+
+export interface StarterInventory {
+  entries: StarterInventoryEntry[];
+}
+
 export class Settings {
   masterKey: string | null = null;
   port = 7777;
