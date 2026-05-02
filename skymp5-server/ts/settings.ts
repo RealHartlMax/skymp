@@ -5,38 +5,16 @@ import { Octokit } from '@octokit/rest';
 import { ArgumentParser } from 'argparse';
 import lodash from 'lodash';
 
-export interface DiscordAuthSettings {
-  botToken: string;
+export interface DiscordGuildConfig {
   guildId: string;
-  banRoleId: string;
+  banRoleId?: string;
   eventLogChannelId?: string;
   hideIpRoleId?: string;
 }
 
-export interface StartSpawnPoint {
-  pos: number[];
-  worldOrCell: string;
-  angleZ: number;
-}
-
-export interface StarterInventoryEntry {
-  baseId: number;
-  count: number;
-  health?: number;
-  enchantmentId?: number;
-  maxCharge?: number;
-  removeEnchantmentOnUnequip?: boolean;
-  chargePercent?: number;
-  name?: string;
-  soul?: 0 | 1 | 2 | 3 | 4 | 5;
-  poisonId?: number;
-  poisonCount?: number;
-  worn?: boolean;
-  wornLeft?: boolean;
-}
-
-export interface StarterInventory {
-  entries: StarterInventoryEntry[];
+export interface DiscordAuthSettings {
+  botToken: string;
+  guilds: DiscordGuildConfig[];
 }
 
 export class Settings {

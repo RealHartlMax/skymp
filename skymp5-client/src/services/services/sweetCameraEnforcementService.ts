@@ -1,12 +1,11 @@
-import { ButtonEvent, DxScanCode, Menu } from 'skyrimPlatform';
-import * as fs from 'fs';
-
-import { logError, logTrace } from '../../logging';
-import { MsgType } from '../../messages';
-import { ConnectionMessage } from '../events/connectionMessage';
-import { CustomPacketMessage } from '../messages/customPacketMessage';
-import { AnimDebugSettings } from '../messages_settings/animDebugSettings';
-import { ClientListener, CombinedController, Sp } from './clientListener';
+import { MsgType } from "../../messages";
+import { logTrace, logError } from "../../logging";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { AnimDebugSettings } from "../messages_settings/animDebugSettings";
+import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { ButtonEvent, DxScanCode, Menu } from "skyrimPlatform";
+import * as fs from "fs";
 
 const playerId = 0x14;
 
@@ -35,6 +34,29 @@ const translations = {
   },
   'en': {
     pressSpace: 'Space to exit animation',
+  },
+} as const;
+
+type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
+
+let strings: TranslationStrings = translations['en'];
+
+try {
+  const lang = fs.readFileSync('./Data/Platform/Distribution/locale', 'utf8').trim();
+  if (lang in translations) {
+    strings = translations[lang as keyof typeof translations];
+  }
+} catch {
+  // locale file not found or unreadable, default to 'en'
+}
+
+
+const translations = {
+  "ru": {
+    pressSpace: 'Пробел, чтобы выйти из анимации'
+  },
+  "en": {
+    pressSpace: 'Space to exit animation'
   },
 } as const;
 
@@ -463,8 +485,58 @@ export class SweetCameraEnforcementService extends ClientListener {
 
     const animEvent = this.settings.animKeys[e.code];
 
-    if (!animEvent) {
-      return;
+                // Checking whether manual interruption is prohibited
+                if (this.currentAnim?.options?.preventManualInterrupt) {
+                    return;
+                }
+
+                if (this.currentAnim?.options) {
+                    this.exitAnim({ playExitAnim: true, enablePlayerControlsDelayMs: this.currentAnim.options.enablePlayerControlsDelayMs });
+                } else {
+                    this.exitAnim({ playExitAnim: true, enablePlayerControlsDelayMs: undefined });
+                }
+            }
+        } else {
+            if (this.needsExitingAnim) {
+                
+                if (this.currentAnim?.options?.preventManualInterrupt) {
+                    return;
+                }
+
+                const intervalMs = this.settings?.exitAnimNotificationIntervalMs;
+                if (!intervalMs || (Date.now() - this.lastNotificationMoment) >= intervalMs) {
+                    this.lastNotificationMoment = Date.now();
+                    this.sp.Debug.notification(strings.pressSpace);
+                }
+            }
+        }
+
+        if (!e.isUp) {
+            return;
+        }
+
+        if (!this.settings || !this.settings.animKeys) {
+            return;
+        }
+
+        const animEvent = this.settings.animKeys[e.code];
+
+        if (!animEvent) {
+            return;
+        }
+
+        logTrace(this, "Starting anims from keyboard is disabled in this version")
+        // this.tryInvokeAnim(animEvent, {
+        //     weaponDrawnAllowed: false,
+        //     furnitureAllowed: false,
+        //     exitAnimName: null,
+        //     interruptAnimName: null,
+        //     timeMs: 0,
+        //     isPlayExitAnimAfterwardsEnabled: true,
+        //     parentAnimEventName: null,
+        //     enablePlayerControlsDelayMs: null,
+        //     preferInterruptAnimAsExitAnimTimeMs: null,
+        // });
     }
 
     logTrace(this, 'Starting anims from keyboard is disabled in this version');

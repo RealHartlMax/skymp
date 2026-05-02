@@ -1,25 +1,21 @@
-import * as crypto from 'crypto';
-import { BrowserMessageEvent, Menu, browser } from 'skyrimPlatform';
-
-import {
-  AuthGameData,
-  RemoteAuthGameData,
-  authGameDataStorageKey,
-} from '../../features/authModel';
-import { FunctionInfo } from '../../lib/functionInfo';
-import { logError, logTrace } from '../../logging';
-import { MsgType } from '../../messages';
-import { AuthNeededEvent } from '../events/authNeededEvent';
-import { BrowserWindowLoadedEvent } from '../events/browserWindowLoadedEvent';
-import { ConnectionDenied } from '../events/connectionDenied';
-import { ConnectionMessage } from '../events/connectionMessage';
-import { CreateActorMessage } from '../messages/createActorMessage';
-import { CustomPacketMessage } from '../messages/customPacketMessage';
-import { MasterApiAuthStatus } from '../messages_http/masterApiAuthStatus';
-import { ClientListener, CombinedController, Sp } from './clientListener';
-import { NetworkingService } from './networkingService';
-import { SettingsService } from './settingsService';
-import { TimersService } from './timersService';
+import * as crypto from "crypto";
+import * as fs from "fs";
+import { AuthGameData, RemoteAuthGameData, authGameDataStorageKey } from "../../features/authModel";
+import { FunctionInfo } from "../../lib/functionInfo";
+import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { BrowserMessageEvent, Menu, browser } from "skyrimPlatform";
+import { AuthNeededEvent } from "../events/authNeededEvent";
+import { BrowserWindowLoadedEvent } from "../events/browserWindowLoadedEvent";
+import { TimersService } from "./timersService";
+import { MasterApiAuthStatus } from "../messages_http/masterApiAuthStatus";
+import { logTrace, logError } from "../../logging";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CreateActorMessage } from "../messages/createActorMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { NetworkingService } from "./networkingService";
+import { MsgType } from "../../messages";
+import { ConnectionDenied } from "../events/connectionDenied";
+import { SettingsService } from "./settingsService";
 
 // for browsersideWidgetSetter
 declare const window: any;
@@ -57,6 +53,76 @@ let availableServers: AvailableServer[] = [];
 // Variables injected at runtime via FunctionInfo.getText() into browsersideWidgetSetter
 declare const selectedServerMasterKey: string;
 declare const uiText: Record<string, string>;
+
+const translations = {
+  "ru": {
+    loginViaDiscord: 'войдите через discord',
+    joinDiscordServer: 'вступите в discord сервер',
+    banned: 'вы забанены',
+    whatWasThat: 'что это было?',
+    openingBrowser: 'открываем браузер...',
+    loginFirst: 'сначала войдите',
+    linkedSuccessfully: 'привязан успешно',
+    connecting: 'подключение',
+    technicalIssues: 'технические шоколадки\nпопробуйте еще раз\nпожалуйста\nили напишите нам в discord',
+    authorization: 'Авторизация',
+    notAuthorized: 'не авторизирован',
+    changeAccount: 'сменить аккаунт',
+    loginViaSkymp: 'войти через skymp',
+    play: 'Играть',
+    loginOrChangeHint: 'Вы можете войти или поменять аккаунт',
+    connectToServer: 'Подключиться к игровому серверу',
+    updateCaption: 'новинка',
+    updateAvailable: 'ура! вышло обновление',
+    downloadAt: 'спешите скачать на',
+    openSkympNet: 'открыть skymp.net',
+    updateDownloadHint: 'Перейти на страницу скачивания обновления',
+    oops: 'упс',
+    join: 'вступить',
+    back: 'назад',
+  },
+  "en": {
+    loginViaDiscord: 'log in via Discord',
+    joinDiscordServer: 'join the Discord server',
+    banned: 'you are banned',
+    whatWasThat: 'what was that?',
+    openingBrowser: 'opening browser...',
+    loginFirst: 'log in first',
+    linkedSuccessfully: 'linked successfully',
+    connecting: 'connecting',
+    technicalIssues: 'technical difficulties\nplease try again\nor contact us on Discord',
+    authorization: 'Authorization',
+    notAuthorized: 'not authorized',
+    changeAccount: 'change account',
+    loginViaSkymp: 'log in via skymp',
+    play: 'Play',
+    loginOrChangeHint: 'You can log in or change your account',
+    connectToServer: 'Connect to game server',
+    updateCaption: 'Update',
+    updateAvailable: 'a new update is available!',
+    downloadAt: 'download it at',
+    openSkympNet: 'open skymp.net',
+    updateDownloadHint: 'Go to the update download page',
+    oops: 'oops',
+    join: 'join',
+    back: 'back',
+  },
+} as const;
+
+type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
+
+let strings: TranslationStrings = translations['en'];
+
+try {
+  const lang = fs.readFileSync('./Data/Platform/Distribution/locale', 'utf8').trim();
+  if (lang in translations) {
+    strings = translations[lang as keyof typeof translations];
+    const src = `window.setLanguage(${lang})`;
+    browser.executeJavaScript(src);
+  }
+} catch {
+  // locale file not found or unreadable, default to 'en'
+}
 
 export class AuthService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -177,89 +243,47 @@ export class AuthService extends ClientListener {
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
         logTrace(this, 'loginFailedNotLoggedViaDiscord received');
-        browserState.loginFailedReason = 'войдите через discord';
+        browserState.loginFailedReason = strings.loginViaDiscord;
         browserState.comment = '';
         this.setListenBrowserMessage(
           true,
           'loginFailedNotLoggedViaDiscord received',
         );
         this.loggingStartMoment = 0;
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData, strings }));
         break;
       case 'loginFailedNotInTheDiscordServer':
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
         logTrace(this, 'loginFailedNotInTheDiscordServer received');
-        browserState.loginFailedReason = 'вступите в discord сервер';
+        browserState.loginFailedReason = strings.joinDiscordServer;
         browserState.comment = '';
         this.setListenBrowserMessage(
           true,
           'loginFailedNotInTheDiscordServer received',
         );
         this.loggingStartMoment = 0;
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData, strings }));
         break;
       case 'loginFailedBanned':
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
         logTrace(this, 'loginFailedBanned received');
-        browserState.loginFailedReason = 'вы забанены';
+        browserState.loginFailedReason = strings.banned;
         browserState.comment = '';
         this.setListenBrowserMessage(true, 'loginFailedBanned received');
         this.loggingStartMoment = 0;
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData, strings }));
         break;
       case 'loginFailedIpMismatch':
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
         logTrace(this, 'loginFailedIpMismatch received');
-        browserState.loginFailedReason = 'что это было?';
+        browserState.loginFailedReason = strings.whatWasThat;
         browserState.comment = '';
         this.setListenBrowserMessage(true, 'loginFailedIpMismatch received');
         this.loggingStartMoment = 0;
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
-        break;
-      case 'loginFailedJoinAccess':
-        this.authAttemptProgressIndicator = false;
-        this.controller.lookupListener(NetworkingService).close();
-        logTrace(this, 'loginFailedJoinAccess received');
-        browserState.loginFailedReason = String(
-          msgContent['reason'] || 'server access denied',
-        );
-        browserState.comment = '';
-        this.setListenBrowserMessage(true, 'loginFailedJoinAccess received');
-        this.loggingStartMoment = 0;
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData, strings }));
         break;
     }
   }
@@ -314,7 +338,7 @@ export class AuthService extends ClientListener {
     const currentTexts = this.getCurrentTexts();
     switch (eventKey) {
       case events.openDiscordOauth:
-        browserState.comment = currentTexts.openingBrowser;
+        browserState.comment = strings.openingBrowser;
         this.refreshWidgets();
         this.sp.win32.loadUrl(
           `${settingsService.getMasterUrl()}/api/users/login-discord?state=${
@@ -327,7 +351,7 @@ export class AuthService extends ClientListener {
         break;
       case events.authAttempt:
         if (authData === null) {
-          browserState.comment = currentTexts.loginFirst;
+          browserState.comment = strings.loginFirst;
           this.refreshWidgets();
           break;
         }
@@ -354,7 +378,7 @@ export class AuthService extends ClientListener {
         this.sp.win32.loadUrl('https://skymp.net/UpdInstall');
         break;
       case events.backToLogin:
-        this.refreshWidgets();
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData, strings }));
         break;
       case events.joinDiscord:
         this.sp.win32.loadUrl('https://discord.gg/9KhSZ6zjGT');
@@ -462,56 +486,41 @@ export class AuthService extends ClientListener {
                 discordUsername,
                 discordDiscriminator,
                 discordAvatar,
-              };
-              browserState.comment = this.getCurrentTexts().linkedSuccessfully;
-              this.refreshWidgets();
-            });
-            break;
-          case 401: // Unauthorized
-            browserState.failCount = 0;
-            browserState.comment = ''; //(`Still waiting...`);
-            timersService.setTimeout(
-              () => this.checkLoginState(),
-              Math.floor((1.5 + Math.random() * 2) * 1000),
-            );
-            break;
-          case 403: // Forbidden
-          case 404: // Not found
-            browserState.failCount = 9000;
-            browserState.comment = `Fail: ${response.body}`;
-            break;
-          default:
-            ++browserState.failCount;
-            browserState.comment = `Server returned ${
-              response.status.toString() || '???'
-            } "${response.body || response.error}"`;
-            timersService.setTimeout(
-              () => this.checkLoginState(),
-              Math.floor((1.5 + Math.random() * 2) * 1000),
-            );
-        }
-      },
-    );
-  }
-
-  private loadAvailableServers(): void {
-    const settingsService = this.controller.lookupListener(SettingsService);
-    const masterApiClient = settingsService.makeMasterApiClient();
-
-    masterApiClient.get(
-      '/api/servers',
-      undefined,
-      // @ts-ignore
-      (res) => {
-        if (res.status !== 200) {
-          logTrace(this, `Failed to load server list, status ${res.status}`);
-          return;
-        }
-
-        try {
-          const data = JSON.parse(res.body);
-          if (!Array.isArray(data)) {
-            return;
+              } = JSON.parse(response.body) as MasterApiAuthStatus;
+              browserState.failCount = 0;
+              this.createPlaySession(token, (playSession, error) => {
+                if (error) {
+                  browserState.failCount = 0;
+                  browserState.comment = (error);
+                  timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
+                  this.refreshWidgets();
+                  return;
+                }
+                authData = {
+                  session: playSession,
+                  masterApiId,
+                  discordUsername,
+                  discordDiscriminator,
+                  discordAvatar,
+                };
+                browserState.comment = strings.linkedSuccessfully;
+                this.refreshWidgets();
+              });
+              break;
+            case 401: // Unauthorized
+              browserState.failCount = 0;
+              browserState.comment = '';//(`Still waiting...`);
+              timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
+              break;
+            case 403: // Forbidden
+            case 404: // Not found
+              browserState.failCount = 9000;
+              browserState.comment = (`Fail: ${response.body}`);
+              break;
+            default:
+              ++browserState.failCount;
+              browserState.comment = `Server returned ${response.status.toString() || "???"} "${response.body || response.error}"`;
+              timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
           }
 
           const mapped = data
@@ -552,19 +561,7 @@ export class AuthService extends ClientListener {
   }
 
   private refreshWidgets() {
-    const currentTexts = this.getCurrentTexts();
-    this.sp.browser.executeJavaScript(
-      new FunctionInfo(this.browsersideWidgetSetter).getText({
-        events,
-        browserState,
-        authData: authData,
-        availableServers,
-        selectedServerMasterKey: this.controller
-          .lookupListener(SettingsService)
-          .getServerMasterKey(),
-        uiText: currentTexts,
-      }),
-    );
+    this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData, strings }));
     this.authDialogOpen = true;
   }
 
@@ -619,17 +616,17 @@ export class AuthService extends ClientListener {
     const widget = {
       type: 'form',
       id: 2,
-      caption: 'новинка',
+      caption: strings.updateCaption,
       elements: [
         {
-          type: 'text',
-          text: 'ура! вышло обновление',
-          tags: [],
+          type: "text",
+          text: strings.updateAvailable,
+          tags: []
         },
         {
-          type: 'text',
-          text: 'спешите скачать на',
-          tags: [],
+          type: "text",
+          text: strings.downloadAt,
+          tags: []
         },
         {
           type: 'text',
@@ -637,14 +634,14 @@ export class AuthService extends ClientListener {
           tags: [],
         },
         {
-          type: 'button',
-          text: 'открыть skymp.net',
-          tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
+          type: "button",
+          text: strings.openSkympNet,
+          tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
           click: () => window.skyrimPlatform.sendMessage(events.updateRequired),
-          hint: 'Перейти на страницу скачивания обновления',
-        },
-      ],
-    };
+          hint: strings.updateDownloadHint,
+        }
+      ]
+    }
     window.skyrimPlatform.widgets.set([widget]);
 
     // Make sure gamemode will not be able to update widgets anymore
@@ -663,26 +660,26 @@ export class AuthService extends ClientListener {
     const widget = {
       type: 'form',
       id: 2,
-      caption: 'упс',
-      elements: new Array<any>(),
-    };
+      caption: strings.oops,
+      elements: new Array<any>()
+    }
 
     textElements.forEach((element) => widget.elements.push(element));
 
-    if (browserState.loginFailedReason === 'вступите в discord сервер') {
+    if (browserState.loginFailedReason === strings.joinDiscordServer) {
       widget.elements.push({
-        type: 'button',
-        text: 'вступить',
-        tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
+        type: "button",
+        text: strings.join,
+        tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
         click: () => window.skyrimPlatform.sendMessage(events.joinDiscord),
         hint: null,
       });
     }
 
     widget.elements.push({
-      type: 'button',
-      text: 'назад',
-      tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
+      type: "button",
+      text: strings.back,
+      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
       click: () => window.skyrimPlatform.sendMessage(events.backToLogin),
       hint: undefined,
     });
@@ -705,7 +702,7 @@ export class AuthService extends ClientListener {
     const loginWidget = {
       type: 'form',
       id: 1,
-      caption: uiText.authorization,
+      caption: strings.authorization,
       elements: [
         // {
         //   type: "button",
@@ -730,15 +727,15 @@ export class AuthService extends ClientListener {
         //   tags: ["ICON_STYLE_DISCORD"],
         // },
         {
-          type: 'text',
-          text: authData
-            ? authData.discordUsername
-              ? `${authData.discordUsername}`
-              : `id: ${authData.masterApiId}`
-            : uiText.notAuthorized,
-          tags: [
-            /*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/
-          ],
+          type: "text",
+          text: (
+            authData ? (
+              authData.discordUsername
+                ? `${authData.discordUsername}`
+                : `id: ${authData.masterApiId}`
+            ) : strings.notAuthorized
+          ),
+          tags: [/*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/],
         },
         // {
         //   type: "icon",
@@ -746,40 +743,18 @@ export class AuthService extends ClientListener {
         //   tags: ["ICON_STYLE_DISCORD"],
         // },
         {
-          type: 'button',
-          text: authData ? uiText.switchAccount : uiText.loginViaSkymp,
-          tags: [
-            /*"ELEMENT_SAME_LINE"*/
-          ],
-          click: () =>
-            window.skyrimPlatform.sendMessage(events.openDiscordOauth),
-          hint: uiText.switchAccountHint,
+          type: "button",
+          text: authData ? strings.changeAccount : strings.loginViaSkymp,
+          tags: [/*"ELEMENT_SAME_LINE"*/],
+          click: () => window.skyrimPlatform.sendMessage(events.openDiscordOauth),
+          hint: strings.loginOrChangeHint,
         },
         {
-          type: 'text',
-          text: `${uiText.currentServer}: ${selectedServerMasterKey}`,
-          tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
-        },
-        {
-          type: 'button',
-          text: uiText.useConfiguredServer,
-          tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
-          click: () =>
-            window.skyrimPlatform.sendMessage(events.useConfiguredServer),
-          hint: uiText.useConfiguredServerHint,
-        },
-        {
-          type: 'text',
-          text: uiText.serverList,
-          tags: [],
-        },
-        ...serverButtons,
-        {
-          type: 'button',
-          text: uiText.play,
-          tags: ['BUTTON_STYLE_FRAME', 'ELEMENT_STYLE_MARGIN_EXTENDED'],
+          type: "button",
+          text: strings.play,
+          tags: ["BUTTON_STYLE_FRAME", "ELEMENT_STYLE_MARGIN_EXTENDED"],
           click: () => window.skyrimPlatform.sendMessage(events.authAttempt),
-          hint: uiText.playHint,
+          hint: strings.connectToServer,
         },
         {
           type: 'text',
@@ -798,9 +773,7 @@ export class AuthService extends ClientListener {
       this.controller.once('tick', () => {
         this.controller.lookupListener(NetworkingService).close();
       });
-      this.sp.browser.executeJavaScript(
-        new FunctionInfo(this.deniedWidgetSetter).getText({ events }),
-      );
+      this.sp.browser.executeJavaScript(new FunctionInfo(this.deniedWidgetSetter).getText({ events, strings }));
       this.sp.browser.setVisible(true);
       this.sp.browser.setFocused(true);
       this.controller.once('update', () => {
@@ -893,16 +866,9 @@ export class AuthService extends ClientListener {
         this.loggingStartMoment = 0;
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
-        browserState.comment = '';
-        browserState.loginFailedReason =
-          'технические шоколадки\nпопробуйте еще раз\nпожалуйста\nили напишите нам в discord';
-        this.sp.browser.executeJavaScript(
-          new FunctionInfo(this.loginFailedWidgetSetter).getText({
-            events,
-            browserState,
-            authData: authData,
-          }),
-        );
+        browserState.comment = "";
+        browserState.loginFailedReason = strings.technicalIssues;
+        this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData, strings }));
 
         authData = null;
         this.writeAuthDataToDisk(null);
@@ -923,7 +889,7 @@ export class AuthService extends ClientListener {
       const dot =
         slowCounter % 3 === 0 ? '.' : slowCounter % 3 === 1 ? '..' : '...';
 
-      browserState.comment = this.getCurrentTexts().connecting + dot;
+      browserState.comment = strings.connecting + dot;
       this.refreshWidgets();
     }
   }
