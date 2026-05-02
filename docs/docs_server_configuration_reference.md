@@ -279,6 +279,119 @@ The option that allows you to forbid reloot for a specific item or a group of it
 }
 ```
 
+## itemPickupMode
+
+Controls how world-item pickup works when players activate loose objects, flora or trees.
+
+- `"allow"` (default): keeps current behavior, item is picked up immediately.
+- `"minigame"`: calls gamemode hook `mp.onItemPickupAttempt(...)` before pickup. If any listener blocks the event, pickup is denied.
+- `"block-all"`: disables world-item pickup entirely.
+
+```json5
+{
+  // ...
+  itemPickupMode: 'minigame',
+  // ...
+}
+```
+
+When `itemPickupMode` is set to `"minigame"`, the server fires this hook:
+
+```ts
+mp.onItemPickupAttempt = (
+  sourceRefrId: number,
+  actorRefrId: number,
+  itemBaseId: number,
+  itemCount: number,
+  isOwned: boolean,
+  isQuestItem: boolean,
+) => {
+  // return false to block pickup
+  return !isOwned && !isQuestItem;
+};
+```
+
+## itemsEnabled
+
+When set to `false`, world-item references are never instantiated. No loose items will appear in the game world. Default is `true`.
+
+Useful for PvP-focused servers that don't need dungeon loot.
+
+```json5
+{
+  // ...
+  itemsEnabled: false,
+  // ...
+}
+```
+
+## itemLoadFilter
+
+Granular per-ownership filter applied when `itemsEnabled` is `true`. Based on the `XOWN` field in the ESP/ESM record.
+
+- `skipOwned` (default `false`): skip items that belong to an NPC or faction (`XOWN != 0`), i.e. shop inventory and theft items.
+- `skipUnowned` (default `false`): skip free-loot items (`XOWN == 0`), i.e. dungeon loot with no owner.
+
+Both flags may be set simultaneously, in which case no items will be instantiated (equivalent to `itemsEnabled: false`).
+
+```json5
+{
+  // ...
+  itemLoadFilter: {
+    skipOwned: true,   // no shop/NPC items
+    skipUnowned: false, // keep free dungeon loot
+  },
+  // ...
+}
+```
+
+## pluginDiscovery
+
+Controls how the server handles newly discovered plugins at startup.
+
+- `mode: "safe"` (recommended for daemon/production): new plugins are left disabled (`startupEnabled: false`) and require manual activation.
+- `mode: "prompt"`: an interactive yes/no prompt is shown for each newly discovered plugin when the server starts on a TTY.
+
+If omitted, defaults to `"safe"` mode.
+
+```json5
+{
+  // ...
+  pluginDiscovery: {
+    mode: 'safe',
+  },
+  // ...
+}
+```
+
+See also `pluginsLoadOrder` and the Plugin System documentation.
+
+## pluginsLoadOrder
+
+Explicit load order for plugins. Plugins listed here are started first (in the given order), followed by any remaining enabled plugins in alphabetical order.
+
+```json5
+{
+  // ...
+  pluginsLoadOrder: ['core', 'chat-server', 'emotewheel'],
+  // ...
+}
+```
+
+## abortOnPluginError
+
+When `true`, any non-`optional` plugin that fails to load will abort the server startup. Default is `false`.
+
+Set to `true` in production to prevent a partially-loaded plugin set from running silently.
+
+```json5
+{
+  // ...
+  abortOnPluginError: true,
+  // ...
+}
+```
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.

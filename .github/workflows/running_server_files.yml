@@ -194,6 +194,7 @@ jobs:
           DESCRIPTION: running_server_files-windows
           SKYRIM_VR_FLAG: OFF
           RUN_TESTS: false
+          BUILD_UNIT_TESTS: false
           BUILD_FRONTEND_PRECHECK: false
           SP_NEXUS_ARTIFACT_NAME: nope
           OFFLINE_MODE: OFF
@@ -222,7 +223,7 @@ jobs:
           cat ${{ github.workspace }}/misc/github_env_linux >> "$GITHUB_ENV"
 
       - name: Setup Node.js with Yarn cache
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'yarn'

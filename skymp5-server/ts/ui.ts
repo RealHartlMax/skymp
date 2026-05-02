@@ -11,6 +11,11 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 import { Settings } from './settings';
 import {
+  PluginStateEntry,
+  readDiscoveryState,
+  writeDiscoveryState,
+} from './pluginDiscoveryState';
+import {
   getAggregatedMetrics,
   register,
   rpcCallsCounter,
@@ -3385,6 +3390,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         online: getOnlinePlayerIds().length,
         maxPlayers: settings.maxPlayers,
         port: settings.port,
+        itemPickupMode: settings.itemPickupMode,
         uptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
       };
     });
@@ -4789,6 +4795,72 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       );
       const sliceFrom = Math.max(filtered.length - limit, 0);
       ctx.body = filtered.slice(sliceFrom).reverse();
+    });
+
+    // ── Plugin management ───────────────────────────────────────────────
+    router.get('/api/admin/plugins', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+
+      const state = readDiscoveryState();
+      const result = Object.entries(state.plugins).map(
+        ([name, entry]: [string, PluginStateEntry]) => {
+          let manifestPresent = false;
+          try {
+            manifestPresent = fs.existsSync(
+              path.resolve(process.cwd(), entry.pluginPath, 'plugin.json'),
+            );
+          } catch (_) {
+            // ignore
+          }
+
+          return {
+            name,
+            pluginPath: entry.pluginPath,
+            fingerprint: entry.fingerprint,
+            version: entry.version,
+            startupEnabled: entry.startupEnabled,
+            discoveredAt: entry.discoveredAt,
+            updatedAt: entry.updatedAt,
+            manifestPresent,
+          };
+        },
+      );
+
+      ctx.body = result;
+    });
+
+    router.patch('/api/admin/plugins/:name', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+
+      const pluginName = ctx.params?.name as string;
+      const state = readDiscoveryState();
+
+      if (!Object.prototype.hasOwnProperty.call(state.plugins, pluginName)) {
+        ctx.status = 404;
+        ctx.body = { error: `Plugin "${pluginName}" not found in discovery state` };
+        return;
+      }
+
+      const body =
+        ctx.request.body && typeof ctx.request.body === 'object'
+          ? (ctx.request.body as Record<string, unknown>)
+          : {};
+
+      if (typeof body.startupEnabled !== 'boolean') {
+        ctx.status = 400;
+        ctx.body = { error: '"startupEnabled" must be a boolean' };
+        return;
+      }
+
+      state.plugins[pluginName].startupEnabled = body.startupEnabled;
+      state.plugins[pluginName].updatedAt = new Date().toISOString();
+      writeDiscoveryState(state);
+
+      ctx.body = {
+        ok: true,
+        name: pluginName,
+        startupEnabled: body.startupEnabled,
+      };
     });
   }
   router.use('/metrics', (ctx: any, next: any) => {

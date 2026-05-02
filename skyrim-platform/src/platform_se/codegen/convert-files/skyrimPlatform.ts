@@ -1767,6 +1767,7 @@ export declare class ObjectReference extends Form {
   addDependentAnimatedObjectReference(akDependent: ObjectReference | null): boolean
   addInventoryEventFilter(akFilter: Form | null): void
   addItem(akItemToAdd: Form | null, aiCount: number, abSilent: boolean): void
+  addItem(akItemToAdd: ObjectReference | null, aiCount: number, abSilent: boolean): void
   addToMap(abAllowFastTravel: boolean): void
   applyHavokImpulse(afX: number, afY: number, afZ: number, afMagnitude: number): Promise<void>
   blockActivation(abBlocked: boolean): void
@@ -1913,6 +1914,7 @@ export declare class Actor extends ObjectReference {
   addPerk(akPerk: Perk | null): void
   addShout(akShout: Shout | null): boolean
   addSpell(akSpell: Spell | null, abVerbose: boolean): boolean
+  addToFaction(akFaction: Faction | null, aiStartingRank?: number): void
   allowBleedoutDialogue(abCanTalk: boolean): void
   allowPCDialogue(abTalk: boolean): void
   attachAshPile(akAshPileBase: Form | null): void

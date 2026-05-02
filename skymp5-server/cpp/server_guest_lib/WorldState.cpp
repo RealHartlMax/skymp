@@ -52,6 +52,7 @@ struct WorldState::Impl
   bool formLoadingInProgress = false;
   std::vector<RelootTimeForTypesEntry> relootTimeForTypes;
   std::set<std::string> forbiddenRelootTypes;
+  ItemPickupMode itemPickupMode = ItemPickupMode::Allow;
   std::vector<std::unique_ptr<IPapyrusClassBase>> classes;
   std::array<std::shared_ptr<std::vector<uint32_t>>, 0x100>
     allFormsByModIndexCache;
@@ -446,6 +447,38 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
         "AttachEspmRecord - the server skips npcs: npcEnabled = false\n");
     }
     return false;
+  }
+
+  bool isWorldItem = espm::utils::IsItem(t) || isFlor || isTree;
+  if (!itemsEnabled && isWorldItem) {
+    if (optionalOutTrace) {
+      *optionalOutTrace << fmt::format(
+        "AttachEspmRecord - the server skips world items: itemsEnabled = false\n");
+    }
+    return false;
+  }
+
+  if (isWorldItem &&
+      (itemLoadFilter.skipOwned || itemLoadFilter.skipUnowned)) {
+    auto* refrRec = reinterpret_cast<const espm::REFR*>(record);
+    const bool hasOwner =
+      refrRec->GetData(cache).ownerFaction != 0;
+
+    if (itemLoadFilter.skipOwned && hasOwner) {
+      if (optionalOutTrace) {
+        *optionalOutTrace << fmt::format(
+          "AttachEspmRecord - skipping owned world item (XOWN set): itemLoadFilter.skipOwned = true\n");
+      }
+      return false;
+    }
+
+    if (itemLoadFilter.skipUnowned && !hasOwner) {
+      if (optionalOutTrace) {
+        *optionalOutTrace << fmt::format(
+          "AttachEspmRecord - skipping unowned world item (no XOWN): itemLoadFilter.skipUnowned = true\n");
+      }
+      return false;
+    }
   }
 
   uint32_t formId = espm::utils::GetMappedId(record->GetId(), mapping);
@@ -1207,6 +1240,16 @@ void WorldState::SetForbiddenRelootTypes(const std::set<std::string>& types)
 void WorldState::SetEnableConsoleCommandsForAllSetting(bool enable)
 {
   enableConsoleCommandsForAll = enable;
+}
+
+void WorldState::SetItemPickupMode(ItemPickupMode mode)
+{
+  pImpl->itemPickupMode = mode;
+}
+
+WorldState::ItemPickupMode WorldState::GetItemPickupMode() const noexcept
+{
+  return pImpl->itemPickupMode;
 }
 
 bool WorldState::IsRelootForbidden(std::string type) const noexcept

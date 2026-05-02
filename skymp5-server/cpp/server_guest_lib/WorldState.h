@@ -231,6 +231,14 @@ public:
     std::unordered_map<std::string, NpcSettingsEntry>&& settings);
   void SetForbiddenRelootTypes(const std::set<std::string>& types);
   void SetEnableConsoleCommandsForAllSetting(bool enable);
+  enum class ItemPickupMode
+  {
+    Allow,    // default: any item can be picked up
+    Minigame, // delegate pickup allow/deny to onItemPickupAttempt handlers
+    BlockAll  // block all world-item pickups
+  };
+  void SetItemPickupMode(ItemPickupMode mode);
+  [[nodiscard]] ItemPickupMode GetItemPickupMode() const noexcept;
 
 public:
   std::vector<std::string> espmFiles;
@@ -250,6 +258,24 @@ public:
   bool npcEnabled = false;
   std::unordered_map<std::string, NpcSettingsEntry> npcSettings;
   NpcSettingsEntry defaultSetting;
+
+  // When false, all world-item references (WEAP, ARMO, MISC, etc.) are never
+  // instantiated. Equivalent to npcEnabled but for static loot.
+  bool itemsEnabled = true;
+
+  // Granular filter applied when itemsEnabled=true.
+  // Based on the XOWN field in the REFR record (Skyrim theft ownership).
+  struct ItemLoadFilter
+  {
+    // If true, skip items whose REFR has XOWN != 0
+    // (owned by a faction/NPC — picking up counts as theft in vanilla)
+    bool skipOwned = false;
+
+    // If true, skip items whose REFR has XOWN == 0
+    // (free world loot — dungeons, road-side, etc.)
+    bool skipUnowned = false;
+  };
+  ItemLoadFilter itemLoadFilter;
   bool enableConsoleCommandsForAll = false;
 
   bool disableVanillaScriptsInExterior = true;

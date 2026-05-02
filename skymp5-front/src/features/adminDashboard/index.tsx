@@ -50,6 +50,7 @@ interface AdminStatus {
   online: number;
   maxPlayers: number;
   port: number;
+  itemPickupMode?: 'allow' | 'minigame' | 'block-all';
   uptimeSec: number;
 }
 
@@ -310,6 +311,7 @@ interface CfgFormState {
   port: number;
   maxPlayers: number;
   offlineMode: boolean;
+  itemPickupMode: 'allow' | 'minigame' | 'block-all';
   defaultLanguage: string;
   startSpawn: StartSpawnForm;
   npcEnabled: boolean;
@@ -481,6 +483,7 @@ const DEFAULT_CFG_FORM: CfgFormState = {
   port: 7777,
   maxPlayers: 100,
   offlineMode: false,
+  itemPickupMode: 'allow',
   defaultLanguage: 'en',
   startSpawn: {
     x: 133857,
@@ -1526,6 +1529,11 @@ const AdminDashboard = () => {
         ? Math.max(1, Math.floor(Number(parsed.maxPlayers)))
         : 100,
       offlineMode: Boolean(parsed.offlineMode),
+      itemPickupMode: (['allow', 'minigame', 'block-all'].includes(
+        String(parsed.itemPickupMode),
+      )
+        ? String(parsed.itemPickupMode)
+        : DEFAULT_CFG_FORM.itemPickupMode) as CfgFormState['itemPickupMode'],
       defaultLanguage: String(
         (parsed.localeRouting as Record<string, unknown> | undefined)
           ?.defaultLanguage || 'en',
@@ -1822,6 +1830,7 @@ const AdminDashboard = () => {
         Math.floor(Number(form.maxPlayers) || 100),
       );
       parsed.offlineMode = Boolean(form.offlineMode);
+      parsed.itemPickupMode = form.itemPickupMode;
 
       const localeRouting =
         parsed.localeRouting && typeof parsed.localeRouting === 'object'
@@ -6104,6 +6113,18 @@ const AdminDashboard = () => {
                             k: t('adminDashboard.online'),
                             v: `${status.online} / ${status.maxPlayers}`,
                           },
+                          {
+                            k: t('adminDashboard.cfgItemPickupMode'),
+                            v: t(
+                              `adminDashboard.cfgItemPickupMode_${
+                                status.itemPickupMode === 'minigame'
+                                  ? 'minigame'
+                                  : status.itemPickupMode === 'block-all'
+                                    ? 'blockAll'
+                                    : 'allow'
+                              }`,
+                            ),
+                          },
                           { k: t('adminDashboard.user'), v: adminUser || '-' },
                           {
                             k: t('adminDashboard.role'),
@@ -7633,12 +7654,49 @@ const AdminDashboard = () => {
                           />
                           <span>{t('adminDashboard.cfgOfflineMode')}</span>
                         </label>
+
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgItemPickupMode')}</span>
+                          <select
+                            className="admin-dashboard__log-select"
+                            value={cfgForm.itemPickupMode}
+                            onChange={(e) =>
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                itemPickupMode: e.target
+                                  .value as CfgFormState['itemPickupMode'],
+                              }))
+                            }
+                          >
+                            <option value="allow">
+                              {t('adminDashboard.cfgItemPickupMode_allow')}
+                            </option>
+                            <option value="minigame">
+                              {t('adminDashboard.cfgItemPickupMode_minigame')}
+                            </option>
+                            <option value="block-all">
+                              {t('adminDashboard.cfgItemPickupMode_blockAll')}
+                            </option>
+                          </select>
+                        </label>
                       </div>
                     )}
 
                     {cfgEditorTab === 'access' && (
                       <div className="admin-dashboard__cfg-form-grid">
                         <label className="admin-dashboard__cfg-check">
+                          {
+                            k: t('adminDashboard.cfgItemPickupMode'),
+                            v: t(
+                              `adminDashboard.cfgItemPickupMode_${
+                                status.itemPickupMode === 'minigame'
+                                  ? 'minigame'
+                                  : status.itemPickupMode === 'block-all'
+                                    ? 'blockAll'
+                                    : 'allow'
+                              }`,
+                            ),
+                          },
                           <input
                             type="checkbox"
                             checked={cfgForm.discordBot.enabled}

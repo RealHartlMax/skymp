@@ -246,6 +246,43 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         "Disabling NPCs by default");
     }
 
+    if (serverSettings.find("itemsEnabled") != serverSettings.end()) {
+      if (serverSettings.at("itemsEnabled").is_boolean()) {
+        bool enabled = serverSettings.at("itemsEnabled").get<bool>();
+        partOne->worldState.itemsEnabled = enabled;
+        spdlog::info("World items are {}", enabled ? "enabled" : "disabled");
+      } else {
+        spdlog::error(
+          "Unexpected value of \"itemsEnabled\" setting, should be true or "
+          "false. Keeping default (enabled)");
+      }
+    } else {
+      spdlog::info(
+        "\"itemsEnabled\" option is not found in the server configuration "
+        "file. Enabling world items by default");
+    }
+
+    if (serverSettings.find("itemLoadFilter") != serverSettings.end() &&
+        serverSettings.at("itemLoadFilter").is_object()) {
+      const auto& filterJson = serverSettings.at("itemLoadFilter");
+
+      if (filterJson.find("skipOwned") != filterJson.end() &&
+          filterJson.at("skipOwned").is_boolean()) {
+        partOne->worldState.itemLoadFilter.skipOwned =
+          filterJson.at("skipOwned").get<bool>();
+      }
+      if (filterJson.find("skipUnowned") != filterJson.end() &&
+          filterJson.at("skipUnowned").is_boolean()) {
+        partOne->worldState.itemLoadFilter.skipUnowned =
+          filterJson.at("skipUnowned").get<bool>();
+      }
+
+      spdlog::info(
+        "itemLoadFilter: skipOwned={}, skipUnowned={}",
+        partOne->worldState.itemLoadFilter.skipOwned,
+        partOne->worldState.itemLoadFilter.skipUnowned);
+    }
+
     if (serverSettings.find("npcSettings") != serverSettings.end()) {
       if (serverSettings.at("npcSettings").is_object()) {
         std::unordered_map<std::string, WorldState::NpcSettingsEntry>
@@ -468,6 +505,19 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         it != serverSettings.end()) {
       bool enableBroadcast = it.value().get<bool>();
       partOne->EnableGamemodeDataUpdatesBroadcast(enableBroadcast);
+    }
+
+    if (auto it = serverSettings.find("itemPickupMode");
+        it != serverSettings.end()) {
+      std::string modeStr = it.value().get<std::string>();
+      WorldState::ItemPickupMode mode = WorldState::ItemPickupMode::Allow;
+      if (modeStr == "minigame") {
+        mode = WorldState::ItemPickupMode::Minigame;
+      } else if (modeStr == "block-all") {
+        mode = WorldState::ItemPickupMode::BlockAll;
+      }
+      partOne->worldState.SetItemPickupMode(mode);
+      logger->info("itemPickupMode set to '{}'", modeStr);
     }
 
     auto res =

@@ -71,6 +71,14 @@ export class Settings {
   starterInventory: StarterInventory = { entries: [] };
   discordAuth: DiscordAuthSettings | null = null;
 
+  /**
+   * Controls how world items (plants, loose items) can be picked up.
+   * - "allow"     - anyone can pick up any item (default)
+   * - "minigame"  - run onItemPickupAttempt hook and let script decide allow/deny
+   * - "block-all" - all world-item pickups are blocked
+   */
+  itemPickupMode: 'allow' | 'minigame' | 'block-all' = 'allow';
+
   allSettings: Record<string, unknown> | null = null;
 
   constructor() {}

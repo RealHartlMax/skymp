@@ -65,3 +65,4 @@ See also:
 
 - [Serverside Scripting Reference](docs_serverside_scripting_reference.md)
 - [Clientside Scripting Reference](docs_clientside_scripting_reference.md)
+- Built-in pickup hook `mp.onItemPickupAttempt(...)` (see Serverside Scripting Reference)

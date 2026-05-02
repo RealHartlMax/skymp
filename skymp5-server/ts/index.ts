@@ -1,14 +1,25 @@
 import * as chokidar from 'chokidar';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 
 import * as os from 'os';
 import * as path from 'path';
 // @ts-ignore
 import * as sourceMapSupport from 'source-map-support';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import { pid } from 'process';
+import * as readline from 'readline';
 
 import * as manifestGen from './manifestGen';
+import {
+  PluginStateEntry,
+  PluginDiscoveryState,
+  PLUGINS_DIR,
+  PLUGIN_DISCOVERY_STATE_PATH,
+  readDiscoveryState,
+  writeDiscoveryState,
+} from './pluginDiscoveryState';
 import * as scampNative from './scampNative';
 import * as ui from './ui';
 import { createScampServer } from './scampNative';
@@ -145,60 +156,568 @@ const setupStreams = (scampNative: any) => {
   };
 };
 
-const setupGamemode = (server: any, gamemodePath: string) => {
-  const clear = () => server.clear();
+type PluginKind = 'gamemode' | 'process';
 
-  const toAbsolute = (p: string) => {
-    if (path.isAbsolute(p)) {
-      return path.normalize(p);
+interface PluginManifest {
+  name: string;
+  version: string;
+  kind: PluginKind;
+  displayName: string;
+  description: string;
+  main: string;
+  optional?: boolean;
+  startupDefault?: boolean;
+  command?: string;
+  args?: string[];
+}
+
+interface DiscoveredPlugin {
+  manifestPath: string;
+  pluginDir: string;
+  manifest: PluginManifest;
+  fingerprint: string;
+}
+
+interface PluginSetupOptions {
+  mode: 'prompt' | 'safe';
+  loadOrder: string[];
+  abortOnPluginError: boolean;
+}
+
+const pluginsLog = (...args: unknown[]) => console.log('[plugins]', ...args);
+const pluginsWarn = (...args: unknown[]) => console.warn('[plugins]', ...args);
+const pluginsError = (...args: unknown[]) => console.error('[plugins]', ...args);
+
+const spawnedPluginProcesses: ChildProcessWithoutNullStreams[] = [];
+let shutdownHooksInstalled = false;
+
+const toAbsolutePath = (p: string): string => {
+  if (path.isAbsolute(p)) {
+    return path.normalize(p);
+  }
+  return path.normalize(path.resolve('', p));
+};
+
+const getAlternativeNtfsAliasPath = (absolutePath: string): string | null => {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  const normalized = path.normalize(absolutePath);
+  const lower = normalized.toLowerCase();
+  const dRoot = 'd:\\github\\skymp';
+  const cRoot = 'c:\\github\\skymp';
+
+  const isAtOrInside = (value: string, root: string) =>
+    value === root || value.startsWith(root + '\\');
+
+  if (isAtOrInside(lower, dRoot)) {
+    return 'C:' + normalized.slice(2);
+  }
+  if (isAtOrInside(lower, cRoot)) {
+    return 'D:' + normalized.slice(2);
+  }
+  return null;
+};
+
+const resolveExistingPath = (p: string): string => {
+  const absolute = toAbsolutePath(p);
+  const candidates = [absolute];
+  const aliasCandidate = getAlternativeNtfsAliasPath(absolute);
+  if (aliasCandidate) {
+    candidates.push(aliasCandidate);
+  }
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) {
+      continue;
     }
-    return path.normalize(path.resolve('', p));
-  };
 
-  const getAlternativeNtfsAliasPath = (absolutePath: string): string | null => {
-    if (process.platform !== 'win32') {
+    try {
+      return fs.realpathSync.native(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+
+  return absolute;
+};
+
+const sha256 = (content: string): string => {
+  const hash = crypto.createHash('sha256');
+  hash.update(content);
+  return hash.digest('hex');
+};
+
+const ensureMainPath = (manifest: Partial<PluginManifest>): string => {
+  if (typeof manifest.main === 'string' && manifest.main.trim().length > 0) {
+    return manifest.main.trim();
+  }
+  return 'index.cjs';
+};
+
+const SAFE_PLUGIN_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+const SAFE_VERSION_RE = /^\d/;
+
+const isRelativePathSafe = (p: string): boolean => {
+  if (p.includes('\0')) return false;
+  const normalized = path.normalize(p);
+  // disallow absolute paths and traversal out of the plugin directory
+  return !path.isAbsolute(normalized) && !normalized.startsWith('..');
+};
+
+const readPluginManifest = (manifestPath: string): PluginManifest | null => {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(manifestPath, 'utf8');
+  } catch (e) {
+    pluginsError(`Cannot read plugin manifest at "${manifestPath}":`, e);
+    return null;
+  }
+
+  if (raw.length > 64 * 1024) {
+    pluginsWarn(`Skipping "${manifestPath}": manifest exceeds 64 KiB`);
+    return null;
+  }
+
+  let parsed: Partial<PluginManifest>;
+  try {
+    parsed = JSON.parse(raw) as Partial<PluginManifest>;
+  } catch (e) {
+    pluginsError(`Manifest is not valid JSON at "${manifestPath}":`, e);
+    return null;
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    pluginsWarn(`Skipping "${manifestPath}": manifest root must be an object`);
+    return null;
+  }
+
+  // ── required string fields ──────────────────────────────────────────────
+  const requiredStringFields = [
+    'name',
+    'version',
+    'kind',
+    'displayName',
+    'description',
+  ] as const;
+
+  for (const field of requiredStringFields) {
+    const value = parsed[field];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      pluginsWarn(`Skipping "${manifestPath}": field "${field}" is required`);
       return null;
     }
+  }
 
-    const normalized = path.normalize(absolutePath);
-    const lower = normalized.toLowerCase();
-    const dRoot = 'd:\\github\\skymp';
-    const cRoot = 'c:\\github\\skymp';
-
-    const isAtOrInside = (value: string, root: string) =>
-      value === root || value.startsWith(root + '\\');
-
-    if (isAtOrInside(lower, dRoot)) {
-      return 'C:' + normalized.slice(2);
-    }
-    if (isAtOrInside(lower, cRoot)) {
-      return 'D:' + normalized.slice(2);
-    }
+  // ── semantic constraints ────────────────────────────────────────────────
+  const name = parsed.name!.trim();
+  if (!SAFE_PLUGIN_NAME_RE.test(name)) {
+    pluginsWarn(
+      `Skipping "${manifestPath}": "name" must match /^[a-zA-Z0-9_-]{1,64}$/`,
+    );
     return null;
-  };
+  }
 
-  const resolveExistingPath = (p: string): string => {
-    const absolute = toAbsolute(p);
-    const candidates = [absolute];
-    const aliasCandidate = getAlternativeNtfsAliasPath(absolute);
-    if (aliasCandidate) {
-      candidates.push(aliasCandidate);
+  const version = parsed.version!.trim();
+  if (!SAFE_VERSION_RE.test(version)) {
+    pluginsWarn(
+      `Skipping "${manifestPath}": "version" must start with a digit (e.g. "1.0.0")`,
+    );
+    return null;
+  }
+
+  const displayName = parsed.displayName!.trim();
+  if (displayName.length > 100) {
+    pluginsWarn(`Skipping "${manifestPath}": "displayName" must be <= 100 chars`);
+    return null;
+  }
+
+  const description = parsed.description!.trim();
+  if (description.length > 512) {
+    pluginsWarn(`Skipping "${manifestPath}": "description" must be <= 512 chars`);
+    return null;
+  }
+
+  if (parsed.kind !== 'gamemode' && parsed.kind !== 'process') {
+    pluginsWarn(
+      `Skipping "${manifestPath}": field "kind" must be "gamemode" or "process"`,
+    );
+    return null;
+  }
+
+  const main = ensureMainPath(parsed);
+  if (!isRelativePathSafe(main)) {
+    pluginsWarn(
+      `Skipping "${manifestPath}": "main" must be a safe relative path (no traversal)`,
+    );
+    return null;
+  }
+
+  if (parsed.kind === 'process') {
+    if (typeof parsed.command !== 'string' || parsed.command.trim().length === 0) {
+      pluginsWarn(
+        `Skipping "${manifestPath}": process plugin requires non-empty string field "command"`,
+      );
+      return null;
+    }
+  }
+
+  if (
+    parsed.args !== undefined &&
+    (!Array.isArray(parsed.args) ||
+      parsed.args.some((arg) => typeof arg !== 'string') ||
+      parsed.args.length > 128)
+  ) {
+    pluginsWarn(
+      `Skipping "${manifestPath}": field "args" must be a string array with <= 128 entries`,
+    );
+    return null;
+  }
+
+  if (
+    parsed.optional !== undefined &&
+    typeof parsed.optional !== 'boolean'
+  ) {
+    pluginsWarn(`Skipping "${manifestPath}": field "optional" must be boolean`);
+    return null;
+  }
+
+  return {
+    name,
+    version,
+    kind: parsed.kind,
+    displayName,
+    description,
+    main,
+    optional: parsed.optional === true,
+    startupDefault: parsed.startupDefault === true,
+    command:
+      typeof parsed.command === 'string' ? parsed.command.trim() : undefined,
+    args: parsed.args,
+  };
+};
+
+const fingerprintPlugin = (
+  manifestPath: string,
+  pluginDir: string,
+  manifest: PluginManifest,
+): string => {
+  const parts: string[] = [];
+  const manifestRaw = fs.readFileSync(manifestPath, 'utf8');
+  parts.push(`manifest:${manifestRaw}`);
+
+  const mainAbsolute = path.resolve(pluginDir, manifest.main);
+  if (fs.existsSync(mainAbsolute)) {
+    const stat = fs.statSync(mainAbsolute);
+    parts.push(`main:${manifest.main}:${stat.size}:${stat.mtimeMs}`);
+  } else {
+    parts.push(`main:${manifest.main}:missing`);
+  }
+
+  if (manifest.kind === 'process') {
+    parts.push(`command:${manifest.command || ''}`);
+    parts.push(`args:${JSON.stringify(manifest.args || [])}`);
+  }
+
+  return sha256(parts.join('\n'));
+};
+
+const discoverPlugins = (): DiscoveredPlugin[] => {
+  if (!fs.existsSync(PLUGINS_DIR)) {
+    pluginsLog(`No plugins directory found at "${PLUGINS_DIR}"`);
+    return [];
+  }
+
+  const entries = fs
+    .readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory());
+
+  const plugins: DiscoveredPlugin[] = [];
+  const byName = new Set<string>();
+
+  for (const entry of entries) {
+    const pluginDir = path.join(PLUGINS_DIR, entry.name);
+    const manifestPath = path.join(pluginDir, 'plugin.json');
+
+    if (!fs.existsSync(manifestPath)) {
+      continue;
     }
 
-    for (const candidate of candidates) {
-      if (!fs.existsSync(candidate)) {
-        continue;
-      }
-
-      try {
-        return fs.realpathSync.native(candidate);
-      } catch {
-        return candidate;
-      }
+    const manifest = readPluginManifest(manifestPath);
+    if (!manifest) {
+      continue;
     }
 
-    return absolute;
+    if (byName.has(manifest.name)) {
+      pluginsWarn(
+        `Duplicate plugin name "${manifest.name}" in "${pluginDir}"; skipping`,
+      );
+      continue;
+    }
+    byName.add(manifest.name);
+
+    plugins.push({
+      manifestPath,
+      pluginDir,
+      manifest,
+      fingerprint: fingerprintPlugin(manifestPath, pluginDir, manifest),
+    });
+  }
+
+  return plugins;
+};
+
+const askToEnablePlugin = async (plugin: DiscoveredPlugin): Promise<boolean> => {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    pluginsLog(
+      `Non-interactive mode detected, leaving plugin "${plugin.manifest.name}" disabled`,
+    );
+    return false;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(
+      `[plugins] Enable startup for plugin "${plugin.manifest.displayName}" (${plugin.manifest.name}@${plugin.manifest.version})? ${plugin.manifest.description} [y/N]: `,
+      resolve,
+    );
+  });
+
+  rl.close();
+
+  const normalized = answer.trim().toLowerCase();
+  return normalized === 'y' || normalized === 'yes';
+};
+
+const buildPluginSortOrder = (
+  plugins: DiscoveredPlugin[],
+  preferredOrder: string[],
+): DiscoveredPlugin[] => {
+  const orderIndex = new Map<string, number>();
+  preferredOrder.forEach((name, index) => orderIndex.set(name, index));
+
+  return plugins.slice().sort((a, b) => {
+    const aIndex = orderIndex.get(a.manifest.name);
+    const bIndex = orderIndex.get(b.manifest.name);
+
+    if (aIndex !== undefined && bIndex !== undefined) {
+      return aIndex - bIndex;
+    }
+    if (aIndex !== undefined) {
+      return -1;
+    }
+    if (bIndex !== undefined) {
+      return 1;
+    }
+
+    return a.manifest.name.localeCompare(b.manifest.name);
+  });
+};
+
+const terminatePluginProcessTree = (child: ChildProcessWithoutNullStreams) => {
+  if (!child.pid || child.killed) {
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } catch (e) {
+      pluginsWarn(`Failed to terminate plugin process ${child.pid}:`, e);
+    }
+    return;
+  }
+
+  try {
+    child.kill('SIGTERM');
+  } catch (e) {
+    pluginsWarn(`Failed to SIGTERM plugin process ${child.pid}:`, e);
+  }
+};
+
+const installShutdownHooks = () => {
+  if (shutdownHooksInstalled) {
+    return;
+  }
+  shutdownHooksInstalled = true;
+
+  const stopAllPluginProcesses = () => {
+    for (const child of spawnedPluginProcesses) {
+      terminatePluginProcessTree(child);
+    }
   };
+
+  process.on('SIGINT', stopAllPluginProcesses);
+  process.on('SIGTERM', stopAllPluginProcesses);
+  process.on('exit', stopAllPluginProcesses);
+};
+
+const runGamemodePlugin = (
+  plugin: DiscoveredPlugin,
+  server: scampNative.ScampServer,
+) => {
+  const mainPath = resolveExistingPath(path.resolve(plugin.pluginDir, plugin.manifest.main));
+  if (!fs.existsSync(mainPath)) {
+    throw new Error(`entry file does not exist: ${mainPath}`);
+  }
+
+  // @ts-ignore
+  globalThis.mp = globalThis.mp || server;
+  requireTemp(mainPath);
+};
+
+const runProcessPlugin = (plugin: DiscoveredPlugin) => {
+  const command = plugin.manifest.command;
+  if (!command) {
+    throw new Error('process plugin has no command');
+  }
+
+  const child = spawn(command, plugin.manifest.args || [], {
+    cwd: plugin.pluginDir,
+    windowsHide: true,
+    stdio: 'pipe',
+  });
+
+  child.stdout.on('data', (chunk) => {
+    process.stdout.write(`[plugin:${plugin.manifest.name}] ${chunk}`);
+  });
+  child.stderr.on('data', (chunk) => {
+    process.stderr.write(`[plugin:${plugin.manifest.name}] ${chunk}`);
+  });
+  child.on('exit', (code, signal) => {
+    pluginsWarn(
+      `process plugin "${plugin.manifest.name}" exited with code=${code} signal=${signal}`,
+    );
+  });
+  child.on('error', (e) => {
+    pluginsError(`process plugin "${plugin.manifest.name}" failed:`, e);
+  });
+
+  spawnedPluginProcesses.push(child);
+  pluginsLog(
+    `started process plugin "${plugin.manifest.name}" with pid ${child.pid}`,
+  );
+};
+
+const bootstrapPlugins = async (
+  server: scampNative.ScampServer,
+  options: PluginSetupOptions,
+): Promise<void> => {
+  const discovered = discoverPlugins();
+  if (discovered.length === 0) {
+    return;
+  }
+
+  installShutdownHooks();
+
+  const nowIso = new Date().toISOString();
+  const previousState = readDiscoveryState();
+  const nextState: PluginDiscoveryState = {
+    version: 1,
+    plugins: {},
+  };
+
+  const sorted = buildPluginSortOrder(discovered, options.loadOrder);
+
+  for (const plugin of sorted) {
+    const previous = previousState.plugins[plugin.manifest.name];
+    const isKnown = previous !== undefined;
+    const isUpdated =
+      isKnown &&
+      (previous.fingerprint !== plugin.fingerprint ||
+        previous.version !== plugin.manifest.version);
+
+    let startupEnabled = false;
+    if (isKnown) {
+      startupEnabled = previous.startupEnabled;
+    } else if (plugin.manifest.startupDefault === true) {
+      startupEnabled = false;
+      pluginsWarn(
+        `plugin "${plugin.manifest.name}" requests startupDefault=true, but new plugins are never auto-enabled`,
+      );
+    }
+
+    if (!isKnown) {
+      pluginsLog(
+        `discovered new plugin "${plugin.manifest.name}" (${plugin.manifest.version})`,
+      );
+      if (options.mode === 'prompt') {
+        startupEnabled = await askToEnablePlugin(plugin);
+      }
+    } else if (isUpdated) {
+      pluginsLog(
+        `plugin "${plugin.manifest.name}" updated (${previous.version} -> ${plugin.manifest.version}), startupEnabled=${startupEnabled}`,
+      );
+    } else {
+      pluginsLog(
+        `plugin "${plugin.manifest.name}" already known, startupEnabled=${startupEnabled}`,
+      );
+    }
+
+    nextState.plugins[plugin.manifest.name] = {
+      pluginPath: path.relative(process.cwd(), plugin.pluginDir),
+      fingerprint: plugin.fingerprint,
+      version: plugin.manifest.version,
+      startupEnabled,
+      discoveredAt: previous?.discoveredAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    if (!startupEnabled) {
+      continue;
+    }
+
+    try {
+      if (plugin.manifest.kind === 'gamemode') {
+        runGamemodePlugin(plugin, server);
+        pluginsLog(`loaded gamemode plugin "${plugin.manifest.name}"`);
+      } else {
+        runProcessPlugin(plugin);
+      }
+    } catch (e) {
+      const msg =
+        e instanceof Error ? `${e.message}\n${e.stack || ''}` : String(e);
+      if (plugin.manifest.optional) {
+        pluginsWarn(
+          `optional plugin "${plugin.manifest.name}" failed to start: ${msg}`,
+        );
+      } else {
+        pluginsError(`plugin "${plugin.manifest.name}" failed to start: ${msg}`);
+        if (options.abortOnPluginError) {
+          pluginsError(
+            `aborting server start because pluginDiscovery.abortOnPluginError=true`,
+          );
+          writeDiscoveryState(nextState);
+          process.exit(-1);
+        }
+      }
+    }
+  }
+
+  const removed = Object.keys(previousState.plugins).filter(
+    (name) => !(name in nextState.plugins),
+  );
+  for (const pluginName of removed) {
+    pluginsLog(`plugin removed from disk: "${pluginName}"`);
+  }
+
+  writeDiscoveryState(nextState);
+};
+
+const setupGamemode = async (
+  server: any,
+  gamemodePath: string,
+  pluginOptions: PluginSetupOptions,
+) => {
+  const clear = () => server.clear();
 
   const absoluteGamemodePath = resolveExistingPath(gamemodePath);
   console.log(`Gamemode path is "${absoluteGamemodePath}"`);
@@ -215,6 +734,8 @@ const setupGamemode = (server: any, gamemodePath: string) => {
   } catch (e) {
     console.error(e);
   }
+
+  await bootstrapPlugins(server, pluginOptions);
 
   const watcher = chokidar.watch(absoluteGamemodePath, {
     ignored: /^\./,
@@ -512,7 +1033,27 @@ const main = async () => {
     process.exit(-1);
   }
 
-  setupGamemode(server, gamemodePath);
+  const allSettings = settingsObject.allSettings as Record<string, unknown>;
+  const pluginDiscoveryObject =
+    allSettings && typeof allSettings.pluginDiscovery === 'object'
+      ? (allSettings.pluginDiscovery as Record<string, unknown>)
+      : null;
+  const pluginDiscoveryModeRaw = pluginDiscoveryObject?.mode;
+  const pluginDiscoveryMode: 'prompt' | 'safe' =
+    pluginDiscoveryModeRaw === 'prompt' ? 'prompt' : 'safe';
+
+  const pluginsLoadOrderRaw = allSettings?.pluginsLoadOrder;
+  const pluginsLoadOrder = Array.isArray(pluginsLoadOrderRaw)
+    ? pluginsLoadOrderRaw.filter((v): v is string => typeof v === 'string')
+    : [];
+
+  const abortOnPluginError = pluginDiscoveryObject?.abortOnPluginError === true;
+
+  await setupGamemode(server, gamemodePath, {
+    mode: pluginDiscoveryMode,
+    loadOrder: pluginsLoadOrder,
+    abortOnPluginError,
+  });
 };
 
 main();

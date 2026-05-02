@@ -277,6 +277,9 @@ export class AuthService extends ClientListener {
 
     authData = this.readAuthDataFromDisk();
     this.loadAvailableServers();
+    this.sp.browser.executeJavaScript(
+      `window.setLanguage('${this.getCurrentLanguage()}')`,
+    );
     this.refreshWidgets();
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);

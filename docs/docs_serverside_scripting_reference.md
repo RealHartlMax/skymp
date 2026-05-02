@@ -139,6 +139,109 @@ clear(): void;
 mp.clear();
 ```
 
+## Built-In Pickup Hook: mp.onItemPickupAttempt()
+
+When `itemPickupMode` is `"minigame"` in `server-settings.json`, the server calls this hook before giving a world item to a player.
+
+```typescript
+/* Definition */
+interface Mp {
+  onItemPickupAttempt?: (
+    sourceRefrId: number,
+    actorRefrId: number,
+    itemBaseId: number,
+    itemCount: number,
+    isOwned: boolean,
+    isQuestItem: boolean,
+  ) => boolean;
+}
+```
+
+Returning `false` blocks the pickup. Returning `true` allows it.
+
+### TypeScript Example
+
+```typescript
+// gamemode.ts / gamemode.js
+mp.onItemPickupAttempt = (
+  sourceRefrId,
+  actorRefrId,
+  itemBaseId,
+  itemCount,
+  isOwned,
+  isQuestItem,
+) => {
+  // Block theft and quest items outright
+  if (isOwned || isQuestItem) return false;
+
+  // Custom per-player gate: only allow pickup when the player has a perk flag set
+  const hasPickupPerk = mp.get(actorRefrId, "allowedToLoot") === true;
+  return hasPickupPerk;
+};
+```
+
+### Papyrus Example
+
+Papyrus cannot call back into the synchronous hook directly, but you can trigger a Papyrus quest script through SkyrimPlatform's `callPapyrusFunction` from inside a **SkyrimPlatform plugin**.
+
+**Server side (TypeScript gamemode):**
+
+```typescript
+// 1. Set mode to minigame in server-settings.json:
+//    "itemPickupMode": "minigame"
+
+// 2. In the hook, send a custom packet to the client so Papyrus can react.
+//    Store the pending decision server-side and resolve it asynchronously.
+const pendingPickups = new Map<number, (allow: boolean) => void>();
+
+mp.onItemPickupAttempt = (sourceRefrId, actorRefrId, itemBaseId, itemCount, isOwned, isQuestItem) => {
+  // Synchronous fast-path: always block owned/quest items without roundtrip
+  if (isOwned || isQuestItem) return false;
+
+  // For a full async Papyrus minigame you would need an async-capable event
+  // system. With the current synchronous hook, run the Papyrus logic ahead of
+  // time and cache the result via a custom property:
+  return mp.get(actorRefrId, "pickupAllowed") === true;
+};
+
+// Grant / revoke pickup permission from a server-side timer or another event:
+mp.onPlayerConnect = (userId) => {
+  const refrId = mp.getUserActor(userId);
+  mp.set(refrId, "pickupAllowed", true);
+};
+```
+
+**Client side (SkyrimPlatform plugin, TypeScript):**
+
+```typescript
+// skyrim-platform plugin (runs in Skyrim process via SP)
+import { on, Game, Actor } from "skyrimPlatform";
+
+// Listen for a custom server→client packet that signals pickup start/end
+sp.on("customPacket", (packet: { type: string; allow: boolean }) => {
+  if (packet.type !== "pickupResult") return;
+
+  if (!packet.allow) {
+    // Optionally run a Papyrus script to show a UI notification
+    const player = Game.getPlayer() as Actor;
+    // callPapyrusFunction("MyMod:PickupQuest", "OnPickupDenied", player, []);
+    Debug.notification("You cannot pick that up.");
+  }
+});
+```
+
+**Papyrus script (MyMod_PickupQuest.psc):**
+
+```papyrus
+Scriptname MyMod_PickupQuest extends Quest
+
+; Called by SkyrimPlatform via callPapyrusFunction when a pickup is denied
+Function OnPickupDenied()
+  Debug.Notification("You cannot pick that up.")
+  ; Play a sound, show a menu, start a minigame quest stage, etc.
+EndFunction
+```
+
 ## Frequently used built-in properties
 
 Some commonly used built-in properties accessed via `mp.get` / `mp.set`:
