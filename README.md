@@ -34,13 +34,19 @@ SkyMP bringt Multiplayer nach Skyrim. Dieses Repository ist die zentrale Anlaufs
 
 #### Server starten
 
-1. Starte mit [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-2. Richte die Build-Umgebung mit [CONTRIBUTING.md](CONTRIBUTING.md) ein.
-3. Erzeuge eine `server-settings.json` aus der generierten Vorlage.
-4. Starte den Server mit `build/launch_server.bat` oder `build/launch_server.sh`.
+Die einfachste Möglichkeit ist das direkte Herunterladen eines fertigen Builds – **kein Klonen des Repos, kein Kompilieren erforderlich**:
+
+1. Lade das neueste Release von [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases) herunter.
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Entpacke das Archiv in einen eigenen Ordner.
+3. Starte `launch_server.bat` (Windows) oder `launch_server.sh` (Linux). Node.js und npm-Abhängigkeiten werden beim ersten Start automatisch installiert.
+4. Passe `server-settings.json` an (Name, Ports, Load-Order).
 5. Öffne das Admin-Dashboard unter `http://<host>:<uiPort>/admin`.
 
-#### Lokal bauen
+Vollständige Anleitung: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Aus dem Quellcode bauen (für Entwickler)
 
 1. Folge [CONTRIBUTING.md](CONTRIBUTING.md).
 2. Baue das Projekt.
@@ -103,13 +109,19 @@ SkyMP brings multiplayer to Skyrim. This repository is the central place for run
 
 #### Run a server
 
-1. Begin with [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-2. Set up your environment using [CONTRIBUTING.md](CONTRIBUTING.md).
-3. Generate your `server-settings.json` from the base template.
-4. Start with `build/launch_server.bat` or `build/launch_server.sh`.
+The fastest way is to download a pre-built package — **no need to clone the repo or compile anything**:
+
+1. Download the latest release from [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Extract the archive to a dedicated folder.
+3. Run `launch_server.bat` (Windows) or `launch_server.sh` (Linux). Node.js and npm dependencies are installed automatically on first start.
+4. Edit `server-settings.json` to set your server name, ports, and load order.
 5. Open the admin dashboard at `http://<host>:<uiPort>/admin`.
 
-#### Build locally
+Full guide: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Build from source (for contributors)
 
 1. Follow [CONTRIBUTING.md](CONTRIBUTING.md).
 2. Build the project.
@@ -172,13 +184,19 @@ SkyMP добавляет мультиплеер в Skyrim. Этот репози
 
 #### Запуск сервера
 
-1. Начните с [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-2. Подготовьте окружение по [CONTRIBUTING.md](CONTRIBUTING.md).
-3. Сгенерируйте `server-settings.json` из базового шаблона.
-4. Запустите сервер через `build/launch_server.bat` или `build/launch_server.sh`.
+Самый простой способ — скачать готовый релиз. **Клонировать репозиторий и собирать проект не нужно:**
+
+1. Скачайте последний релиз с [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Распакуйте архив в отдельную папку.
+3. Запустите `launch_server.bat` (Windows) или `launch_server.sh` (Linux). Node.js и npm-зависимости установятся автоматически при первом запуске.
+4. Отредактируйте `server-settings.json`: задайте имя сервера, порты и load order.
 5. Откройте панель администратора: `http://<host>:<uiPort>/admin`.
 
-#### Локальная сборка
+Полная инструкция: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Сборка из исходников (для разработчиков)
 
 1. Следуйте [CONTRIBUTING.md](CONTRIBUTING.md).
 2. Соберите проект.
@@ -241,13 +259,19 @@ SkyMP lleva el modo multijugador a Skyrim. Este repositorio es el centro del pro
 
 #### Ejecutar un servidor
 
-1. Empieza con [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-2. Prepara tu entorno con [CONTRIBUTING.md](CONTRIBUTING.md).
-3. Genera `server-settings.json` desde la plantilla base.
-4. Inicia con `build/launch_server.bat` o `build/launch_server.sh`.
+La forma más sencilla es descargar un paquete precompilado: **no necesitas clonar el repositorio ni compilar nada**.
+
+1. Descarga el último release desde [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Extrae el archivo en una carpeta dedicada.
+3. Ejecuta `launch_server.bat` (Windows) o `launch_server.sh` (Linux). Node.js y las dependencias npm se instalan automáticamente en el primer inicio.
+4. Edita `server-settings.json` con el nombre del servidor, puertos y orden de carga.
 5. Abre el panel de administración en `http://<host>:<uiPort>/admin`.
 
-#### Compilar en local
+Guía completa: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Compilar desde el código fuente (para contribuidores)
 
 1. Sigue [CONTRIBUTING.md](CONTRIBUTING.md).
 2. Compila el proyecto.

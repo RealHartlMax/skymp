@@ -33,6 +33,12 @@ import {
   tickDurationHistogram,
   tickDurationSummary,
 } from './systems/metricsSystem';
+import { EffectsLearningSystem } from './systems/effectsLearningSystem';
+import { EnchantmentsSystem } from './systems/enchantmentsSystem';
+import { MarkerSystem } from './systems/markerSystem';
+import { MovementDebugLogSystem } from './systems/movementDebugLogSystem';
+import { TimeSystem } from './systems/timeSystem';
+import { WeatherSystem } from './systems/weatherSystem';
 import { Spawn } from './systems/spawn';
 import { System } from './systems/system';
 
@@ -118,26 +124,53 @@ function requireUncached(
   }
 }
 
-const setupStreams = (scampNative: any) => {
+const setupStreams = (scampNative: any, logDirPath: string) => {
+  fs.mkdirSync(logDirPath, { recursive: true });
+
+  cleanupServerLogs(logDirPath, 14, 30);
+
+  const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
+  const serverLogPath = path.join(logDirPath, `server-${timestamp}.log`);
+  const logFileStream = fs.createWriteStream(serverLogPath, { flags: 'a' });
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+
+  originalStdoutWrite(`Server log file: ${serverLogPath}\n` as any);
+
   class LogsStream {
-    constructor(private logLevel: string) {}
+    constructor(
+      private logLevel: string,
+      private originalWrite: (
+        chunk: string,
+        encoding?: BufferEncoding,
+        cb?: (error?: Error | null) => void,
+      ) => boolean,
+    ) {}
 
     write(chunk: Buffer, encoding: string, callback: () => void) {
       // @ts-ignore
       const str = chunk.toString(encoding);
       if (str.trim().length > 0) {
+        const lines = str.split(/\r?\n/).filter((line) => line.length > 0);
+        for (const line of lines) {
+          logFileStream.write(
+            `[${new Date().toISOString()}] [${this.logLevel}] ${line}\n`,
+          );
+        }
         ui.pushServerLogChunk(
           this.logLevel === 'error' ? 'error' : 'info',
           str,
         );
         scampNative.writeLogs(this.logLevel, str);
       }
+
+      this.originalWrite(str, encoding as BufferEncoding);
       callback();
     }
   }
 
-  const infoStream = new LogsStream('info');
-  const errorStream = new LogsStream('error');
+  const infoStream = new LogsStream('info', originalStdoutWrite as any);
+  const errorStream = new LogsStream('error', originalStderrWrite as any);
   // @ts-ignore
   process.stdout.write = (
     chunk: Buffer,
@@ -154,6 +187,49 @@ const setupStreams = (scampNative: any) => {
   ) => {
     errorStream.write(chunk, encoding, callback);
   };
+};
+
+const cleanupServerLogs = (
+  logDirPath: string,
+  keepDays: number,
+  maxFiles: number,
+) => {
+  try {
+    const now = Date.now();
+    const keepMs = keepDays * 24 * 60 * 60 * 1000;
+    const files = fs
+      .readdirSync(logDirPath)
+      .filter((name) => /^server-.*\.log$/.test(name))
+      .map((name) => {
+        const fullPath = path.join(logDirPath, name);
+        const stat = fs.statSync(fullPath);
+        return { name, fullPath, mtimeMs: stat.mtimeMs };
+      })
+      .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+    for (const entry of files) {
+      if (now - entry.mtimeMs > keepMs) {
+        fs.rmSync(entry.fullPath, { force: true });
+      }
+    }
+
+    const remaining = fs
+      .readdirSync(logDirPath)
+      .filter((name) => /^server-.*\.log$/.test(name))
+      .map((name) => {
+        const fullPath = path.join(logDirPath, name);
+        const stat = fs.statSync(fullPath);
+        return { fullPath, mtimeMs: stat.mtimeMs };
+      })
+      .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+    for (const entry of remaining.slice(maxFiles)) {
+      fs.rmSync(entry.fullPath, { force: true });
+    }
+  } catch (e) {
+    // Keep server startup robust even if log cleanup fails
+    console.warn('[logs] failed to cleanup old server logs', e);
+  }
 };
 
 type PluginKind = 'gamemode' | 'process';
@@ -856,9 +932,15 @@ const main = async () => {
       masterKey,
       offlineMode,
     ),
+    new MarkerSystem(log),
+    new TimeSystem(log, settingsObject.timeScale),
+    new WeatherSystem(log),
+    new EffectsLearningSystem(log),
+    new EnchantmentsSystem(log),
+    new MovementDebugLogSystem(log),
   );
 
-  setupStreams(scampNative.getScampNative());
+  setupStreams(scampNative.getScampNative(), path.resolve('logs'));
 
   try {
     manifestGen.generateManifest(settingsObject);

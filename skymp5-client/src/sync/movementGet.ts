@@ -2,6 +2,7 @@ import { Actor, ObjectReference, TESModPlatform } from 'skyrimPlatform';
 
 import { ObjectReferenceEx } from '../extensions/objectReferenceEx';
 import { FormModel } from '../view/model';
+import { localIdToRemoteId } from '../view/worldViewMisc';
 import { Movement, NiPoint3, RunMode } from './movement';
 
 class PlayerCharacterSpeedCalculator {
@@ -78,6 +79,19 @@ export const getMovement = (
   }
 
   const worldOrCell = refr.getWorldSpace() || refr.getParentCell();
+  const isMounted = !!(ac && ac.isOnMount());
+
+  let mountRemoteId: number | undefined = undefined;
+  // Mount ownership hint is needed only for player-driven movement updates.
+  if (isMounted && ac && ac.getFormID() === 0x14) {
+    const mountedRef = ac.getFurnitureReference();
+    if (mountedRef) {
+      const remoteId = localIdToRemoteId(mountedRef.getFormID());
+      if (remoteId > 0) {
+        mountRemoteId = remoteId;
+      }
+    }
+  }
 
   return {
     worldOrCell: worldOrCell?.getFormID() || 0,
@@ -89,6 +103,8 @@ export const getMovement = (
         ? 360 * refr.getAnimationVariableFloat('Direction')
         : 0,
     isInJumpState: !!(ac && ac.getAnimationVariableBool('bInJumpState')),
+    isMounted,
+    mountRemoteId,
     isSneaking: !!(ac && isSneaking(ac)),
     isBlocking: !!(ac && ac.getAnimationVariableBool('IsBlocking')),
     isWeapDrawn: !!(ac && ac.isWeaponDrawn()),

@@ -1,6 +1,54 @@
 # Running a Server
 
-As you already know Skyrim Multiplayer is releasing public server builds. Here is an instruction on running your own server.
+Skyrim Multiplayer publishes ready-to-use pre-built server packages on GitHub Releases. **You do not need to download or build the repository to run your own server.**
+
+## Quick Start with Pre-built Releases (recommended)
+
+Pre-built packages are published at:
+
+**<https://github.com/skyrim-multiplayer/skymp/releases>**
+
+### Windows (pre-built)
+
+1. Download `running_server_files_windows_server_dist.zip` from the latest release.
+2. Extract the archive to a dedicated folder, e.g. `C:\skymp-server`.
+3. Run `launch_server.bat`. It will automatically install Node.js (via `winget`) and npm dependencies on first start.
+4. Edit `server-settings.json` to configure your server name, ports, and load order (see [Configuration](#configuration) below).
+5. Open the admin dashboard at `http://localhost:8080/admin` (default `uiPort`).
+
+### Linux (pre-built)
+
+1. Download `running_server_files_linux_server_dist.tar.gz` from the latest release.
+2. Extract: `tar -xzf running_server_files_linux_server_dist.tar.gz -C /opt/skymp`
+3. Run `./launch_server.sh`. It will install Node.js via your package manager and npm dependencies on first start.
+4. Edit `server-settings.json` to configure your server.
+5. Open the admin dashboard at `http://localhost:8080/admin`.
+
+### Updating an existing installation
+
+Place the downloaded archive in the server package root, then run the update helper (preserves `data/` and `server-settings.json`):
+
+**Windows:**
+```powershell
+.\update_server.ps1 -PackagePath C:\Downloads\running_server_files_windows_server_dist.zip
+```
+
+**Linux:**
+```sh
+./update_server.sh --package /path/to/running_server_files_linux_server_dist.tar.gz
+```
+
+Add `-StartAfter` (Windows) or `--start-after` (Linux) to restart the server automatically after the update.
+
+See [Server Update Playbook](docs_server_update_playbook.md) for the full safe-update procedure with backup steps.
+
+---
+
+## Building from Source (advanced / contributors)
+
+If you want to contribute code or need a custom build, follow [docs_cmake_workflow.md](docs_cmake_workflow.md) and [CONTRIBUTING.md](../CONTRIBUTING.md). The compiled server will appear under `build/dist/server` and a convenience launcher is generated as `build/launch_server.bat` / `build/launch_server.sh`.
+
+---
 
 ## Installation
 
@@ -39,6 +87,16 @@ Ubuntu 24.04 is a good target for production hosting. The current Linux path is 
 ## Admin Dashboard
 
 The admin dashboard is available at `http://<host>:<uiPort>/admin`.
+
+## Server Logs
+
+Server output is written both to console and to rotating log files in `logs/` next to the server process.
+
+- File name pattern: `server-<ISO timestamp>.log`
+- Retention: files older than 14 days are removed at startup
+- Safety cap: only the newest 30 log files are kept at startup
+
+When client-side movement telemetry is enabled, the server also writes periodic structured records as lines starting with `[MovementDebug]` containing JSON payloads (`profileId`, movement interval, extrapolation, correction counters, etc.).
 
 - `uiPort` is taken from `server-settings.json` (if omitted, it falls back to `port`).
 - The page uses an in-app login form (not browser Basic Auth popup).

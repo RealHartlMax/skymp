@@ -19,6 +19,8 @@ export interface AnimationVariables {
   runMode: RunMode;
   direction: number;
   isInJumpState: boolean;
+  isMounted: boolean;
+  mountRemoteId?: number;
   isSneaking: boolean;
   isBlocking: boolean;
   isWeapDrawn: boolean;

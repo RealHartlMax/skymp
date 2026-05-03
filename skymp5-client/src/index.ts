@@ -26,6 +26,11 @@ import { LastInvService } from './services/services/lastInvService';
 import { LoadGameService } from './services/services/loadGameService';
 import { LoadOrderVerificationService } from './services/services/loadOrderVerificationService';
 import { MagicSyncService } from './services/services/magicSyncService';
+import { EffectsLearningService } from './services/services/effectsLearningService';
+import { EnchantmentsService } from './services/services/enchantmentsService';
+import { MarkerService } from './services/services/markerService';
+import { MovementDebugTelemetryService } from './services/services/movementDebugTelemetryService';
+import { WeatherService } from './services/services/weatherService';
 import { NetInfoService } from './services/services/netInfoService';
 import { NetworkingService } from './services/services/networkingService';
 import { PlayerBowShotService } from './services/services/playerBowShotService';
@@ -101,6 +106,7 @@ const main = () => {
       new BrowserService(sp, controller),
       new AuthService(sp, controller),
       new NetInfoService(sp, controller),
+      new MovementDebugTelemetryService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),
       new PlayerBowShotService(sp, controller),
@@ -114,6 +120,10 @@ const main = () => {
       new ProfilingService(sp, controller),
       new SweetTaffyNicknamesService(sp, controller),
       new ServerJsVerificationService(sp, controller),
+      new MarkerService(sp, controller),
+      new WeatherService(sp, controller),
+      new EffectsLearningService(sp, controller),
+      new EnchantmentsService(sp, controller),
     ];
     SpApiInteractor.setup(listeners);
   } catch (e) {

@@ -299,6 +299,17 @@ jobs:
     if: needs.determine-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Download Windows client artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: running_server_files_windows_dist
+          path: ./artifacts/windows_client_files
+
+      - name: Pack Windows client artifact
+        run: |
+          cd ./artifacts/windows_client_files
+          zip -r ../running_server_files_windows_client_dist.zip .
+
       - name: Download Windows server artifact
         uses: actions/download-artifact@v8
         with:
@@ -325,6 +336,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
+            ./artifacts/running_server_files_windows_client_dist.zip
             ./artifacts/running_server_files_windows_server_dist.zip
             ./artifacts/running_server_files_linux_server_dist.tar.gz
         env:

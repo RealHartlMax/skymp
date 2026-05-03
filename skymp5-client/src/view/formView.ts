@@ -30,6 +30,7 @@ import { Appearance, applyAppearance } from '../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../sync/equipment';
 import { applyMovement } from '../sync/movementApply';
 import { getMovement } from '../sync/movementGet';
+import { Movement } from '../sync/movement';
 import { lastTryHost, tryHost } from './hostAttempts';
 import { FormModel } from './model';
 import { ModelApplyUtils } from './modelApplyUtils';
@@ -55,6 +56,10 @@ export const getScreenResolution = (): ScreenResolution => {
 
 export class FormView {
   constructor(private remoteRefrId?: number) {}
+
+  public static getMovementDebugStats() {
+    return this.movementDebugStats;
+  }
 
   update(model: FormModel): void {
     // Other players mutate into PC clones when moving to another location
@@ -472,12 +477,21 @@ export class FormView {
 
     if (model.movement) {
       let ac = Actor.from(refr);
+      const now = Date.now();
+      const hasNewMovement =
+        +(model.numMovementChanges as number) !== this.movState.lastNumChanges;
+
+      if (hasNewMovement) {
+        this.registerMovementPacket(model.movement, now);
+        this.movState.lastNumChanges = +(model.numMovementChanges as number);
+      }
+
       if (
         this.movState.lastApply &&
-        Date.now() - this.movState.lastApply > 1500
+        now - this.movState.lastApply > 1500
       ) {
-        if (Date.now() - this.movState.lastRehost > 1000) {
-          this.movState.lastRehost = Date.now();
+        if (now - this.movState.lastRehost > 1000) {
+          this.movState.lastRehost = now;
           const remoteId = this.remoteRefrId;
           if (ac && ac.is3DLoaded()) {
             this.tryHostIfNeed(ac, remoteId as number);
@@ -489,18 +503,18 @@ export class FormView {
       }
 
       if (
-        +(model.numMovementChanges as number) !==
-          this.movState.lastNumChanges ||
-        Date.now() - this.movState.lastApply > 2000
+        hasNewMovement ||
+        now - this.movState.lastApply > 33
       ) {
-        this.movState.lastApply = Date.now();
         if (model.isHostedByOther || !this.movState.everApplied) {
           const backup = model.movement.isWeapDrawn;
+          let movementToApply: Movement;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
             model.movement.isWeapDrawn = forcedWeapDrawn;
           }
           try {
-            applyMovement(refr, model.movement, !!model.isMyClone);
+            movementToApply = this.getBufferedMovement(model.movement, now);
+            applyMovement(refr, movementToApply, !!model.isMyClone);
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
@@ -514,7 +528,8 @@ export class FormView {
           }
           model.movement.isWeapDrawn = backup;
 
-          this.movState.lastNumChanges = +(model.numMovementChanges as number);
+          this.movState.lastAppliedMovement = movementToApply;
+          this.movState.lastApply = now;
           this.movState.everApplied = true;
         } else {
           const remoteId = this.remoteRefrId;
@@ -734,6 +749,242 @@ export class FormView {
     return { lastNumChanges: 0, useAnimOverrides: true };
   }
 
+  private registerMovementPacket(movement: Movement, receivedAt: number): void {
+    const latestMovement = this.movState.latestMovement;
+    const latestReceivedAt = this.movState.latestMovementReceivedAt;
+
+    if (this.movState.hasLatestMovement && latestMovement && latestReceivedAt > 0) {
+      const interval = receivedAt - latestReceivedAt;
+      if (interval > 0) {
+        const clampedInterval = Math.max(50, Math.min(200, interval));
+        this.movState.averagePacketIntervalMs =
+          this.movState.averagePacketIntervalMs > 0
+            ? this.lerp(
+                this.movState.averagePacketIntervalMs,
+                clampedInterval,
+                0.35,
+              )
+            : clampedInterval;
+      }
+      this.copyMovement(this.movState.previousMovement, latestMovement);
+      this.movState.hasPreviousMovement = true;
+      this.movState.previousMovementReceivedAt = latestReceivedAt;
+    }
+
+    this.copyMovement(this.movState.latestMovement, movement);
+    this.movState.hasLatestMovement = true;
+    this.movState.latestMovementReceivedAt = receivedAt;
+  }
+
+  private getBufferedMovement(movement: Movement, now: number): Movement {
+    const previousMovement = this.movState.previousMovement;
+    const latestMovement = this.movState.latestMovement;
+    if (!this.movState.hasPreviousMovement) {
+      FormView.movementDebugStats.averagePacketIntervalMs =
+        this.movState.averagePacketIntervalMs;
+      FormView.movementDebugStats.extrapolationMs = 0;
+      FormView.movementDebugStats.lastSnapDistance = 0;
+      return this.getFallbackSmoothedMovement(
+        this.movState.hasLatestMovement ? latestMovement : movement,
+      );
+    }
+
+    if (previousMovement.worldOrCell !== latestMovement.worldOrCell) {
+      FormView.movementDebugStats.averagePacketIntervalMs =
+        this.movState.averagePacketIntervalMs;
+      FormView.movementDebugStats.extrapolationMs = 0;
+      FormView.movementDebugStats.lastSnapDistance = 0;
+      return latestMovement;
+    }
+
+    const distance = ObjectReferenceEx.getDistance(
+      previousMovement.pos,
+      latestMovement.pos,
+    );
+    if (distance > 256) {
+      FormView.movementDebugStats.averagePacketIntervalMs =
+        this.movState.averagePacketIntervalMs;
+      FormView.movementDebugStats.extrapolationMs = 0;
+      FormView.movementDebugStats.lastSnapDistance = distance;
+      FormView.movementDebugStats.hardCorrectionCount++;
+      return latestMovement;
+    }
+
+    const previousReceivedAt = this.movState.previousMovementReceivedAt;
+    const latestReceivedAt = this.movState.latestMovementReceivedAt;
+    const packetInterval = this.movState.averagePacketIntervalMs || 100;
+    const renderBackTime = Math.min(90, Math.max(55, packetInterval * 0.75));
+    const renderTime = now - renderBackTime;
+    const rawBlend = (renderTime - previousReceivedAt) / packetInterval;
+    const blend = Math.max(
+      0,
+      Math.min(1, rawBlend),
+    );
+
+    const interpolatedMovement = this.movState.interpolatedMovement;
+    this.copyMovement(interpolatedMovement, latestMovement);
+    interpolatedMovement.pos[0] = this.lerp(
+      previousMovement.pos[0],
+      latestMovement.pos[0],
+      blend,
+    );
+    interpolatedMovement.pos[1] = this.lerp(
+      previousMovement.pos[1],
+      latestMovement.pos[1],
+      blend,
+    );
+    interpolatedMovement.pos[2] = this.lerp(
+      previousMovement.pos[2],
+      latestMovement.pos[2],
+      blend,
+    );
+    interpolatedMovement.rot[0] = this.lerp(
+      previousMovement.rot[0],
+      latestMovement.rot[0],
+      blend,
+    );
+    interpolatedMovement.rot[1] = this.lerp(
+      previousMovement.rot[1],
+      latestMovement.rot[1],
+      blend,
+    );
+    interpolatedMovement.rot[2] = this.lerpAngle(
+      previousMovement.rot[2],
+      latestMovement.rot[2],
+      blend,
+    );
+    interpolatedMovement.direction = this.lerpAngle(
+      previousMovement.direction,
+      latestMovement.direction,
+      blend,
+    );
+
+    const extrapolationMs = Math.min(
+      60,
+      Math.max(0, renderTime - latestReceivedAt),
+    );
+    FormView.movementDebugStats.averagePacketIntervalMs = packetInterval;
+    FormView.movementDebugStats.extrapolationMs = extrapolationMs;
+    FormView.movementDebugStats.lastSnapDistance = 0;
+    if (extrapolationMs <= 0) {
+      return interpolatedMovement;
+    }
+
+    return {
+      ...interpolatedMovement,
+      pos: this.extrapolateMovementPos(interpolatedMovement, extrapolationMs),
+    };
+  }
+
+  private getFallbackSmoothedMovement(movement: Movement): Movement {
+    const lastMovement = this.movState.lastAppliedMovement;
+    if (!lastMovement) {
+      return movement;
+    }
+
+    if (lastMovement.worldOrCell !== movement.worldOrCell) {
+      return movement;
+    }
+
+    const distance = ObjectReferenceEx.getDistance(lastMovement.pos, movement.pos);
+    if (distance > 256) {
+      return movement;
+    }
+
+    const blend = movement.runMode === 'Standing' && !movement.isInJumpState
+      ? 0.35
+      : 0.6;
+
+    const fallbackMovement = this.movState.interpolatedMovement;
+    this.copyMovement(fallbackMovement, movement);
+    fallbackMovement.pos[0] = this.lerp(lastMovement.pos[0], movement.pos[0], blend);
+    fallbackMovement.pos[1] = this.lerp(lastMovement.pos[1], movement.pos[1], blend);
+    fallbackMovement.pos[2] = this.lerp(lastMovement.pos[2], movement.pos[2], blend);
+    fallbackMovement.rot[0] = this.lerp(lastMovement.rot[0], movement.rot[0], blend);
+    fallbackMovement.rot[1] = this.lerp(lastMovement.rot[1], movement.rot[1], blend);
+    fallbackMovement.rot[2] = this.lerpAngle(lastMovement.rot[2], movement.rot[2], blend);
+    fallbackMovement.direction = this.lerpAngle(lastMovement.direction, movement.direction, blend);
+    return fallbackMovement;
+  }
+
+  private lerp(from: number, to: number, blend: number): number {
+    return from + (to - from) * blend;
+  }
+
+  private lerpAngle(from: number, to: number, blend: number): number {
+    let delta = ((to - from + 540) % 360) - 180;
+    if (Number.isNaN(delta)) {
+      delta = 0;
+    }
+    return from + delta * blend;
+  }
+
+  private extrapolateMovementPos(
+    movement: Movement,
+    extrapolationMs: number,
+  ): [number, number, number] {
+    if (movement.runMode === 'Standing' || movement.isInJumpState) {
+      return movement.pos;
+    }
+
+    const distanceAdd = movement.speed * (extrapolationMs / 1000);
+    const direction = movement.rot[2] + movement.direction;
+    const extrapolatedPos = this.movState.extrapolatedPos;
+    extrapolatedPos[0] =
+      movement.pos[0] + Math.sin((direction / 180) * Math.PI) * distanceAdd;
+    extrapolatedPos[1] =
+      movement.pos[1] + Math.cos((direction / 180) * Math.PI) * distanceAdd;
+    extrapolatedPos[2] = movement.pos[2];
+    return extrapolatedPos;
+  }
+
+  private copyMovement(target: Movement, source: Movement): void {
+    target.worldOrCell = source.worldOrCell;
+    target.pos[0] = source.pos[0];
+    target.pos[1] = source.pos[1];
+    target.pos[2] = source.pos[2];
+    target.rot[0] = source.rot[0];
+    target.rot[1] = source.rot[1];
+    target.rot[2] = source.rot[2];
+    target.runMode = source.runMode;
+    target.direction = source.direction;
+    target.isInJumpState = source.isInJumpState;
+    target.isMounted = source.isMounted;
+    target.mountRemoteId = source.mountRemoteId;
+    target.isSneaking = source.isSneaking;
+    target.isBlocking = source.isBlocking;
+    target.isWeapDrawn = source.isWeapDrawn;
+    target.isDead = source.isDead;
+    target.healthPercentage = source.healthPercentage;
+    target.speed = source.speed;
+    if (source.lookAt) {
+      target.lookAt = target.lookAt ?? [0, 0, 0];
+      target.lookAt[0] = source.lookAt[0];
+      target.lookAt[1] = source.lookAt[1];
+      target.lookAt[2] = source.lookAt[2];
+    } else {
+      target.lookAt = undefined;
+    }
+  }
+
+  private createMovementBuffer(): Movement {
+    return {
+      worldOrCell: 0,
+      pos: [0, 0, 0],
+      rot: [0, 0, 0],
+      runMode: 'Standing',
+      direction: 0,
+      isInJumpState: false,
+      isMounted: false,
+      isSneaking: false,
+      isBlocking: false,
+      isWeapDrawn: false,
+      isDead: false,
+      healthPercentage: 1,
+      speed: 0,
+    };
+  }
+
   private tryHostIfNeed(ac: Actor, remoteId: number) {
     const last = lastTryHost[remoteId];
     if (!last || Date.now() - last >= 1000) {
@@ -766,6 +1017,16 @@ export class FormView {
     lastApply: 0,
     lastRehost: 0,
     everApplied: false,
+    lastAppliedMovement: undefined as Movement | undefined,
+    previousMovement: this.createMovementBuffer(),
+    latestMovement: this.createMovementBuffer(),
+    interpolatedMovement: this.createMovementBuffer(),
+    hasPreviousMovement: false,
+    hasLatestMovement: false,
+    previousMovementReceivedAt: 0,
+    latestMovementReceivedAt: 0,
+    averagePacketIntervalMs: 0,
+    extrapolatedPos: [0, 0, 0] as [number, number, number],
   };
   private appearanceState = this.getDefaultAppearanceState();
   private eqState = this.getDefaultEquipState();
@@ -781,4 +1042,10 @@ export class FormView {
   private textNameId: number | undefined = undefined;
 
   public static isDisplayingNicknames: boolean = true;
+  private static movementDebugStats = {
+    averagePacketIntervalMs: 0,
+    extrapolationMs: 0,
+    lastSnapDistance: 0,
+    hardCorrectionCount: 0,
+  };
 }

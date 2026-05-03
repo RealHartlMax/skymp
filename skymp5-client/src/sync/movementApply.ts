@@ -172,10 +172,9 @@ const applyHealthPercentage = (ac: Actor, healthPercentage: number) => {
 const gTempTargetPos: NiPoint3 = [0, 0, 0];
 
 const translateTo = (refr: ObjectReference, m: Movement) => {
-  let time = 0.2;
-  if (m.isInJumpState || m.runMode !== 'Standing') {
-    time = 0.2;
-  }
+  // Keep the prediction horizon close to the actual movement send cadence.
+  // A larger fixed window makes remote actors overshoot once updates arrive faster.
+  const time = m.runMode === 'Standing' && !m.isInJumpState ? 0.13 : 0.1;
 
   // Local lag compensation
   // TODO: Remove "|| 0" hack (added to support old MpClientPlugin)

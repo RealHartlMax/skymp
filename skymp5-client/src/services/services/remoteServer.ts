@@ -483,6 +483,7 @@ export class RemoteServer extends ClientListener {
         isDead: false,
         healthPercentage: 1.0,
         speed: 0,
+          isMounted: false,
       };
     }
 

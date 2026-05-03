@@ -83,6 +83,19 @@ export class Settings {
    */
   itemPickupMode: 'allow' | 'minigame' | 'block-all' = 'allow';
 
+  /**
+   * Controls the speed of in-game time relative to real time.
+   * Skyrim's default is 20 (20 in-game seconds pass per 1 real second).
+   * Set to 1 for 1:1 real time. Set to 0 to freeze time.
+   * Formula: 1 real second = timeScale in-game seconds.
+   * Examples:
+   *   timeScale: 1   → 1 in-game second per real second (real time)
+   *   timeScale: 20  → 20 in-game seconds per real second (Skyrim default)
+   *   timeScale: 60  → 1 in-game minute per real second
+   *   timeScale: 3600 → 1 in-game hour per real second
+   */
+  timeScale = 20;
+
   allSettings: Record<string, unknown> | null = null;
 
   constructor() {}
@@ -128,6 +141,8 @@ export class Settings {
       'starterInventory',
       'offlineMode',
       'discordAuth',
+      'itemPickupMode',
+      'timeScale',
     ].forEach((prop) => {
       if (settings[prop]) {
         (this as Record<string, unknown>)[prop] = settings[prop];

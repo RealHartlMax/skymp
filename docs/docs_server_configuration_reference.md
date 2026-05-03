@@ -311,6 +311,28 @@ mp.onItemPickupAttempt = (
 };
 ```
 
+## timeScale
+
+Controls the speed of in-game time relative to real time. Default is `20` (Skyrim's own default).
+
+The formula is: **1 real second = `timeScale` in-game seconds**.
+
+| `timeScale` | 1 real second = … in-game | 1 real minute = … in-game | Notes |
+|-------------|---------------------------|---------------------------|-------|
+| `1`         | 1 s                       | 1 min                     | Real time — clock matches the real world |
+| `20`        | 20 s                      | 20 min                    | **Skyrim default** — one in-game day ≈ 72 real minutes |
+| `60`        | 1 min                     | 1 h                       | One in-game day ≈ 24 real minutes |
+| `3600`      | 1 h                       | 1 day                     | Extreme — one in-game day ≈ 24 real seconds |
+| `0`         | 0 s                       | 0 min                     | Freeze time |
+
+```json5
+{
+  // ...
+  timeScale: 20,
+  // ...
+}
+```
+
 ## itemsEnabled
 
 When set to `false`, world-item references are never instantiated. No loose items will appear in the game world. Default is `true`.

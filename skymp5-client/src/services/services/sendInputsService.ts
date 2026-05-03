@@ -125,13 +125,18 @@ export class SendInputsService extends ClientListener {
     }
 
     const refrIdStr = `${_refrId}`;
-    const sendMovementRateMs = 130;
+    const movement = getMovement(owner, form);
+    const isMoving =
+      movement.runMode !== 'Standing' ||
+      movement.isInJumpState ||
+      movement.speed > 25;
+    const sendMovementRateMs = isMoving ? 65 : 130;
     const now = Date.now();
     const last = this.lastSendMovementMoment.get(refrIdStr);
     if (!last || now - last > sendMovementRateMs) {
       const message: MessageWithRefrId<UpdateMovementMessage> = {
         t: MsgType.UpdateMovement,
-        data: getMovement(owner, form),
+        data: movement,
         _refrId,
       };
       this.controller.emitter.emit('sendMessageWithRefrId', {

@@ -60,6 +60,12 @@ declare module 'skyrimPlatform' {
   function getTextRefrNode(textId: number): string;
   function getTextRefrOffset(textId: number): number[];
   function getTextRefrScreenOffset(textId: number): number[];
+
+  interface LocationDiscoveryEvent {
+    markerFormId: number;
+  }
+
+  function showMapMarker(refrFormId: number, show: boolean): void;
 }
 
 export type Sp = Omit<typeof sp, 'on' | 'once'>;

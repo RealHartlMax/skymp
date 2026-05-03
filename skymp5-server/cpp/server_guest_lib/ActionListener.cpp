@@ -119,6 +119,20 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
 {
   auto actor = SendToNeighbours(msg.idx, rawMsgData);
   if (actor) {
+    auto myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
+
+    // Keep a rider->horse mapping from authoritative self movement updates.
+    if (myActor && actor == myActor) {
+      const auto riderId = myActor->GetFormId();
+      if (msg.data.isMounted && msg.data.mountRemoteId.has_value() &&
+          msg.data.mountRemoteId.value() != 0) {
+        partOne.worldState.ridingHorseByRider[riderId] =
+          msg.data.mountRemoteId.value();
+      } else {
+        partOne.worldState.ridingHorseByRider.erase(riderId);
+      }
+    }
+
     bool teleportFlag = actor->GetTeleportFlag();
     actor->SetTeleportFlag(false);
 
@@ -690,7 +704,14 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
 
   const auto hostResetTimeout = std::chrono::seconds(2);
 
-  if (hoster == 0 || !lastRemoteUpdate ||
+  bool shouldForceHost = false;
+  auto riddenHorseIt = partOne.worldState.ridingHorseByRider.find(me->GetFormId());
+  if (riddenHorseIt != partOne.worldState.ridingHorseByRider.end() &&
+      riddenHorseIt->second == remoteId) {
+    shouldForceHost = true;
+  }
+
+  if (shouldForceHost || hoster == 0 || !lastRemoteUpdate ||
       std::chrono::system_clock::now() - *lastRemoteUpdate >
         hostResetTimeout) {
     partOne.GetLogger().info("Hoster changed from {0:x} to {0:x}", prevHoster,
