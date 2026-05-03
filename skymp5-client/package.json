@@ -8,6 +8,7 @@
     "watch": "webpack -w"
   },
   "devDependencies": {
+    "@types/node": "^20.17.30",
     "bestzip": "^2.2.0",
     "ts-loader": "^9.2.6",
     "tsc": "^2.0.3",

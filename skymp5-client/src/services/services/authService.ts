@@ -1,9 +1,9 @@
-import * as crypto from "crypto";
-import * as fs from "fs";
+import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
 import { AuthGameData, RemoteAuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { BrowserMessageEvent, Menu, browser } from "skyrimPlatform";
+import { BrowserMessageEvent, browser } from 'skyrimPlatform';
 import { AuthNeededEvent } from "../events/authNeededEvent";
 import { BrowserWindowLoadedEvent } from "../events/browserWindowLoadedEvent";
 import { TimersService } from "./timersService";
@@ -486,41 +486,54 @@ export class AuthService extends ClientListener {
                 discordUsername,
                 discordDiscriminator,
                 discordAvatar,
-              } = JSON.parse(response.body) as MasterApiAuthStatus;
-              browserState.failCount = 0;
-              this.createPlaySession(token, (playSession, error) => {
-                if (error) {
-                  browserState.failCount = 0;
-                  browserState.comment = (error);
-                  timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
-                  this.refreshWidgets();
-                  return;
-                }
-                authData = {
-                  session: playSession,
-                  masterApiId,
-                  discordUsername,
-                  discordDiscriminator,
-                  discordAvatar,
-                };
-                browserState.comment = strings.linkedSuccessfully;
-                this.refreshWidgets();
-              });
-              break;
-            case 401: // Unauthorized
-              browserState.failCount = 0;
-              browserState.comment = '';//(`Still waiting...`);
-              timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
-              break;
-            case 403: // Forbidden
-            case 404: // Not found
-              browserState.failCount = 9000;
-              browserState.comment = (`Fail: ${response.body}`);
-              break;
-            default:
-              ++browserState.failCount;
-              browserState.comment = `Server returned ${response.status.toString() || "???"} "${response.body || response.error}"`;
-              timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
+              };
+              browserState.comment = strings.linkedSuccessfully;
+              this.refreshWidgets();
+            });
+            break;
+          case 401: // Unauthorized
+            browserState.failCount = 0;
+            browserState.comment = '';
+            timersService.setTimeout(
+              () => this.checkLoginState(),
+              Math.floor((1.5 + Math.random() * 2) * 1000),
+            );
+            break;
+          case 403: // Forbidden
+          case 404: // Not found
+            browserState.failCount = 9000;
+            browserState.comment = `Fail: ${response.body}`;
+            break;
+          default:
+            ++browserState.failCount;
+            browserState.comment = `Server returned ${response.status.toString() || "???"} "${response.body || response.error}"`;
+            timersService.setTimeout(
+              () => this.checkLoginState(),
+              Math.floor((1.5 + Math.random() * 2) * 1000),
+            );
+        }
+      },
+    );
+  }
+
+  private loadAvailableServers(): void {
+    const settingsService = this.controller.lookupListener(SettingsService);
+    const masterApiClient = settingsService.makeMasterApiClient();
+
+    masterApiClient.get(
+      '/api/servers',
+      undefined,
+      // @ts-ignore
+      (res) => {
+        if (res.status !== 200) {
+          logTrace(this, `Failed to load server list, status ${res.status}`);
+          return;
+        }
+
+        try {
+          const data = JSON.parse(res.body);
+          if (!Array.isArray(data)) {
+            return;
           }
 
           const mapped = data
@@ -548,7 +561,7 @@ export class AuthService extends ClientListener {
               (server: AvailableServer | null): server is AvailableServer =>
                 !!server,
             )
-            .sort((a, b) => b.online - a.online)
+            .sort((a: AvailableServer, b: AvailableServer) => b.online - a.online)
             .slice(0, 50);
 
           availableServers = mapped;
@@ -561,7 +574,8 @@ export class AuthService extends ClientListener {
   }
 
   private refreshWidgets() {
-    this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData, strings }));
+    const currentTexts = this.getCurrentTexts();
+    this.sp.browser.executeJavaScript(new FunctionInfo(this.browsersideWidgetSetter).getText({ events, browserState, authData: authData, availableServers, selectedServerMasterKey: this.controller.lookupListener(SettingsService).getServerMasterKey(), uiText: currentTexts }));
     this.authDialogOpen = true;
   }
 
@@ -702,7 +716,7 @@ export class AuthService extends ClientListener {
     const loginWidget = {
       type: 'form',
       id: 1,
-      caption: strings.authorization,
+      caption: uiText.authorization,
       elements: [
         // {
         //   type: "button",
@@ -733,7 +747,7 @@ export class AuthService extends ClientListener {
               authData.discordUsername
                 ? `${authData.discordUsername}`
                 : `id: ${authData.masterApiId}`
-            ) : strings.notAuthorized
+            ) : uiText.notAuthorized
           ),
           tags: [/*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/],
         },
@@ -744,17 +758,35 @@ export class AuthService extends ClientListener {
         // },
         {
           type: "button",
-          text: authData ? strings.changeAccount : strings.loginViaSkymp,
+          text: authData ? uiText.switchAccount : uiText.loginViaSkymp,
           tags: [/*"ELEMENT_SAME_LINE"*/],
           click: () => window.skyrimPlatform.sendMessage(events.openDiscordOauth),
-          hint: strings.loginOrChangeHint,
+          hint: uiText.switchAccountHint,
         },
         {
+          type: 'text',
+          text: `${uiText.currentServer}: ${selectedServerMasterKey}`,
+          tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
+        },
+        {
+          type: 'button',
+          text: uiText.useConfiguredServer,
+          tags: ['ELEMENT_STYLE_MARGIN_EXTENDED'],
+          click: () => window.skyrimPlatform.sendMessage(events.useConfiguredServer),
+          hint: uiText.useConfiguredServerHint,
+        },
+        {
+          type: 'text',
+          text: uiText.serverList,
+          tags: [],
+        },
+        ...serverButtons,
+        {
           type: "button",
-          text: strings.play,
+          text: uiText.play,
           tags: ["BUTTON_STYLE_FRAME", "ELEMENT_STYLE_MARGIN_EXTENDED"],
           click: () => window.skyrimPlatform.sendMessage(events.authAttempt),
-          hint: strings.connectToServer,
+          hint: uiText.playHint,
         },
         {
           type: 'text',
@@ -917,7 +949,7 @@ export class AuthService extends ClientListener {
     this.playerEverSawActualGameplay = true;
   }
 
-  private isListenBrowserMessage() {
+  private get isListenBrowserMessage() {
     return this._isListenBrowserMessage;
   }
 
