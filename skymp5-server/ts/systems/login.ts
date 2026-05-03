@@ -389,16 +389,6 @@ export class Login implements System {
           console.error("discordAuth.guilds array is missing or empty, skipping Discord server integration");
         }
 
-        this.enforceJoinAccess(
-          ctx,
-          userId,
-          profile,
-          roles,
-          discordCheckAttempted,
-          discordMemberConfirmed,
-          discordAuthConfigured,
-        );
-
         if ((ctx.svr as any).onLoginAttempt) {
           const isContinue = (ctx.svr as any).onLoginAttempt(profile.id);
           if (!isContinue) {
@@ -492,6 +482,20 @@ export class Login implements System {
         }
 
         const rolesToAssign = isMemberOfAny ? [...new Set(fetchedRoles)] : roles;
+
+        const discordAuthConfigured = !!(discordAuth && discordAuth.botToken && discordAuth.guilds?.length);
+        const discordCheckAttempted = !!(discordAuth && discordAuth.botToken && discordAuth.guilds && profile.discordId);
+        const discordMemberConfirmed = isMemberOfAny;
+
+        this.enforceJoinAccess(
+          ctx,
+          userId,
+          profile,
+          rolesToAssign,
+          discordCheckAttempted,
+          discordMemberConfirmed,
+          discordAuthConfigured,
+        );
 
         this.emit(ctx, "spawnAllowed", userId, profile.id, rolesToAssign, profile.discordId);
         loginsCounter.inc();

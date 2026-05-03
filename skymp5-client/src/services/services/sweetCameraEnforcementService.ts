@@ -50,29 +50,6 @@ try {
   // locale file not found or unreadable, default to 'en'
 }
 
-
-const translations = {
-  "ru": {
-    pressSpace: 'Пробел, чтобы выйти из анимации'
-  },
-  "en": {
-    pressSpace: 'Space to exit animation'
-  },
-} as const;
-
-type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
-
-let strings: TranslationStrings = translations['en'];
-
-try {
-  const lang = fs.readFileSync('./Data/Platform/Distribution/locale', 'utf8').trim();
-  if (lang in translations) {
-    strings = translations[lang as keyof typeof translations];
-  }
-} catch {
-  // locale file not found or unreadable, default to 'en'
-}
-
 // ex AnimDebugService part
 export class SweetCameraEnforcementService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -485,58 +462,8 @@ export class SweetCameraEnforcementService extends ClientListener {
 
     const animEvent = this.settings.animKeys[e.code];
 
-                // Checking whether manual interruption is prohibited
-                if (this.currentAnim?.options?.preventManualInterrupt) {
-                    return;
-                }
-
-                if (this.currentAnim?.options) {
-                    this.exitAnim({ playExitAnim: true, enablePlayerControlsDelayMs: this.currentAnim.options.enablePlayerControlsDelayMs });
-                } else {
-                    this.exitAnim({ playExitAnim: true, enablePlayerControlsDelayMs: undefined });
-                }
-            }
-        } else {
-            if (this.needsExitingAnim) {
-                
-                if (this.currentAnim?.options?.preventManualInterrupt) {
-                    return;
-                }
-
-                const intervalMs = this.settings?.exitAnimNotificationIntervalMs;
-                if (!intervalMs || (Date.now() - this.lastNotificationMoment) >= intervalMs) {
-                    this.lastNotificationMoment = Date.now();
-                    this.sp.Debug.notification(strings.pressSpace);
-                }
-            }
-        }
-
-        if (!e.isUp) {
-            return;
-        }
-
-        if (!this.settings || !this.settings.animKeys) {
-            return;
-        }
-
-        const animEvent = this.settings.animKeys[e.code];
-
-        if (!animEvent) {
-            return;
-        }
-
-        logTrace(this, "Starting anims from keyboard is disabled in this version")
-        // this.tryInvokeAnim(animEvent, {
-        //     weaponDrawnAllowed: false,
-        //     furnitureAllowed: false,
-        //     exitAnimName: null,
-        //     interruptAnimName: null,
-        //     timeMs: 0,
-        //     isPlayExitAnimAfterwardsEnabled: true,
-        //     parentAnimEventName: null,
-        //     enablePlayerControlsDelayMs: null,
-        //     preferInterruptAnimAsExitAnimTimeMs: null,
-        // });
+    if (!animEvent) {
+      return;
     }
 
     logTrace(this, 'Starting anims from keyboard is disabled in this version');

@@ -7685,18 +7685,6 @@ const AdminDashboard = () => {
                     {cfgEditorTab === 'access' && (
                       <div className="admin-dashboard__cfg-form-grid">
                         <label className="admin-dashboard__cfg-check">
-                          {
-                            k: t('adminDashboard.cfgItemPickupMode'),
-                            v: t(
-                              `adminDashboard.cfgItemPickupMode_${
-                                status.itemPickupMode === 'minigame'
-                                  ? 'minigame'
-                                  : status.itemPickupMode === 'block-all'
-                                    ? 'blockAll'
-                                    : 'allow'
-                              }`,
-                            ),
-                          },
                           <input
                             type="checkbox"
                             checked={cfgForm.discordBot.enabled}
