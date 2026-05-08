@@ -205,6 +205,12 @@ jobs:
           SKYMP5_PATCHES_PAT: ${{ github.token }}
           NUGET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Remove ESM files before packing
+        shell: powershell
+        run: |
+          Get-ChildItem -Path "${{ github.workspace }}\build\dist\server" -Recurse -Include "*.esm" -Force | Remove-Item -Force
+          Write-Host "Removed all *.esm files from server dist"
+
       - name: Pack Windows client files
         shell: powershell
         run: |
@@ -284,10 +290,16 @@ jobs:
           }
           EOF
 
+      - name: Remove ESM files before packing
+        run: |
+          cd "${{ github.workspace }}/build/dist/server"
+          find . -name '*.esm' -type f -delete
+          echo "Removed all *.esm files from server dist"
+
       - name: Pack server files
         run: |
           cd "${{ github.workspace }}/build"
-          tar czf running_server_files_linux_server_dist.tar.gz --exclude='*.esm' dist/server
+          tar czf running_server_files_linux_server_dist.tar.gz dist/server
 
       - name: Upload Linux server artifact
         uses: actions/upload-artifact@v7
@@ -329,7 +341,7 @@ jobs:
       - name: Pack Windows server artifact
         run: |
           cd ./artifacts/windows_server_files
-          zip -r ../running_server_files_windows_server_dist.zip . -x '*.esm'
+          zip -r ../running_server_files_windows_server_dist.zip .
 
       - name: Download Linux server artifact
         uses: actions/download-artifact@v8
