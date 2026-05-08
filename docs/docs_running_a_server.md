@@ -24,6 +24,25 @@ Pre-built packages are published at:
 4. Edit `server-settings.json` to configure your server.
 5. Open the admin dashboard at `http://localhost:8080/admin`.
 
+### Required Skyrim master files (`*.esm`)
+
+Release server archives intentionally do **not** contain Bethesda game master files (`Skyrim.esm`, `Update.esm`, `Dawnguard.esm`, `HearthFires.esm`, `Dragonborn.esm`).
+
+Copy these files from your own legal Skyrim installation into the server data directory root (`data/` by default), then keep the same names in `loadOrder`.
+
+- Typical Windows location: `C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\Data\`
+- Typical Linux/Proton location: `~/.steam/steam/steamapps/common/Skyrim Special Edition/Data/`
+
+Example target layout in server folder:
+
+```text
+data/Skyrim.esm
+data/Update.esm
+data/Dawnguard.esm
+data/HearthFires.esm
+data/Dragonborn.esm
+```
+
 ### Updating an existing installation
 
 Place the downloaded archive in the server package root, then run the update helper (preserves `data/` and `server-settings.json`):

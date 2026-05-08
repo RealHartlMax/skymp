@@ -28,6 +28,7 @@ import { LoadOrderVerificationService } from './services/services/loadOrderVerif
 import { MagicSyncService } from './services/services/magicSyncService';
 import { EffectsLearningService } from './services/services/effectsLearningService';
 import { EnchantmentsService } from './services/services/enchantmentsService';
+import { FavoritesService } from './services/services/favoritesService';
 import { MarkerService } from './services/services/markerService';
 import { MovementDebugTelemetryService } from './services/services/movementDebugTelemetryService';
 import { WeatherService } from './services/services/weatherService';
@@ -124,6 +125,7 @@ const main = () => {
       new WeatherService(sp, controller),
       new EffectsLearningService(sp, controller),
       new EnchantmentsService(sp, controller),
+      new FavoritesService(sp, controller),
     ];
     SpApiInteractor.setup(listeners);
   } catch (e) {

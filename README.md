@@ -65,6 +65,8 @@ Wenn du keinen eigenen Launcher bauen möchtest, ist dieses Nexus-Tool eine prak
 
 https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
 
+Zusätzlich arbeiten wir an einem globalen Launcher, damit Server-Betreiber langfristig keinen eigenen Launcher mehr erstellen müssen.
+
 ### Plattformstatus
 
 - Windows-Server: stabil und gut unterstützt.
@@ -139,6 +141,8 @@ Full guide: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
 If you do not want to build your own launcher, this Nexus tool is a practical option:
 
 https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
+
+In parallel, we are working on a global launcher so server owners will not need to build and maintain separate custom launchers.
 
 ### Platform status
 
@@ -215,6 +219,8 @@ SkyMP добавляет мультиплеер в Skyrim. Этот репози
 
 https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
 
+Параллельно мы работаем над глобальным лаунчером, чтобы владельцам серверов не приходилось делать и поддерживать отдельные собственные лаунчеры.
+
 ### Статус платформ
 
 - Windows-сервер: стабильная и зрелая поддержка.
@@ -289,6 +295,8 @@ Guía completa: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
 Si no quieres crear tu propio launcher, esta herramienta de Nexus es una opción práctica:
 
 https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
+
+En paralelo, estamos trabajando en un launcher global para que los dueños de servidores no tengan que crear y mantener launchers personalizados por separado.
 
 ### Estado de plataforma
 

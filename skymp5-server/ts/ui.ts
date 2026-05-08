@@ -5,6 +5,14 @@ import * as koaBody from 'koa-body';
 import * as os from 'os';
 import * as path from 'path';
 import Axios from 'axios';
+import {
+  DEFAULT_TIMEOUT_MS,
+  GITHUB_API_TIMEOUT_MS,
+  GITHUB_MAX_RESPONSE_BYTES,
+  LOCAL_PROBE_TIMEOUT_MS,
+  MAX_REQUEST_BODY_BYTES,
+  MAX_RESPONSE_BODY_BYTES,
+} from './lib/axiosDefaults';
 import { spawn, spawnSync } from 'child_process';
 import { AddressInfo } from 'net';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -506,7 +514,8 @@ const fetchLatestReleaseInfo = async (): Promise<CachedLatestReleaseInfo['payloa
   const response = await Axios.get(
     'https://api.github.com/repos/skyrim-multiplayer/skymp/releases/latest',
     {
-      timeout: 5000,
+      timeout: GITHUB_API_TIMEOUT_MS,
+      maxContentLength: GITHUB_MAX_RESPONSE_BYTES,
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'SkyMP-AdminDashboard',
@@ -2759,7 +2768,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
             },
-            timeout: 10000,
+            timeout: DEFAULT_TIMEOUT_MS,
+            maxBodyLength: MAX_REQUEST_BODY_BYTES,
+            maxContentLength: MAX_RESPONSE_BODY_BYTES,
           },
         );
 
@@ -2773,7 +2784,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
-          timeout: 10000,
+          timeout: DEFAULT_TIMEOUT_MS,
+          maxContentLength: MAX_RESPONSE_BODY_BYTES,
         });
 
         const discordId = String(meRes?.data?.id || '').trim();
@@ -5096,6 +5108,8 @@ export const main = (settings: Settings): void => {
   Axios({
     method: 'get',
     url: `http://localhost:${devServerPort}`,
+    timeout: LOCAL_PROBE_TIMEOUT_MS,
+    maxContentLength: MAX_REQUEST_BODY_BYTES,
   })
     .then(() => {
       console.log(`UI dev server has been detected on port ${devServerPort}`);

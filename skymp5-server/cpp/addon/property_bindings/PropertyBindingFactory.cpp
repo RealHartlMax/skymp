@@ -1,6 +1,7 @@
 #include "PropertyBindingFactory.h"
 
 #include "ActorNeighborsBinding.h"
+#include "ActorValuesBinding.h"
 #include "AngleBinding.h"
 #include "AppearanceBinding.h"
 #include "BaseDescBinding.h"
@@ -33,6 +34,7 @@ PropertyBindingFactory::CreateStandardPropertyBindings()
 {
   std::map<std::string, std::shared_ptr<PropertyBinding>> result;
   result["actorNeighbors"] = std::make_shared<ActorNeighborsBinding>();
+  result["actorValues"] = std::make_shared<ActorValuesBinding>();
   result["angle"] = std::make_shared<AngleBinding>();
   result["appearance"] = std::make_shared<AppearanceBinding>();
   result["baseDesc"] = std::make_shared<BaseDescBinding>();

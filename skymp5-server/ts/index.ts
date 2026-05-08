@@ -35,6 +35,7 @@ import {
 } from './systems/metricsSystem';
 import { EffectsLearningSystem } from './systems/effectsLearningSystem';
 import { EnchantmentsSystem } from './systems/enchantmentsSystem';
+import { FavoritesSystem } from './systems/favoritesSystem';
 import { MarkerSystem } from './systems/markerSystem';
 import { MovementDebugLogSystem } from './systems/movementDebugLogSystem';
 import { TimeSystem } from './systems/timeSystem';
@@ -937,6 +938,7 @@ const main = async () => {
     new WeatherSystem(log),
     new EffectsLearningSystem(log),
     new EnchantmentsSystem(log),
+    new FavoritesSystem(log),
     new MovementDebugLogSystem(log),
   );
 

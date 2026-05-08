@@ -1,5 +1,10 @@
 import Axios from 'axios';
 
+import {
+  DEFAULT_TIMEOUT_MS,
+  MAX_REQUEST_BODY_BYTES,
+  MAX_RESPONSE_BODY_BYTES,
+} from '../lib/axiosDefaults';
 import { Settings } from '../settings';
 import { Log, System } from './system';
 import { SystemContext } from './system';
@@ -81,6 +86,10 @@ export class MasterApiBalanceSystem implements System {
     try {
       const response = await Axios.get(
         `${this.masterUrl}/api/servers/${this.masterKey}/sessions/${session}/balance`,
+        {
+          timeout: DEFAULT_TIMEOUT_MS,
+          maxContentLength: MAX_RESPONSE_BODY_BYTES,
+        },
       );
       if (
         !response.data ||
@@ -115,7 +124,12 @@ export class MasterApiBalanceSystem implements System {
       const response = await Axios.post(
         `${this.masterUrl}/api/servers/${this.masterKey}/sessions/${session}/purchase`,
         { balanceToSpend },
-        { headers: { 'X-Auth-Token': authToken } },
+        {
+          headers: { 'X-Auth-Token': authToken },
+          timeout: DEFAULT_TIMEOUT_MS,
+          maxBodyLength: MAX_REQUEST_BODY_BYTES,
+          maxContentLength: MAX_RESPONSE_BODY_BYTES,
+        },
       );
       if (
         !response.data ||

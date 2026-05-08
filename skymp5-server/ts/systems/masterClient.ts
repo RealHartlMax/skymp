@@ -1,5 +1,10 @@
 import Axios from 'axios';
 
+import {
+  DEFAULT_TIMEOUT_MS,
+  MAX_REQUEST_BODY_BYTES,
+  MAX_RESPONSE_BODY_BYTES,
+} from '../lib/axiosDefaults';
 import { ScampServer } from '../scampNative';
 import { Log, System } from './system';
 import { SystemContext } from './system';
@@ -117,7 +122,11 @@ export class MasterClient implements System {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await Axios.post(this.endpoint, payload);
+        await Axios.post(this.endpoint, payload, {
+          timeout: DEFAULT_TIMEOUT_MS,
+          maxBodyLength: MAX_REQUEST_BODY_BYTES,
+          maxContentLength: MAX_RESPONSE_BODY_BYTES,
+        });
         return;
       } catch (error) {
         if (Axios.isAxiosError(error)) {

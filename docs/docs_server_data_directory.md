@@ -9,6 +9,21 @@ All assets required for the game should be packed into an archive in .bsa format
 That archive must have the same name with related mod (i.e. `"FooBar.bsa"` for `"FooBar.esp"`).
 Please note that currently .bsa archives are used only on the client-side. If you want scripts to be working on the server, place them into the `scripts` subdirectory.
 
+Core Skyrim masters (`*.esm`) are required but not distributed in release server archives. Copy them from your own Skyrim installation `Data` directory into this server `data` directory root.
+
+Required files for standard load order:
+
+- `Skyrim.esm`
+- `Update.esm`
+- `Dawnguard.esm`
+- `HearthFires.esm`
+- `Dragonborn.esm`
+
+Source locations:
+
+- Windows (Steam default): `C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\Data\`
+- Linux/Proton (Steam default): `~/.steam/steam/steamapps/common/Skyrim Special Edition/Data/`
+
 ## UI
 
 `ui` assets are served over the HTTP UI listener (`uiPort`).

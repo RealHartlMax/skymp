@@ -205,6 +205,17 @@ jobs:
           SKYMP5_PATCHES_PAT: ${{ github.token }}
           NUGET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Pack Windows client files
+        shell: powershell
+        run: |
+          Compress-Archive -Path "${{ github.workspace }}\build\dist\client\*" -DestinationPath "${{ github.workspace }}\build\running_server_files_windows_client_dist.zip" -Force
+
+      - name: Upload Windows client artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: running_server_files_windows_client_dist
+          path: ${{ github.workspace }}/build/running_server_files_windows_client_dist.zip
+
   linux-server-files:
     name: Linux server files
     needs: determine-version
@@ -276,7 +287,7 @@ jobs:
       - name: Pack server files
         run: |
           cd "${{ github.workspace }}/build"
-          tar czf running_server_files_linux_server_dist.tar.gz dist/server
+          tar czf running_server_files_linux_server_dist.tar.gz --exclude='*.esm' dist/server
 
       - name: Upload Linux server artifact
         uses: actions/upload-artifact@v7
@@ -302,13 +313,12 @@ jobs:
       - name: Download Windows client artifact
         uses: actions/download-artifact@v8
         with:
-          name: running_server_files_windows_dist
+          name: running_server_files_windows_client_dist
           path: ./artifacts/windows_client_files
 
-      - name: Pack Windows client artifact
+      - name: Prepare Windows client zip for release
         run: |
-          cd ./artifacts/windows_client_files
-          zip -r ../running_server_files_windows_client_dist.zip .
+          cp ./artifacts/windows_client_files/running_server_files_windows_client_dist.zip ./artifacts/running_server_files_windows_client_dist.zip
 
       - name: Download Windows server artifact
         uses: actions/download-artifact@v8
@@ -319,7 +329,7 @@ jobs:
       - name: Pack Windows server artifact
         run: |
           cd ./artifacts/windows_server_files
-          zip -r ../running_server_files_windows_server_dist.zip .
+          zip -r ../running_server_files_windows_server_dist.zip . -x '*.esm'
 
       - name: Download Linux server artifact
         uses: actions/download-artifact@v8

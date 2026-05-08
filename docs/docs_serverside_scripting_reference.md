@@ -249,5 +249,22 @@ Some commonly used built-in properties accessed via `mp.get` / `mp.set`:
 - `isDead` - actor death state (read/write)
 - `canRespawn` - controls auto-respawn behavior (read/write)
 - `pos`, `angle`, `worldOrCellDesc` - spatial state
+- `actorValues` - actor value tuning on server side (read/write):
+
+```ts
+const values = mp.get(refrId, 'actorValues');
+
+mp.set(refrId, 'actorValues', {
+  health: 120,
+  magicka: 100,
+  stamina: 110,
+  healRate: 0.7,
+  magickaRate: 3,
+  staminaRate: 5,
+  healRateMult: 100,
+  magickaRateMult: 100,
+  staminaRateMult: 100,
+});
+```
 
 For a broader list, see [Properties System](docs_properties_system.md).
