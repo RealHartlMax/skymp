@@ -29,6 +29,7 @@ import {
   rpcCallsCounter,
   rpcDurationHistogram,
 } from './systems/metricsSystem';
+import { voiceActivityManager } from './voiceActivityApi';
 
 const Koa = require('koa');
 const serve = require('koa-static');
@@ -193,9 +194,25 @@ interface RuntimeReadinessReport {
   checks: RuntimeReadinessCheck[];
 }
 
+interface ParsedAdminConsoleCommand {
+  raw: string;
+  name: string;
+  args: string[];
+}
+
 interface CachedRuntimeReadiness {
   fetchedAt: number;
   payload: RuntimeReadinessReport;
+}
+
+type PluginRuntimeHealth = 'starting' | 'running' | 'failed' | 'stopped';
+
+interface PluginRuntimeStatusEntry {
+  name: string;
+  status: PluginRuntimeHealth;
+  pid?: number;
+  updatedAt: number;
+  message?: string;
 }
 
 const RELEASE_INFO_FILE = 'release-info.json';
@@ -204,6 +221,7 @@ const RUNTIME_READINESS_CACHE_MS = 30 * 1000;
 const SERVER_ENTRYPOINT = path.join('dist_back', 'skymp5-server.js');
 let latestReleaseCache: CachedLatestReleaseInfo | null = null;
 let runtimeReadinessCache: CachedRuntimeReadiness | null = null;
+const pluginRuntimeStatuses = new Map<string, PluginRuntimeStatusEntry>();
 
 const stripBom = (text: string): string =>
   text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -216,6 +234,114 @@ const decodeBufferAsUtf16Be = (buffer: Buffer): string => {
   const swapped = Buffer.from(buffer.subarray(0, evenLength));
   swapped.swap16();
   return swapped.toString('utf16le');
+};
+
+// Split console input like a shell: whitespace separates args, quotes keep spaces,
+// and backslash escapes work inside quoted strings.
+const tokenizeConsoleCommand = (input: string): string[] => {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === '\\' && i + 1 < input.length) {
+        current += input[i + 1];
+        i += 1;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0) tokens.push(current);
+  return tokens;
+};
+
+const parseAdminConsoleCommand = (
+  inputRaw: string,
+): ParsedAdminConsoleCommand | null => {
+  const raw = String(inputRaw || '').trim();
+  if (!raw) return null;
+  const parts = tokenizeConsoleCommand(raw);
+  if (parts.length === 0) return null;
+  return {
+    raw,
+    name: parts[0].toLowerCase(),
+    args: parts.slice(1),
+  };
+};
+
+// User-facing shorthand kept compatible with the command palette/UI text.
+const ADMIN_CONSOLE_COMMAND_ALIASES: Record<string, string> = {
+  commands: 'help',
+  '?': 'help',
+  listplayers: 'players',
+  lsplayers: 'players',
+  say: 'announce',
+  msg: 'message',
+  pm: 'message',
+  kickall: 'kick-all',
+  'un-mute': 'unmute',
+  'un-ban': 'unban',
+  eval: 'js',
+};
+
+const ADMIN_CONSOLE_HELP_LINES = [
+  'help [command]',
+  'players',
+  'kick <userId> [reason...]',
+  'kick-all [reason...]',
+  'ban <userId> [durationMinutes] [reason...]',
+  'unban <userId>',
+  'mute <userId> [durationMinutes] [reason...]',
+  'unmute <userId>',
+  'warn <userId> <message...>',
+  'message <userId> <message...>',
+  'announce <message...>',
+  'js <chakraJavaScript...> (admin only)',
+].join('\n');
+
+const normalizeAdminConsoleCommandName = (rawName: string): string => {
+  const normalized = String(rawName || '').toLowerCase();
+  return ADMIN_CONSOLE_COMMAND_ALIASES[normalized] || normalized;
+};
+
+const parseCommandUserId = (value: string | undefined): number | null => {
+  if (value === undefined) return null;
+  const userId = Number(value);
+  if (!Number.isFinite(userId)) return null;
+  return Math.floor(userId);
+};
+
+const parseOptionalDurationMinutes = (
+  value: string | undefined,
+): number | null => {
+  if (value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
 };
 
 const parseInstalledReleaseInfoFile = (filePath: string): any => {
@@ -1877,6 +2003,22 @@ const sanitizeSupervisorSettings = (
   };
 };
 
+const sanitizeNicknameVisibilitySetting = (
+  value: unknown,
+): boolean => {
+  return value === undefined ? true : Boolean(value);
+};
+
+const ensureNicknameVisibilitySettingInObject = (
+  settingsObj: Record<string, unknown>,
+): boolean => {
+  const normalized = sanitizeNicknameVisibilitySetting(
+    settingsObj.showCharacterNicknames,
+  );
+  settingsObj.showCharacterNicknames = normalized;
+  return normalized;
+};
+
 const ensureSupervisorSettingsInObject = (
   settingsObj: Record<string, unknown>,
 ): SupervisorSettings => {
@@ -2331,7 +2473,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
   // Middleware to auto-detect external URL from Host header
   app.use(async (ctx: any, next: any) => {
-    const configuredUrl = (settings.allSettings.adminApi as any)?.externalUrl;
+    const configuredUrl = (settings.allSettings?.adminApi as any)?.externalUrl;
     if (configuredUrl) {
       ctx.state.externalUrl = configuredUrl;
     } else {
@@ -2363,6 +2505,489 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   router.get(new RegExp('/scripts/.*'), (ctx: any) => ctx.throw(403));
   router.get(new RegExp('.es[mpl]'), (ctx: any) => ctx.throw(403));
   router.get(new RegExp('.bsa'), (ctx: any) => ctx.throw(403));
+
+  // Central console dispatcher: parse once, route by command, and keep all
+  // moderation side effects in one place so failures are easier to trace.
+  const executeAdminConsoleCommand = (
+    commandRaw: string,
+    adminUser: string,
+    capabilities: AdminCapabilities,
+  ):
+    | {
+        ok: true;
+        resultText: string;
+        command: string;
+        executedAs: 'command' | 'javascript';
+      }
+    | {
+        ok: false;
+        error: string;
+        status: 400 | 403 | 500;
+      } => {
+    const parsed = parseAdminConsoleCommand(commandRaw);
+    if (!parsed) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'command is required',
+      };
+    }
+
+    const commandName = normalizeAdminConsoleCommandName(parsed.name);
+
+    const denyIfMissing = (
+      capability: keyof AdminCapabilities,
+      commandLabel: string,
+    ): { ok: false; error: string; status: 403 } | null => {
+      if (capabilities[capability]) return null;
+      return {
+        ok: false,
+        status: 403,
+        error: `forbidden: command '${commandLabel}' requires ${capability}`,
+      };
+    };
+
+    const commandArgText = (fromIndex: number): string =>
+      parsed.args.slice(fromIndex).join(' ').trim();
+
+    // Read-only commands.
+    if (commandName === 'help') {
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: ADMIN_CONSOLE_HELP_LINES,
+      };
+    }
+
+    // Player visibility command used for quick operator diagnostics.
+    if (commandName === 'players') {
+      const denied = denyIfMissing('canViewLogs', 'players');
+      if (denied) return denied;
+
+      const userIds = getOnlinePlayerIds();
+      if (userIds.length === 0) {
+        return {
+          ok: true,
+          command: parsed.raw,
+          executedAs: 'command',
+          resultText: 'Online players: 0',
+        };
+      }
+
+      const lines = userIds.map((userId) => {
+        const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
+        const actorName = actorId
+          ? safeCall(() => gScampServer.getActorName(actorId), '') ||
+            adminPlayerStats.get(userId)?.lastDisplayName ||
+            `userId=${userId}`
+          : adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+        return `- userId=${userId} actorId=${actorId} name=${actorName}`;
+      });
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Online players: ${userIds.length}\n${lines.join('\n')}`,
+      };
+    }
+
+    // Player moderation commands. Keep these grouped so future ban/mute/kick
+    // variants can share the same audit and persistence path.
+    if (commandName === 'kick') {
+      const denied = denyIfMissing('canKick', 'kick');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      if (userId === null) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: kick <userId> [reason...]',
+        };
+      }
+
+      const reason = commandArgText(1);
+      const playerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      safeCall(() => gScampServer.kick(userId), undefined);
+
+      addAdminLog(
+        'kick',
+        `Kicked userId=${userId}${reason ? ` reason=${reason.slice(0, 80)}` : ''}`,
+      );
+      addAdminHistory({
+        type: 'kick',
+        playerName,
+        userId,
+        reason,
+        author: adminUser,
+      });
+      saveHistory(dataDir);
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Kicked userId=${userId}`,
+      };
+    }
+
+    if (commandName === 'kick-all') {
+      const denied = denyIfMissing('canKick', 'kick-all');
+      if (denied) return denied;
+
+      const reason = commandArgText(0);
+      const userIds = getOnlinePlayerIds();
+      userIds.forEach((userId) => {
+        safeCall(() => gScampServer.kick(userId), undefined);
+      });
+
+      addAdminLog(
+        'kick',
+        `Kicked all players count=${userIds.length}${reason ? ` reason=${reason.slice(0, 80)}` : ''}`,
+      );
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Kicked players count=${userIds.length}`,
+      };
+    }
+
+    if (commandName === 'ban') {
+      const denied = denyIfMissing('canBan', 'ban');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      if (userId === null) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: ban <userId> [durationMinutes] [reason...]',
+        };
+      }
+
+      const durationFromArg = parseOptionalDurationMinutes(parsed.args[1]);
+      const isDurationProvided = durationFromArg !== null;
+      const isPermanent = !isDurationProvided;
+      const durationMinutes = isPermanent
+        ? 0
+        : Math.min(365 * 24 * 60, durationFromArg);
+      const reason = commandArgText(isDurationProvided ? 2 : 1);
+      const expiresAt = isPermanent
+        ? null
+        : Date.now() + durationMinutes * 60 * 1000;
+
+      bannedUsers.set(userId, expiresAt);
+      saveBans(dataDir);
+      safeCall(() => gScampServer.kick(userId), undefined);
+
+      const playerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      addAdminLog(
+        'ban',
+        `Banned userId=${userId}${isPermanent ? ' (permanent)' : ` for ${durationMinutes}m`}${
+          reason ? ` reason=${reason.slice(0, 80)}` : ''
+        }`,
+      );
+      addAdminHistory({
+        type: 'ban',
+        playerName,
+        userId,
+        reason,
+        author: adminUser,
+      });
+      saveHistory(dataDir);
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: isPermanent
+          ? `Banned userId=${userId} permanently`
+          : `Banned userId=${userId} for ${durationMinutes}m`,
+      };
+    }
+
+    if (commandName === 'unban') {
+      const denied = denyIfMissing('canUnban', 'unban');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      if (userId === null) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: unban <userId>',
+        };
+      }
+
+      const existed = bannedUsers.delete(userId);
+      saveBans(dataDir);
+      addAdminLog('ban', `Unbanned userId=${userId}`);
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: existed
+          ? `Unbanned userId=${userId}`
+          : `userId=${userId} was not banned`,
+      };
+    }
+
+    if (commandName === 'mute') {
+      const denied = denyIfMissing('canMute', 'mute');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      if (userId === null) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: mute <userId> [durationMinutes] [reason...]',
+        };
+      }
+
+      const durationFromArg = parseOptionalDurationMinutes(parsed.args[1]);
+      const durationMinutes = durationFromArg !== null
+        ? Math.max(1, Math.min(24 * 60, durationFromArg))
+        : 10;
+      const reason = commandArgText(durationFromArg === null ? 1 : 2);
+
+      const expiresAt = Date.now() + durationMinutes * 60 * 1000;
+      mutedUsers.set(userId, expiresAt);
+      saveMutes(dataDir);
+
+      const playerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      addAdminLog(
+        'mute',
+        `Muted userId=${userId} for ${durationMinutes}m${
+          reason ? ` reason=${reason.slice(0, 80)}` : ''
+        }`,
+      );
+      addAdminHistory({
+        type: 'mute',
+        playerName,
+        userId,
+        reason,
+        author: adminUser,
+      });
+      saveHistory(dataDir);
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Muted userId=${userId} for ${durationMinutes}m`,
+      };
+    }
+
+    if (commandName === 'unmute') {
+      const denied = denyIfMissing('canUnmute', 'unmute');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      if (userId === null) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: unmute <userId>',
+        };
+      }
+
+      const existed = mutedUsers.delete(userId);
+      saveMutes(dataDir);
+      addAdminLog('mute', `Unmuted userId=${userId}`);
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: existed
+          ? `Unmuted userId=${userId}`
+          : `userId=${userId} was not muted`,
+      };
+    }
+
+    // Message delivery commands. These are intentionally separate from
+    // moderation so permissions can evolve independently.
+    if (commandName === 'warn') {
+      const denied = denyIfMissing('canWarn', 'warn');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      const message = commandArgText(1);
+      if (userId === null || !message) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: warn <userId> <message...>',
+        };
+      }
+
+      safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+      safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+
+      const playerName =
+        adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
+      addAdminLog(
+        'console',
+        `Warned userId=${userId}: ${message.slice(0, 120)}`,
+      );
+      addAdminHistory({
+        type: 'warn',
+        playerName,
+        userId,
+        reason: message,
+        author: adminUser,
+      });
+      saveHistory(dataDir);
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Warn sent to userId=${userId}`,
+      };
+    }
+
+    if (commandName === 'message') {
+      const denied = denyIfMissing('canMessage', 'message');
+      if (denied) return denied;
+
+      const userId = parseCommandUserId(parsed.args[0]);
+      const message = commandArgText(1);
+      if (userId === null || !message) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: message <userId> <message...>',
+        };
+      }
+
+      safeCall(() => gScampServer.sendChatMessage?.(userId, message), undefined);
+      safeCall(() => gScampServer.sendMessage?.(userId, message), undefined);
+      addAdminLog(
+        'console',
+        `Message to userId=${userId}: ${message.slice(0, 120)}`,
+      );
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Message sent to userId=${userId}`,
+      };
+    }
+
+    if (commandName === 'announce') {
+      const denied = denyIfMissing('canMessage', 'announce');
+      if (denied) return denied;
+
+      const message = commandArgText(0);
+      if (!message) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: announce <message...>',
+        };
+      }
+
+      const userIds = getOnlinePlayerIds();
+      userIds.forEach((userId) => {
+        safeCall(
+          () =>
+            gScampServer.sendCustomPacket(
+              userId,
+              JSON.stringify({
+                customPacketType: 'announcementToast',
+                message,
+                durationMs: 4500,
+              }),
+            ),
+          undefined,
+        );
+      });
+
+      addAdminLog(
+        'console',
+        `Announcement toast sent to ${userIds.length} players: ${message.slice(
+          0,
+          120,
+        )}`,
+      );
+
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'command',
+        resultText: `Announcement sent to ${userIds.length} players`,
+      };
+    }
+
+    // Chakra escape hatch for admins. This keeps compatibility with the old
+    // console while explicit commands become the default path.
+    if (commandName === 'js') {
+      const denied = denyIfMissing('canConsole', 'js');
+      if (denied) return denied;
+
+      const jsCode = commandArgText(0);
+      if (!jsCode) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'usage: js <chakraJavaScript...>',
+        };
+      }
+
+      try {
+        const rawResult = gScampServer.executeJavaScriptOnChakra(jsCode);
+        const resultText = rawResult === undefined ? '' : String(rawResult);
+        addAdminLog('console', `Executed JS via console: ${jsCode.slice(0, 160)}`);
+        return {
+          ok: true,
+          command: parsed.raw,
+          executedAs: 'javascript',
+          resultText: resultText.slice(0, 1000),
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          status: 500,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+
+    if (!capabilities.canConsole) {
+      return {
+        ok: false,
+        status: 403,
+        error: `unknown command '${commandName}'. Use 'help' to list supported commands`,
+      };
+    }
+
+    try {
+      const rawResult = gScampServer.executeJavaScriptOnChakra(parsed.raw);
+      const resultText = rawResult === undefined ? '' : String(rawResult);
+      addAdminLog('console', `Executed legacy JS: ${parsed.raw.slice(0, 160)}`);
+      return {
+        ok: true,
+        command: parsed.raw,
+        executedAs: 'javascript',
+        resultText: resultText.slice(0, 1000),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 500,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
 
   router.post('/rpc/:rpcClassName', (ctx: any) => {
     const { rpcClassName } = ctx.params;
@@ -4303,6 +4928,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         const joinAccess = ensureJoinAccessSettingsInObject(parsed);
         const discordBot = ensureDiscordBotSettingsInObject(parsed);
         const supervisor = ensureSupervisorSettingsInObject(parsed);
+        const showCharacterNicknames = ensureNicknameVisibilitySettingInObject(
+          parsed,
+        );
 
         ctx.body = {
           ok: true,
@@ -4311,6 +4939,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           joinAccess,
           discordBot,
           supervisor,
+          showCharacterNicknames,
           json: JSON.stringify(parsed, null, 2),
         };
       } catch (error) {
@@ -4348,16 +4977,30 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const joinAccess = ensureJoinAccessSettingsInObject(parsed);
       const discordBot = ensureDiscordBotSettingsInObject(parsed);
       const supervisor = ensureSupervisorSettingsInObject(parsed);
+      const showCharacterNicknames = ensureNicknameVisibilitySettingInObject(
+        parsed,
+      );
 
       try {
         writeServerSettingsJson(parsed);
+        settings.allSettings = parsed;
+        const nicknameVisibilityPayload = JSON.stringify({
+          customPacketType: 'nicknameVisibility',
+          enabled: showCharacterNicknames,
+        });
+        getOnlinePlayerIds().forEach((userId) => {
+          safeCall(
+            () => gScampServer.sendCustomPacket(userId, nicknameVisibilityPayload),
+            undefined,
+          );
+        });
         addAdminLog(
           'console',
           `Updated server-settings.json (locale=${
             localeRouting.defaultLanguage
           }, joinMode=${joinAccess.mode}, discordBot=${
             discordBot.enabled ? 'on' : 'off'
-          }, supervisor=${supervisor.enabled ? 'on' : 'off'})`,
+          }, nicknames=${showCharacterNicknames ? 'on' : 'off'}, supervisor=${supervisor.enabled ? 'on' : 'off'})`,
         );
       } catch (error) {
         ctx.status = 500;
@@ -4374,6 +5017,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         localeRouting,
         joinAccess,
         supervisor,
+        showCharacterNicknames,
         discordBot: {
           enabled: discordBot.enabled,
           guildId: discordBot.guildId,
@@ -4411,34 +5055,33 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     router.post('/api/admin/console', (ctx: any) => {
-      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
       const command = (ctx.request.body?.command as string | undefined) ?? '';
-      if (!command.trim()) {
-        ctx.status = 400;
-        ctx.body = { ok: false, error: 'command is required' };
+      const adminCtx = getAdminContext(settings, ctx);
+      const result = executeAdminConsoleCommand(
+        command,
+        adminCtx.user,
+        adminCtx.capabilities,
+      );
+
+      if (result.ok === false) {
+        addAdminLog(
+          'console',
+          `Console error by ${adminCtx.user || 'unknown'}: ${result.error.slice(
+            0,
+            200,
+          )}`,
+        );
+        ctx.status = result.status;
+        ctx.body = { ok: false, command, error: result.error };
         return;
       }
 
-      try {
-        const rawResult = gScampServer.executeJavaScriptOnChakra(command);
-        const resultText = rawResult === undefined ? '' : String(rawResult);
-        addAdminLog('console', `Executed: ${command.slice(0, 200)}`);
-        ctx.body = {
-          ok: true,
-          command,
-          resultText: resultText.slice(0, 1000),
-        };
-      } catch (error) {
-        const errorText =
-          error instanceof Error ? error.message : String(error);
-        addAdminLog('console', `Console error: ${errorText.slice(0, 200)}`);
-        ctx.status = 500;
-        ctx.body = {
-          ok: false,
-          command,
-          error: errorText,
-        };
-      }
+      ctx.body = {
+        ok: true,
+        command: result.command,
+        resultText: result.resultText,
+        executedAs: result.executedAs,
+      };
     });
 
     router.get('/api/admin/logs', (ctx: any) => {
@@ -4834,6 +5477,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
             discoveredAt: entry.discoveredAt,
             updatedAt: entry.updatedAt,
             manifestPresent,
+            runtimeStatus: pluginRuntimeStatuses.get(name)
+              ? { ...pluginRuntimeStatuses.get(name) }
+              : null,
           };
         },
       );
@@ -4873,6 +5519,34 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         name: pluginName,
         startupEnabled: body.startupEnabled,
       };
+    });
+
+    router.get('/api/admin/voice/status', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+
+      if (!voiceActivityManager) {
+        ctx.body = {
+          isEnabled: false,
+          activeSpeakers: 0,
+          registeredAdapters: [],
+          lastBroadcastTime: 0,
+          errors: [],
+        };
+        return;
+      }
+
+      ctx.body = voiceActivityManager.getHealthStatus();
+    });
+
+    router.get('/api/admin/voice/speakers', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+
+      if (!voiceActivityManager) {
+        ctx.body = [];
+        return;
+      }
+
+      ctx.body = voiceActivityManager.getActiveSpeakers();
     });
   }
   router.use('/metrics', (ctx: any, next: any) => {
@@ -5055,6 +5729,32 @@ export const pushEnvironmentChange = (
   addEnvironmentChange(type, description);
 };
 
+export const updatePluginRuntimeStatus = (
+  name: string,
+  status: PluginRuntimeHealth,
+  options?: { pid?: number; message?: string },
+): void => {
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) {
+    return;
+  }
+
+  const next: PluginRuntimeStatusEntry = {
+    name: normalizedName,
+    status,
+    updatedAt: Date.now(),
+  };
+
+  if (Number.isFinite(options?.pid) && (options?.pid || 0) > 0) {
+    next.pid = Math.floor(options?.pid as number);
+  }
+  if (typeof options?.message === 'string' && options.message.trim().length > 0) {
+    next.message = options.message.trim().slice(0, 500);
+  }
+
+  pluginRuntimeStatuses.set(normalizedName, next);
+};
+
 const getLanIpv4Addresses = (): string[] => {
   const interfaces = os.networkInterfaces();
   const result = new Set<string>();
@@ -5098,8 +5798,8 @@ export const main = (settings: Settings): void => {
   const devServerPort = 1234;
 
   const uiListenHost =
-    (settings.allSettings.uiListenHost as string | undefined) || '0.0.0.0';
-  const configuredUiPort = Number(settings.allSettings.uiPort);
+    (settings.allSettings?.uiListenHost as string | undefined) || '0.0.0.0';
+  const configuredUiPort = Number(settings.allSettings?.uiPort);
   const uiPort =
     Number.isFinite(configuredUiPort) && configuredUiPort > 0
       ? Math.floor(configuredUiPort)

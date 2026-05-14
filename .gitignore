@@ -1,4 +1,5 @@
 build
+logs/
 .clang-tidy
 .linter
 node_modules

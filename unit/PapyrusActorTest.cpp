@@ -117,7 +117,7 @@ TEST_CASE("SetActorValue with unknown name does not crash",
 
   // Known values should be unaffected
   MpChangeForm changeForm = actor.GetChangeForm();
-  REQUIRE(changeForm.actorValues.health == Approx(100.f));
+  REQUIRE(changeForm.actorValues.health == Catch::Approx(100.f));
 
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
@@ -147,7 +147,6 @@ TEST_CASE("RestoreActorValue and DamageActorValue ignore rate AVs",
 
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
-}
 }
 
 TEST_CASE("IsDead()", "[Papyrus][Actor]")

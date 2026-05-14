@@ -5,7 +5,7 @@ const path = require('path');
 
 const localesDir = path.resolve(__dirname, '..', 'src', 'locales');
 const baseLocale = 'en';
-const localesToCheck = ['ru', 'de'];
+const localesToCheck = ['ru', 'de', 'es', 'fr', 'it'];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));

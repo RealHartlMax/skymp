@@ -43,7 +43,7 @@ Main source code lives under `skymp5-front/src`.
 - `src/features/skillsMenu` - skills UI feature module
 - `src/features/animList` - animation list UI feature module
 - `src/features/testMenu` - development/testing UI module
-- `src/locales` - i18n resources (`en`, `ru`, `de`, `es`)
+- `src/locales` - i18n resources (`en`, `ru`, `de`, `es`, `fr`, `it`)
 
 ## Server TypeScript structure (`skymp5-server/ts`)
 

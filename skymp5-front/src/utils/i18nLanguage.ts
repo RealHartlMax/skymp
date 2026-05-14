@@ -1,4 +1,4 @@
-const SUPPORTED_LANGUAGES = ['de', 'en', 'es', 'ru'] as const;
+const SUPPORTED_LANGUAGES = ['de', 'en', 'es', 'fr', 'it', 'ru'] as const;
 const LANGUAGE_STORAGE_KEY = 'skymp.language';
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];

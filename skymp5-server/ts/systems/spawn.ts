@@ -34,10 +34,19 @@ export class Spawn implements System {
     ) => {
       const { startPoints, starterInventory } = settingsObject;
       // TODO: Show race menu if character is not created after relogging
+      const previousActorId = ctx.svr.getUserActor(userId);
       let actorId = ctx.svr.getActorsByProfileId(userProfileId)[0];
       if (actorId) {
         this.log('Loading character', actorId.toString(16));
         ctx.svr.setEnabled(actorId, true);
+        if (previousActorId && previousActorId !== actorId) {
+          try {
+            const manager = (globalThis as any).voiceActivityManager;
+            manager?.removePlayer?.(String(previousActorId));
+          } catch (e) {
+            console.error('[Voice Activity] cleanup failed on respawn/load:', e);
+          }
+        }
         ctx.svr.setUserActor(userId, actorId);
       } else {
         const idx = randomInteger(0, startPoints.length - 1);
@@ -50,6 +59,14 @@ export class Spawn implements System {
           userProfileId,
         );
         this.log('Creating character', actorId.toString(16));
+        if (previousActorId && previousActorId !== actorId) {
+          try {
+            const manager = (globalThis as any).voiceActivityManager;
+            manager?.removePlayer?.(String(previousActorId));
+          } catch (e) {
+            console.error('[Voice Activity] cleanup failed on respawn/create:', e);
+          }
+        }
         ctx.svr.setUserActor(userId, actorId);
 
         const mp = ctx.svr as unknown as Mp;

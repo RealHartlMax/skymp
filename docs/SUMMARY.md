@@ -23,6 +23,7 @@
 - [Server Update Playbook](docs_server_update_playbook.md)
 - [Server Configuration Reference](docs_server_configuration_reference.md)
 - [Server Command Line Api](docs_server_command_line_api.md)
+- [Admin Console Commands](docs_admin_console_commands.md)
 - [Admin Discord OAuth](docs_admin_discord_oauth.md)
 - [Server Ports Usage](docs_server_ports_usage.md)
 - [Database Drivers](docs_database_drivers.md)

@@ -32,7 +32,9 @@ export class BrowserService extends ClientListener {
   // TODO: keycodes should be configurable
   private onQueryKeyCodeBindings(e: QueryKeyCodeBindings) {
     if (e.isDown([DxScanCode.F1])) {
-      FormView.isDisplayingNicknames = !FormView.isDisplayingNicknames;
+      if (!FormView.isNicknameDisplayServerControlled) {
+        FormView.isDisplayingNicknames = !FormView.isDisplayingNicknames;
+      }
     }
     if (e.isDown([DxScanCode.F2])) {
       this.sp.browser.setVisible(!this.sp.browser.isVisible());

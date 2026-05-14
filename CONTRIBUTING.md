@@ -294,17 +294,19 @@ There is currently no dedicated `test:coverage` frontend script in `skymp5-front
 
 ### Localization (i18n)
 
-The project supports multiple languages: **English (en)**, **Russian (ru)**, **German (de)**, and **Spanish (es)**.
+The project supports multiple languages: **English (en)**, **Russian (ru)**, **German (de)**, **Spanish (es)**, **French (fr)**, and **Italian (it)**.
 
 Locale files are located in `src/locales/`:
 - `src/locales/en.json`
 - `src/locales/ru.json`
 - `src/locales/de.json`
 - `src/locales/es.json`
+- `src/locales/fr.json`
+- `src/locales/it.json`
 
-All four files must have the **same key structure**. When adding new UI strings:
+All six files must have the **same key structure**. When adding new UI strings:
 
-1. Add the key-value pair to all four locale files with the same structure
+1. Add the key-value pair to all six locale files with the same structure
 2. Run the locale test to verify:
    ```sh
    npm run test:i18n

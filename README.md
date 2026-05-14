@@ -9,6 +9,20 @@ SkyMP is an open-source multiplayer project for Skyrim.
 
 This repository is the main home of the project: server, client, admin web UI, build system, docs, and CI pipelines are all managed here.
 
+## Project Status (WIP Fork)
+
+This fork is currently a **work in progress**.
+
+Some features are already usable, but not every part has been tested on every host setup yet. This is one reason why this fork is not integrated into the main repository at the moment.
+
+We are actively looking for testers who can:
+
+1. Set up their own servers on different systems.
+2. Validate gameplay and admin workflows in real environments.
+3. Report bugs, crashes, and configuration issues.
+
+Because every system is different, real-world feedback is extremely valuable.
+
 ## Language Quick Links
 
 | Language | Start Here |
@@ -17,6 +31,8 @@ This repository is the main home of the project: server, client, admin web UI, b
 | English | [Go to English section](#english) |
 | Русский | [Перейти к русскому разделу](#русский) |
 | Español | [Ir a la sección en español](#español) |
+| Français | [Aller a la section francaise](#francais) |
+| Italiano | [Vai alla sezione italiana](#italiano) |
 
 ## Deutsch
 
@@ -325,3 +341,185 @@ En paralelo, estamos trabajando en un launcher global para que los dueños de se
 
 - Términos de uso: [TERMS.md](TERMS.md)
 - Licencias de terceros: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+
+## Français
+
+### Vue d'ensemble
+
+SkyMP ajoute le multijoueur a Skyrim. Ce depot est le point central pour executer des serveurs, compiler les composants et contribuer au projet.
+
+### Ce que vous pouvez faire ici
+
+1. Heberger votre propre serveur.
+2. Compiler le client et le serveur depuis les sources.
+3. Contribuer avec du code, de la documentation et des tests.
+
+### Statut du projet (Fork WIP)
+
+Ce fork est actuellement un projet **en cours de developpement**.
+
+Certaines fonctionnalites sont deja utilisables, mais tout n'a pas encore ete teste sur toutes les configurations possibles. C'est aussi pour cela que ce fork n'est pas encore integre au depot principal.
+
+Nous recherchons activement des testeurs qui peuvent:
+
+1. Lancer leur propre serveur sur differents systemes.
+2. Tester le gameplay et les flux d'administration en conditions reelles.
+3. Signaler les bugs, crashs et problemes de configuration.
+
+Comme chaque systeme est different, les retours de terrain sont tres importants.
+
+### Demarrage rapide
+
+#### Lancer un serveur
+
+Le plus simple est de telecharger un build precompile: **pas besoin de cloner le depot ni de compiler**.
+
+1. Telechargez la derniere release depuis [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Extrayez l'archive dans un dossier dedie.
+3. Lancez `launch_server.bat` (Windows) ou `launch_server.sh` (Linux). Node.js et les dependances npm sont installes automatiquement au premier lancement.
+4. Modifiez `server-settings.json` (nom du serveur, ports, ordre de chargement).
+5. Ouvrez le tableau de bord admin sur `http://<host>:<uiPort>/admin`.
+
+Guide complet: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Compiler depuis les sources (pour les contributeurs)
+
+1. Suivez [CONTRIBUTING.md](CONTRIBUTING.md).
+2. Compilez le projet.
+3. Les artefacts sont dans `build/dist`.
+4. Serveur: `build/dist/server`.
+5. Client: `build/dist/client`.
+
+#### Rejoindre en tant que joueur
+
+1. Installez Skyrim SE ou AE.
+2. Installez SKSE comme indique dans [docs/docs_client_installation.md](docs/docs_client_installation.md).
+3. Si vous compilez localement, copiez `build/dist/client` dans votre dossier Skyrim.
+4. Lancez le jeu et connectez-vous a votre serveur.
+
+Si vous ne souhaitez pas creer votre propre launcher, cet outil Nexus est une option pratique:
+
+https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
+
+En parallele, nous travaillons sur un launcher global afin que les administrateurs de serveurs n'aient plus a maintenir des launchers personnalises separes.
+
+### Statut plateforme
+
+- Serveur Windows: support stable.
+- Serveur Linux: meilleure experience sur Ubuntu 24.04 et distributions similaires basees sur glibc.
+- Client: encore principalement axe Windows.
+
+### Zones cle du depot
+
+- `skymp5-server`: runtime serveur et API d'administration.
+- `skymp5-front`: frontend du tableau de bord admin.
+- `skymp5-client`: integration cote client.
+- `docs`: documentation complete.
+- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: pile de build et dependances.
+
+### Documents essentiels
+
+- Setup build et developpement: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Lancer un serveur: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
+- Installation client: [docs/docs_client_installation.md](docs/docs_client_installation.md)
+- Reference de configuration serveur: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
+- Ports et reseau: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
+- Structure du depot: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
+
+### Mentions legales
+
+- Conditions d'utilisation: [TERMS.md](TERMS.md)
+- Licences tierces: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+
+## Italiano
+
+### Panoramica
+
+SkyMP porta il multiplayer in Skyrim. Questo repository e il punto centrale per eseguire server, compilare i componenti e contribuire al progetto.
+
+### Cosa puoi fare qui
+
+1. Ospitare il tuo server.
+2. Compilare client e server dai sorgenti.
+3. Contribuire con codice, documentazione e test.
+
+### Stato del progetto (Fork WIP)
+
+Questo fork e attualmente un progetto **work in progress**.
+
+Alcune funzionalita sono gia utilizzabili, ma non tutto e stato ancora testato su tutte le configurazioni possibili. Anche per questo motivo il fork non e ancora integrato nel repository principale.
+
+Stiamo cercando attivamente tester che possano:
+
+1. Avviare il proprio server su sistemi differenti.
+2. Verificare gameplay e flussi admin in ambienti reali.
+3. Segnalare bug, crash e problemi di configurazione.
+
+Poiche ogni sistema e diverso, il feedback reale e molto importante.
+
+### Avvio rapido
+
+#### Avviare un server
+
+Il modo piu semplice e scaricare un pacchetto precompilato: **non serve clonare il repository ne compilare**.
+
+1. Scarica l'ultima release da [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
+	- Windows: `running_server_files_windows_server_dist.zip`
+	- Linux: `running_server_files_linux_server_dist.tar.gz`
+2. Estrai l'archivio in una cartella dedicata.
+3. Esegui `launch_server.bat` (Windows) oppure `launch_server.sh` (Linux). Node.js e le dipendenze npm vengono installate automaticamente al primo avvio.
+4. Modifica `server-settings.json` (nome server, porte, ordine di caricamento).
+5. Apri la dashboard admin su `http://<host>:<uiPort>/admin`.
+
+Guida completa: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+
+#### Compilare dai sorgenti (per contributor)
+
+1. Segui [CONTRIBUTING.md](CONTRIBUTING.md).
+2. Compila il progetto.
+3. L'output e in `build/dist`.
+4. Pacchetto server: `build/dist/server`.
+5. Pacchetto client: `build/dist/client`.
+
+#### Unirsi come giocatore
+
+1. Installa Skyrim SE o AE.
+2. Installa SKSE come descritto in [docs/docs_client_installation.md](docs/docs_client_installation.md).
+3. Se compili in locale, copia `build/dist/client` nella cartella di Skyrim.
+4. Avvia il gioco e collegati al tuo server.
+
+Se non vuoi creare un tuo launcher, questo strumento su Nexus e un'opzione pratica:
+
+https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
+
+In parallelo, stiamo lavorando a un launcher globale cosi i gestori server non dovranno piu creare e mantenere launcher personalizzati separati.
+
+### Stato piattaforme
+
+- Server Windows: stabile e ben supportato.
+- Server Linux: esperienza migliore su Ubuntu 24.04 e distribuzioni simili basate su glibc.
+- Client runtime: ancora principalmente orientato a Windows.
+
+### Aree chiave del repository
+
+- `skymp5-server`: runtime server e API admin.
+- `skymp5-front`: frontend dashboard admin.
+- `skymp5-client`: integrazione lato client.
+- `docs`: documentazione completa.
+- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: stack di build e dipendenze.
+
+### Documenti essenziali
+
+- Setup build e sviluppo: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Eseguire un server: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
+- Installazione client: [docs/docs_client_installation.md](docs/docs_client_installation.md)
+- Riferimento configurazione server: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
+- Porte e rete: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
+- Struttura repository: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
+
+### Legale
+
+- Termini di utilizzo: [TERMS.md](TERMS.md)
+- Licenze di terze parti: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)

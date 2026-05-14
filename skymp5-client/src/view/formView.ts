@@ -1042,6 +1042,7 @@ export class FormView {
   private textNameId: number | undefined = undefined;
 
   public static isDisplayingNicknames: boolean = true;
+  public static isNicknameDisplayServerControlled: boolean = false;
   private static movementDebugStats = {
     averagePacketIntervalMs: 0,
     extrapolationMs: 0,

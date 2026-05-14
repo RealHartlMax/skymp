@@ -313,6 +313,10 @@ interface CfgFormState {
   offlineMode: boolean;
   itemPickupMode: 'allow' | 'minigame' | 'block-all';
   defaultLanguage: string;
+  showCharacterNicknames: boolean;
+  supervisorEnabled: boolean;
+  supervisorStopCommand: string;
+  supervisorRestartCommand: string;
   startSpawn: StartSpawnForm;
   npcEnabled: boolean;
   npcDefaultSettings: NpcDefaultSettingsForm;
@@ -485,6 +489,10 @@ const DEFAULT_CFG_FORM: CfgFormState = {
   offlineMode: false,
   itemPickupMode: 'allow',
   defaultLanguage: 'en',
+  showCharacterNicknames: true,
+  supervisorEnabled: false,
+  supervisorStopCommand: '',
+  supervisorRestartCommand: '',
   startSpawn: {
     x: 133857,
     y: -61130,
@@ -1538,6 +1546,10 @@ const AdminDashboard = () => {
         (parsed.localeRouting as Record<string, unknown> | undefined)
           ?.defaultLanguage || 'en',
       ),
+      showCharacterNicknames:
+        parsed.showCharacterNicknames === undefined
+          ? DEFAULT_CFG_FORM.showCharacterNicknames
+          : Boolean(parsed.showCharacterNicknames),
       startSpawn: {
         x: Number.isFinite(Number(startSpawnPos[0]))
           ? Number(startSpawnPos[0])
@@ -1603,6 +1615,15 @@ const AdminDashboard = () => {
         guildId: String(discordBotRaw.guildId || ''),
         warningsChannelId: String(discordBotRaw.warningsChannelId || ''),
       },
+      supervisorEnabled: Boolean(
+        (parsed.supervisor as Record<string, unknown> | undefined)?.enabled,
+      ),
+      supervisorStopCommand: String(
+        (parsed.supervisor as Record<string, unknown> | undefined)?.stopCommand || '',
+      ).trim(),
+      supervisorRestartCommand: String(
+        (parsed.supervisor as Record<string, unknown> | undefined)?.restartCommand || '',
+      ).trim(),
       starterInventory,
     };
   }, []);
@@ -1831,6 +1852,7 @@ const AdminDashboard = () => {
       );
       parsed.offlineMode = Boolean(form.offlineMode);
       parsed.itemPickupMode = form.itemPickupMode;
+      parsed.showCharacterNicknames = Boolean(form.showCharacterNicknames);
 
       const localeRouting =
         parsed.localeRouting && typeof parsed.localeRouting === 'object'
@@ -1911,6 +1933,12 @@ const AdminDashboard = () => {
           ...(entry.worn ? { worn: true } : {}),
           ...(entry.wornLeft ? { wornLeft: true } : {}),
         })),
+      };
+
+      parsed.supervisor = {
+        enabled: Boolean(form.supervisorEnabled),
+        stopCommand: form.supervisorStopCommand.trim(),
+        restartCommand: form.supervisorRestartCommand.trim(),
       };
 
       return JSON.stringify(parsed, null, 2);
@@ -7637,6 +7665,8 @@ const AdminDashboard = () => {
                             <option value="en">en</option>
                             <option value="de">de</option>
                             <option value="es">es</option>
+                            <option value="fr">fr</option>
+                            <option value="it">it</option>
                             <option value="ru">ru</option>
                           </select>
                         </label>
@@ -7653,6 +7683,70 @@ const AdminDashboard = () => {
                             }
                           />
                           <span>{t('adminDashboard.cfgOfflineMode')}</span>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.showCharacterNicknames}
+                            onChange={(e) =>
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                showCharacterNicknames: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span>{t('adminDashboard.cfgShowCharacterNicknames')}</span>
+                        </label>
+
+                        <div className="admin-dashboard__cfg-section-title">
+                          {t('adminDashboard.cfgSupervisorTitle')}
+                        </div>
+                        <p className="admin-dashboard__cfg-hint">
+                          {t('adminDashboard.cfgSupervisorHint')}
+                        </p>
+                        <label className="admin-dashboard__cfg-check">
+                          <input
+                            type="checkbox"
+                            checked={cfgForm.supervisorEnabled}
+                            onChange={(e) =>
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                supervisorEnabled: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span>{t('adminDashboard.cfgSupervisorEnabled')}</span>
+                        </label>
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSupervisorStopCommand')}</span>
+                          <input
+                            type="text"
+                            className="admin-dashboard__search-input"
+                            placeholder={t('adminDashboard.cfgSupervisorStopCommandPlaceholder')}
+                            value={cfgForm.supervisorStopCommand}
+                            onChange={(e) =>
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                supervisorStopCommand: e.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgSupervisorRestartCommand')}</span>
+                          <input
+                            type="text"
+                            className="admin-dashboard__search-input"
+                            placeholder={t('adminDashboard.cfgSupervisorRestartCommandPlaceholder')}
+                            value={cfgForm.supervisorRestartCommand}
+                            onChange={(e) =>
+                              setCfgForm((prev) => ({
+                                ...prev,
+                                supervisorRestartCommand: e.target.value,
+                              }))
+                            }
+                          />
                         </label>
 
                         <label className="admin-dashboard__cfg-field">

@@ -388,6 +388,23 @@ If omitted, defaults to `"safe"` mode.
 
 See also `pluginsLoadOrder` and the Plugin System documentation.
 
+Optional nested key:
+
+- `processCommandAllowlist`: string array that restricts which commands may be started by `kind: process` plugins.
+- Matching is done against either the full command string or its basename.
+- If omitted, no additional command restriction is applied (backward compatible).
+
+```json5
+{
+  // ...
+  pluginDiscovery: {
+    mode: 'safe',
+    processCommandAllowlist: ['node', 'node.exe'],
+  },
+  // ...
+}
+```
+
 ## pluginsLoadOrder
 
 Explicit load order for plugins. Plugins listed here are started first (in the given order), followed by any remaining enabled plugins in alphabetical order.

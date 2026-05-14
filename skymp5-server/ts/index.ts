@@ -42,6 +42,11 @@ import { TimeSystem } from './systems/timeSystem';
 import { WeatherSystem } from './systems/weatherSystem';
 import { Spawn } from './systems/spawn';
 import { System } from './systems/system';
+import {
+  initializeVoiceActivityManager,
+  type VoiceActivityState,
+} from './voiceActivityApi';
+import { createYacaTeamSpeakAdapter } from './adapters/YacaTeamSpeakAdapter';
 
 sourceMapSupport.install({
   retrieveSourceMap: function (source: string) {
@@ -259,6 +264,7 @@ interface PluginSetupOptions {
   mode: 'prompt' | 'safe';
   loadOrder: string[];
   abortOnPluginError: boolean;
+  processCommandAllowlist: string[] | null;
 }
 
 const pluginsLog = (...args: unknown[]) => console.log('[plugins]', ...args);
@@ -637,6 +643,32 @@ const installShutdownHooks = () => {
   process.on('exit', stopAllPluginProcesses);
 };
 
+const normalizeCommandToken = (value: string): string =>
+  process.platform === 'win32' ? value.toLowerCase() : value;
+
+const isProcessPluginCommandAllowed = (
+  command: string,
+  processCommandAllowlist: string[] | null,
+): boolean => {
+  // Backward-compatible default: no allowlist means no restriction.
+  if (!processCommandAllowlist) {
+    return true;
+  }
+
+  const normalizedAllowlist = new Set(
+    processCommandAllowlist.map((item) => normalizeCommandToken(item.trim())),
+  );
+  const commandTrimmed = command.trim();
+  const commandBase = path.basename(commandTrimmed);
+  const normalizedCommand = normalizeCommandToken(commandTrimmed);
+  const normalizedBase = normalizeCommandToken(commandBase);
+
+  return (
+    normalizedAllowlist.has(normalizedCommand) ||
+    normalizedAllowlist.has(normalizedBase)
+  );
+};
+
 const runGamemodePlugin = (
   plugin: DiscoveredPlugin,
   server: scampNative.ScampServer,
@@ -651,16 +683,33 @@ const runGamemodePlugin = (
   requireTemp(mainPath);
 };
 
-const runProcessPlugin = (plugin: DiscoveredPlugin) => {
+const runProcessPlugin = (
+  plugin: DiscoveredPlugin,
+  processCommandAllowlist: string[] | null,
+) => {
   const command = plugin.manifest.command;
   if (!command) {
     throw new Error('process plugin has no command');
+  }
+
+  if (!isProcessPluginCommandAllowed(command, processCommandAllowlist)) {
+    const allowlistInfo =
+      processCommandAllowlist && processCommandAllowlist.length > 0
+        ? processCommandAllowlist.join(', ')
+        : '(empty allowlist)';
+    throw new Error(
+      `process plugin command "${command}" is not allowed by pluginDiscovery.processCommandAllowlist=${allowlistInfo}`,
+    );
   }
 
   const child = spawn(command, plugin.manifest.args || [], {
     cwd: plugin.pluginDir,
     windowsHide: true,
     stdio: 'pipe',
+  });
+
+  ui.updatePluginRuntimeStatus(plugin.manifest.name, 'running', {
+    pid: child.pid || undefined,
   });
 
   child.stdout.on('data', (chunk) => {
@@ -670,11 +719,20 @@ const runProcessPlugin = (plugin: DiscoveredPlugin) => {
     process.stderr.write(`[plugin:${plugin.manifest.name}] ${chunk}`);
   });
   child.on('exit', (code, signal) => {
+    const stoppedStatus = code === 0 ? 'stopped' : 'failed';
+    ui.updatePluginRuntimeStatus(plugin.manifest.name, stoppedStatus, {
+      pid: child.pid || undefined,
+      message: `process exited with code=${code} signal=${signal}`,
+    });
     pluginsWarn(
       `process plugin "${plugin.manifest.name}" exited with code=${code} signal=${signal}`,
     );
   });
   child.on('error', (e) => {
+    ui.updatePluginRuntimeStatus(plugin.manifest.name, 'failed', {
+      pid: child.pid || undefined,
+      message: e instanceof Error ? e.message : String(e),
+    });
     pluginsError(`process plugin "${plugin.manifest.name}" failed:`, e);
   });
 
@@ -749,19 +807,27 @@ const bootstrapPlugins = async (
     };
 
     if (!startupEnabled) {
+      ui.updatePluginRuntimeStatus(plugin.manifest.name, 'stopped', {
+        message: 'startupEnabled=false',
+      });
       continue;
     }
 
     try {
+      ui.updatePluginRuntimeStatus(plugin.manifest.name, 'starting');
       if (plugin.manifest.kind === 'gamemode') {
         runGamemodePlugin(plugin, server);
+        ui.updatePluginRuntimeStatus(plugin.manifest.name, 'running');
         pluginsLog(`loaded gamemode plugin "${plugin.manifest.name}"`);
       } else {
-        runProcessPlugin(plugin);
+        runProcessPlugin(plugin, options.processCommandAllowlist);
       }
     } catch (e) {
       const msg =
         e instanceof Error ? `${e.message}\n${e.stack || ''}` : String(e);
+      ui.updatePluginRuntimeStatus(plugin.manifest.name, 'failed', {
+        message: msg,
+      });
       if (plugin.manifest.optional) {
         pluginsWarn(
           `optional plugin "${plugin.manifest.name}" failed to start: ${msg}`,
@@ -958,6 +1024,7 @@ const main = async () => {
   ui.main(settingsObject);
 
   let server: any;
+  const connectedUsers = new Set<number>();
 
   try {
     server = createScampServer(settingsObject.allSettings);
@@ -1007,6 +1074,22 @@ const main = async () => {
 
   server.on('connect', (userId: number) => {
     log('connect', userId);
+    connectedUsers.add(userId);
+    const showCharacterNicknames = Boolean(
+      (settingsObject.allSettings as Record<string, unknown> | null)
+        ?.showCharacterNicknames ?? true,
+    );
+    try {
+      server.sendCustomPacket(
+        userId,
+        JSON.stringify({
+          customPacketType: 'nicknameVisibility',
+          enabled: showCharacterNicknames,
+        }),
+      );
+    } catch (e) {
+      console.error(e);
+    }
     for (const system of systems) {
       try {
         if (system.connect) {
@@ -1020,6 +1103,18 @@ const main = async () => {
 
   server.on('disconnect', (userId: number) => {
     log('disconnect', userId);
+    connectedUsers.delete(userId);
+
+    try {
+      const manager = (globalThis as any).voiceActivityManager;
+      const actorId = String(server.getUserActor(userId) || '');
+      if (manager && actorId) {
+        manager.removePlayer(actorId);
+      }
+    } catch (e) {
+      console.error('[Voice Activity] cleanup failed on disconnect:', e);
+    }
+
     for (const system of systems) {
       try {
         if (system.disconnect) {
@@ -1036,6 +1131,43 @@ const main = async () => {
 
     const type = `${content.customPacketType}`;
     delete content.customPacketType;
+
+    if (type === 'voiceActivity' || type === 'yaca:voiceActivity') {
+      try {
+        const senderActorId = Number(server.getUserActor(userId)) || userId;
+        const parsedActorId = Number(content.actorId ?? content.playerId);
+        const normalizedActorId = Number.isFinite(parsedActorId) && parsedActorId > 0
+          ? parsedActorId
+          : senderActorId;
+
+        const state = {
+          actorId: String(normalizedActorId),
+          isSpeaking: Boolean(content.isSpeaking),
+          voiceRange: Number(content.voiceRange ?? 8),
+          providerId:
+            typeof content.providerId === 'string'
+              ? content.providerId
+              : 'yaca-ts',
+          timestamp: Number.isFinite(Number(content.timestamp))
+            ? Number(content.timestamp)
+            : Date.now(),
+          metadata:
+            content.metadata && typeof content.metadata === 'object'
+              ? (content.metadata as Record<string, unknown>)
+              : undefined,
+        } as VoiceActivityState;
+
+        const manager = (globalThis as any).voiceActivityManager;
+        if (manager) {
+          manager.broadcastVoiceActivity(state).catch((e: unknown) => {
+            console.error('[Voice Activity] broadcast failed:', e);
+          });
+        }
+      } catch (e) {
+        console.error('[Voice Activity] invalid voiceActivity packet:', e);
+      }
+      return;
+    }
 
     if (type === 'clientTelemetry') {
       const source =
@@ -1132,11 +1264,148 @@ const main = async () => {
     : [];
 
   const abortOnPluginError = pluginDiscoveryObject?.abortOnPluginError === true;
+  const processCommandAllowlistRaw =
+    pluginDiscoveryObject?.processCommandAllowlist;
+  const processCommandAllowlist = Array.isArray(processCommandAllowlistRaw)
+    ? processCommandAllowlistRaw
+        .filter((v): v is string => typeof v === 'string')
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0)
+    : null;
+
+  const voiceActivityObject =
+    allSettings && typeof allSettings.voiceActivity === 'object'
+      ? (allSettings.voiceActivity as Record<string, unknown>)
+      : null;
+  const voiceActivityEnabled = voiceActivityObject?.enabled === true;
+
+  if (voiceActivityEnabled) {
+    const voiceManager = initializeVoiceActivityManager({
+      enabled: true,
+      voiceRangeTiers: Array.isArray(voiceActivityObject?.voiceRangeTiers)
+        ? (voiceActivityObject.voiceRangeTiers as unknown[])
+            .filter((v): v is number => typeof v === 'number')
+        : undefined,
+      defaultVoiceRange:
+        typeof voiceActivityObject?.defaultVoiceRange === 'number'
+          ? (voiceActivityObject.defaultVoiceRange as number)
+          : undefined,
+      proximityDistance:
+        typeof voiceActivityObject?.proximityDistance === 'number'
+          ? (voiceActivityObject.proximityDistance as number)
+          : undefined,
+      inactivityTimeoutMs:
+        typeof voiceActivityObject?.inactivityTimeoutMs === 'number'
+          ? (voiceActivityObject.inactivityTimeoutMs as number)
+          : undefined,
+      allowedProviders: Array.isArray(voiceActivityObject?.allowedProviders)
+        ? (voiceActivityObject.allowedProviders as unknown[])
+            .filter((v): v is string => typeof v === 'string')
+        : null,
+    });
+
+    (globalThis as any).voiceActivityManager = voiceManager;
+    voiceManager.setBroadcastCallback(async (state, recipientUserIds) => {
+      const packet = JSON.stringify({
+        customPacketType: 'syncVoiceActivity',
+        actorId: state.actorId,
+        isSpeaking: state.isSpeaking,
+        voiceRange: state.voiceRange,
+        providerId: state.providerId,
+        timestamp: state.timestamp,
+      });
+
+      for (const userId of recipientUserIds) {
+        try {
+          server.sendCustomPacket(Number(userId), packet);
+        } catch (e) {
+          console.error('[Voice Activity] sendCustomPacket failed:', e);
+        }
+      }
+    }, (state) => {
+      const speakerActorId = Number(state.actorId);
+      if (!Number.isFinite(speakerActorId) || speakerActorId <= 0) {
+        return Array.from(connectedUsers).map((id) => String(id));
+      }
+
+      let speakerPos: number[] = [];
+      let speakerCell = 0;
+      try {
+        speakerPos = server.getActorPos(speakerActorId) || [];
+        speakerCell = Number(server.getActorCellOrWorld(speakerActorId)) || 0;
+      } catch (e) {
+        console.error('[Voice Activity] Failed to resolve speaker position:', e);
+        return Array.from(connectedUsers).map((id) => String(id));
+      }
+
+      const maxDistance = Math.max(
+        0,
+        Math.min(
+          state.voiceRange || 0,
+          typeof voiceActivityObject?.proximityDistance === 'number'
+            ? (voiceActivityObject.proximityDistance as number)
+            : 100,
+        ),
+      );
+
+      if (speakerPos.length < 3) {
+        return Array.from(connectedUsers).map((id) => String(id));
+      }
+
+      const recipients: string[] = [];
+      for (const userId of connectedUsers) {
+        try {
+          const targetActorId = Number(server.getUserActor(userId)) || 0;
+          if (!targetActorId || targetActorId === speakerActorId) {
+            continue;
+          }
+
+          const targetCell = Number(server.getActorCellOrWorld(targetActorId)) || 0;
+          if (targetCell !== speakerCell) {
+            continue;
+          }
+
+          const targetPos = server.getActorPos(targetActorId) || [];
+          if (targetPos.length < 3) {
+            continue;
+          }
+
+          const dx = targetPos[0] - speakerPos[0];
+          const dy = targetPos[1] - speakerPos[1];
+          const dz = targetPos[2] - speakerPos[2];
+          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+          if (distance <= maxDistance) {
+            recipients.push(String(userId));
+          }
+        } catch (e) {
+          console.error('[Voice Activity] Failed to resolve recipient:', e);
+        }
+      }
+
+      return recipients;
+    });
+
+    const providerList = Array.isArray(voiceActivityObject?.providers)
+      ? (voiceActivityObject.providers as unknown[])
+          .filter((v): v is string => typeof v === 'string')
+      : ['yaca-ts'];
+
+    if (providerList.includes('yaca-ts')) {
+      const yacaAdapter = createYacaTeamSpeakAdapter();
+      void voiceManager.registerAdapter(yacaAdapter).catch((e) => {
+        console.error('[Voice Activity] Failed to register YACA adapter:', e);
+      });
+
+      (globalThis as any).yacaTeamSpeakAdapter = yacaAdapter;
+    }
+  }
 
   await setupGamemode(server, gamemodePath, {
     mode: pluginDiscoveryMode,
     loadOrder: pluginsLoadOrder,
     abortOnPluginError,
+    processCommandAllowlist,
   });
 };
 

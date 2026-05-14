@@ -16,6 +16,7 @@ import { NetworkingService } from "./networkingService";
 import { MsgType } from "../../messages";
 import { ConnectionDenied } from "../events/connectionDenied";
 import { SettingsService } from "./settingsService";
+import { FormView } from "../../view/formView";
 
 // for browsersideWidgetSetter
 declare const window: any;
@@ -239,6 +240,25 @@ export class AuthService extends ClientListener {
       //   logTrace(this, 'loginRequired received');
       //   this.loginWithSkympIoCredentials();
       //   break;
+      case 'nicknameVisibility': {
+        const enabled = Boolean(msgContent['enabled']);
+        FormView.isDisplayingNicknames = enabled;
+        FormView.isNicknameDisplayServerControlled = true;
+        break;
+      }
+      case 'announcementToast': {
+        const message = String(msgContent['message'] ?? '').trim();
+        const durationMsRaw = Number(msgContent['durationMs']);
+        if (!message) {
+          break;
+        }
+
+        this.showAnnouncementToast(
+          message,
+          Number.isFinite(durationMsRaw) ? durationMsRaw : 4500,
+        );
+        break;
+      }
       case 'loginFailedNotLoggedViaDiscord':
         this.authAttemptProgressIndicator = false;
         this.controller.lookupListener(NetworkingService).close();
@@ -947,6 +967,130 @@ export class AuthService extends ClientListener {
 
   private onceUpdate() {
     this.playerEverSawActualGameplay = true;
+  }
+
+  // Render server announcements as a small animated HUD banner at the top of
+  // the browser overlay instead of reusing chat.
+  private showAnnouncementToast(message: string, durationMs: number): void {
+    const safeMessage = JSON.stringify(String(message || '').slice(0, 240));
+    const safeDuration = Math.max(1500, Math.min(15000, Math.floor(durationMs)));
+
+    const script = `(() => {
+      const message = ${safeMessage};
+      const durationMs = ${safeDuration};
+      const rootId = 'skymp-announcement-toast-root';
+      const styleId = 'skymp-announcement-toast-style';
+
+      const ensureStyle = () => {
+        if (document.getElementById(styleId)) return;
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = ${JSON.stringify(`
+          #skymp-announcement-toast-root {
+            position: fixed;
+            top: 22px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2147483647;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: min(820px, calc(100vw - 32px));
+          }
+          .skymp-announcement-toast {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(197, 167, 88, 0.78);
+            background:
+              linear-gradient(180deg, rgba(43, 31, 14, 0.94), rgba(13, 10, 7, 0.96)),
+              radial-gradient(circle at top, rgba(255, 227, 162, 0.16), transparent 58%);
+            color: #f4d98b;
+            box-shadow:
+              0 0 0 1px rgba(0, 0, 0, 0.35) inset,
+              0 16px 40px rgba(0, 0, 0, 0.58),
+              0 0 24px rgba(213, 176, 84, 0.18);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.35;
+            letter-spacing: 0.02em;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(-34px) scale(0.985);
+            transition:
+              opacity 240ms ease,
+              transform 240ms cubic-bezier(0.2, 0.9, 0.2, 1);
+            will-change: opacity, transform;
+            position: relative;
+          }
+          .skymp-announcement-toast::before,
+          .skymp-announcement-toast::after {
+            content: '';
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            height: 1px;
+            background: linear-gradient(
+              90deg,
+              transparent,
+              rgba(255, 221, 146, 0.72),
+              transparent
+            );
+          }
+          .skymp-announcement-toast::before {
+            top: 8px;
+          }
+          .skymp-announcement-toast::after {
+            bottom: 8px;
+          }
+          .skymp-announcement-toast.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        `)};
+        document.head.appendChild(style);
+      };
+
+      const ensureRoot = () => {
+        ensureStyle();
+        let root = document.getElementById(rootId);
+        if (!root) {
+          root = document.createElement('div');
+          root.id = rootId;
+          document.body.appendChild(root);
+        }
+        return root;
+      };
+
+      const root = ensureRoot();
+      const toast = document.createElement('div');
+      toast.className = 'skymp-announcement-toast';
+      toast.textContent = message;
+      root.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.add('is-visible');
+      });
+
+      window.setTimeout(() => {
+        toast.classList.remove('is-visible');
+        window.setTimeout(() => {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 260);
+      }, durationMs);
+    })();`;
+
+    try {
+      this.sp.browser.executeJavaScript(script);
+    } catch (error) {
+      logError(this, 'Failed to show announcement toast', error);
+    }
   }
 
   private get isListenBrowserMessage() {
