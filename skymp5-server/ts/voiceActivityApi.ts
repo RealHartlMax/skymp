@@ -61,10 +61,8 @@ export interface VoiceActivityConfig {
   enabled: boolean;
 
   /** Supported voice range tiers in meters. Discrete tiers (e.g., [1.0, 3.0, 8.0, ...])
-  setBroadcastCallback(
-    callback: VoiceActivityBroadcastCallback,
-    recipientResolver?: VoiceActivityRecipientResolver,
-  ): void;
+   * If null, accepts continuous values from providers.
+   */
   voiceRangeTiers: number[] | null;
 
   /** Default voice range in meters if not specified by adapter */
@@ -162,6 +160,14 @@ export interface IVoiceProviderAdapter {
 export interface IVoiceActivityManager {
   /** Check if VAD is globally enabled */
   isEnabled(): boolean;
+
+  /**
+   * Set callback used to broadcast voice updates to clients and optional recipient resolver.
+   */
+  setBroadcastCallback(
+    callback: VoiceActivityBroadcastCallback,
+    recipientResolver?: VoiceActivityRecipientResolver,
+  ): void;
 
   /**
    * Remove a player's voice state immediately, typically on disconnect.

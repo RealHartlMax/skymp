@@ -12,7 +12,7 @@
  * 4. Voice Activity Manager broadcasts to proximity-aware clients
  */
 
-import { IVoiceProviderAdapter, VoiceActivityState } from "./voiceActivityApi";
+import { IVoiceProviderAdapter, VoiceActivityState } from "../voiceActivityApi";
 
 export class YacaTeamSpeakAdapter implements IVoiceProviderAdapter {
   readonly providerId = "yaca-ts";
@@ -22,6 +22,10 @@ export class YacaTeamSpeakAdapter implements IVoiceProviderAdapter {
   private activeSpeakersCount = 0;
   private lastEventTime: number = 0;
   private errorLog: string[] = [];
+
+  get isReady(): boolean {
+    return this.isInitialized;
+  }
 
   /**
    * Initialize the YACA-TS adapter.

@@ -55,6 +55,7 @@ import { SweetTaffyStaticPerksService } from './services/services/sweetTaffyStat
 import { SweetTaffySweetCantDropService } from './services/services/sweetTaffySweetCantDropService';
 import { TimeService } from './services/services/timeService';
 import { TimersService } from './services/services/timersService';
+import { VoiceActivitySyncService } from './services/services/voiceActivitySyncService';
 import { WorldCleanerService } from './services/services/worldCleanerService';
 import { SpApiInteractor } from './services/spApiInteractor';
 import { WorldView } from './view/worldView';
@@ -126,6 +127,7 @@ const main = () => {
       new EffectsLearningService(sp, controller),
       new EnchantmentsService(sp, controller),
       new FavoritesService(sp, controller),
+      new VoiceActivitySyncService(sp, controller),
     ];
     SpApiInteractor.setup(listeners);
   } catch (e) {
