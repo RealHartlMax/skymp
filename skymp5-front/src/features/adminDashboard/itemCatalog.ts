@@ -81,7 +81,7 @@ export const ITEM_CATALOG: CatalogItem[] = [
   {
     codeHex: '000D1923',
     name: 'Radiant Raiment Fine Clothes',
-    category: 'clothing',
+    category: 'clothing'
   },
   { codeHex: '000CEE80', name: 'College Boots', category: 'clothing' },
 
@@ -91,12 +91,12 @@ export const ITEM_CATALOG: CatalogItem[] = [
   {
     codeHex: '00039BE3',
     name: 'Potion of Plentiful Healing',
-    category: 'potions',
+    category: 'potions'
   },
   {
     codeHex: '00039BE2',
     name: 'Potion of Vigorous Healing',
-    category: 'potions',
+    category: 'potions'
   },
   { codeHex: '00039BE0', name: 'Potion of Minor Magicka', category: 'potions' },
   { codeHex: '00039BDF', name: 'Potion of Magicka', category: 'potions' },
@@ -121,7 +121,7 @@ export const ITEM_CATALOG: CatalogItem[] = [
   {
     codeHex: '0003AD66',
     name: 'Blue Mountain Flower',
-    category: 'ingredients',
+    category: 'ingredients'
   },
   { codeHex: '0003AD60', name: 'Wheat', category: 'ingredients' },
   { codeHex: '0006ABCB', name: 'Salt Pile', category: 'ingredients' },
@@ -140,7 +140,7 @@ export const ITEM_CATALOG: CatalogItem[] = [
   { codeHex: '0002E501', name: 'Soul Gem (Grand)', category: 'misc' },
   { codeHex: '0000009F', name: 'Leather', category: 'misc' },
   { codeHex: '000DB5D2', name: 'Leather Strips', category: 'misc' },
-  { codeHex: '0005AD9E', name: 'Firewood', category: 'misc' },
+  { codeHex: '0005AD9E', name: 'Firewood', category: 'misc' }
 ];
 
 export const ITEM_CATEGORIES: ItemCategory[] = [
@@ -150,5 +150,5 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   'potions',
   'food',
   'ingredients',
-  'misc',
+  'misc'
 ];

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import App from './App';
+import { AppErrorBoundary } from './components/AppErrorBoundary/AppErrorBoundary';
 import './i18n';
 import './main.scss';
 import { store } from './redux/store';
@@ -22,9 +23,11 @@ initPerformanceMonitoring();
 
 ReactDOM.render(
   <React.StrictMode>
-    <Provider store={store}>
-      <App elem={window.skyrimPlatform.widgets.get()} />
-    </Provider>
+    <AppErrorBoundary>
+      <Provider store={store}>
+        <App elem={window.skyrimPlatform.widgets.get()} />
+      </Provider>
+    </AppErrorBoundary>
   </React.StrictMode>,
   document.getElementById('root'),
 );

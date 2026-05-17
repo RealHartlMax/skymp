@@ -27,7 +27,7 @@ const KEYS = {
   cachedServers: 'skymp.launcher.cachedServers',
   darkMode: 'skymp.launcher.darkMode',
   releaseChannel: 'skymp.launcher.releaseChannel',
-  ignoredUpdates: 'skymp.launcher.ignoredUpdates',
+  ignoredUpdates: 'skymp.launcher.ignoredUpdates'
 };
 
 type IgnoredUpdatesMap = Partial<Record<'stable' | 'beta' | 'nightly', string>>;
@@ -118,13 +118,13 @@ export const getLauncherReleaseChannel = (): 'stable' | 'beta' | 'nightly' => {
 };
 
 export const setLauncherReleaseChannel = (
-  channel: 'stable' | 'beta' | 'nightly',
+  channel: 'stable' | 'beta' | 'nightly'
 ): void => {
   writeJson(KEYS.releaseChannel, channel);
 };
 
 export const getLauncherIgnoredUpdateVersion = (
-  channel: 'stable' | 'beta' | 'nightly',
+  channel: 'stable' | 'beta' | 'nightly'
 ): string | null => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   const value = map[channel];
@@ -133,7 +133,7 @@ export const getLauncherIgnoredUpdateVersion = (
 
 export const setLauncherIgnoredUpdateVersion = (
   channel: 'stable' | 'beta' | 'nightly',
-  version: string,
+  version: string
 ): void => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   const next: IgnoredUpdatesMap = { ...map, [channel]: version.trim() };
@@ -141,7 +141,7 @@ export const setLauncherIgnoredUpdateVersion = (
 };
 
 export const clearLauncherIgnoredUpdateVersion = (
-  channel: 'stable' | 'beta' | 'nightly',
+  channel: 'stable' | 'beta' | 'nightly'
 ): void => {
   const map = readJson<IgnoredUpdatesMap>(KEYS.ignoredUpdates, {});
   if (!(channel in map)) return;

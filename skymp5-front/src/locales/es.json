@@ -40,6 +40,11 @@
     "reset": "Restablecer",
     "exit": "Salir"
   },
+  "appErrorBoundary": {
+    "title": "Algo salió mal",
+    "description": "La interfaz encontró un error inesperado. Recarga la página para restaurar el lanzador o el panel de administración.",
+    "reload": "Recargar interfaz"
+  },
   "adminDashboard": {
     "title": "Panel de administracion SkyMP",
     "subtitle": "Estado en vivo del servidor y control de jugadores",
@@ -80,6 +85,7 @@
     "muteRemaining": "Restante",
     "reasonLabel": "Motivo",
     "reasonPlaceholder": "Motivo opcional para expulsar/silenciar/banear/mensaje…",
+    "reasonTooLong": "El motivo es demasiado largo (máximo {{max}} caracteres).",
     "unban": "Quitar baneo",
     "unbanConfirm": "Quitar baneo al jugador",
     "unbanned": "Baneo quitado",
@@ -319,6 +325,7 @@
     "noRevivalEvents": "No hay eventos de reanimacion",
     "refresh": "Actualizar",
     "apiError": "Error de API — comprueba la conexion con el servidor",
+    "rateLimited": "Demasiadas solicitudes — espera un momento y vuelve a intentarlo.",
     "messageBtn": "Msg",
     "inventoryBtn": "Inventario",
     "inventoryTitle": "Inventario",
@@ -408,6 +415,7 @@
     "topWhitelist_addPlayerDescription": "Introduce el identificador del jugador que deseas añadir a la lista blanca.",
     "topWhitelist_identifierPlaceholder": "discord:272600190639848628",
     "topWhitelist_identifierRequired": "El identificador es obligatorio.",
+    "topWhitelist_identifierInvalid": "El identificador debe usar el formato \"type:value\" con un tipo compatible como discord, steam o license.",
     "topWhitelist_identifierTypes": "Puede ser uno de los siguientes: discord, steam, license, licenseea, live, xblive, fal.",
     "topWhitelist_added": "Jugador añadido a la lista blanca.",
     "topWhitelist_colValue": "Identificador",
@@ -539,6 +547,8 @@
     "source_demo": "Fuente: demo",
     "offlineCacheUsed": "Servidor inaccesible. Se cargo la lista en cache.",
     "offlineDemoUsed": "Servidor inaccesible. Se cargo la lista demo.",
+    "rateLimitedCacheUsed": "API con limite alcanzado. Se cargo la lista en cache.",
+    "rateLimitedDemoUsed": "API con limite alcanzado. Se cargo la lista demo.",
     "invalidApiEndpoint": "Endpoint de API invalido",
     "autoConnectLast": "Conectar automaticamente al ultimo servidor",
     "addFavorite": "Anadir a favoritos",

@@ -257,6 +257,61 @@ $admin-line: #2c4552;
     flex-wrap: wrap;
   }
 
+  &__ws-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    color: #d6dde3;
+    background: rgba(110, 122, 133, 0.2);
+
+    &--live {
+      color: #7fe8c9;
+      border-color: rgba(127, 232, 201, 0.45);
+      background: rgba(46, 199, 184, 0.16);
+    }
+
+    &--reconnecting {
+      color: #f4d17e;
+      border-color: rgba(244, 209, 126, 0.45);
+      background: rgba(220, 170, 56, 0.17);
+    }
+
+    &--fallback {
+      color: #ffb6b6;
+      border-color: rgba(255, 182, 182, 0.45);
+      background: rgba(204, 107, 107, 0.17);
+    }
+  }
+
+  &__ws-pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #8d9ca8;
+
+    &--live {
+      background: #7fe8c9;
+      animation: admin-dashboard-ws-pulse 1.8s ease-in-out infinite;
+    }
+
+    &--reconnecting {
+      background: #f4d17e;
+      animation: admin-dashboard-ws-pulse 1.1s ease-in-out infinite;
+    }
+
+    &--fallback {
+      background: #ffb6b6;
+      animation: none;
+    }
+  }
+
   &__chrome {
     flex: 1;
     min-height: 0;
@@ -3936,6 +3991,46 @@ $admin-line: #2c4552;
     &--small {
       font-size: 16px;
     }
+
+    &--live {
+      color: #7fe8c9;
+      font-size: 16px;
+    }
+
+    &--reconnecting {
+      color: #f4d17e;
+      font-size: 16px;
+    }
+
+    &--fallback {
+      color: #ffb6b6;
+      font-size: 16px;
+    }
+  }
+
+  &__metric-subvalue {
+    color: $admin-muted;
+    font-size: 12px;
+    line-height: 1.4;
+
+    &--reconnected {
+      color: #7fe8c9;
+    }
+
+    &--reconnecting {
+      color: #f4d17e;
+    }
+
+    &--fallback {
+      color: #ffb6b6;
+    }
+  }
+
+  &__metric-sublist {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 2px;
   }
 
   &__metrics-groups {
@@ -4012,6 +4107,21 @@ $admin-line: #2c4552;
     flex-wrap: wrap;
     font-size: 12px;
     word-break: break-word;
+  }
+}
+
+@keyframes admin-dashboard-ws-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
   }
 }
 

@@ -30,6 +30,16 @@ import {
   rpcDurationHistogram,
 } from './systems/metricsSystem';
 import { voiceActivityManager } from './voiceActivityApi';
+import {
+  setupAdminWebSocket,
+  startAdminUpdateBroadcasts,
+  broadcastPlayersUpdate,
+  broadcastStatusUpdate,
+  broadcastLogEntry,
+  broadcastEvent,
+  broadcastHistoryEntry,
+  broadcastRespawnUpdate,
+} from './adminWebSocket';
 
 const Koa = require('koa');
 const serve = require('koa-static');
@@ -695,6 +705,8 @@ interface AdminPlayerStatsEntry {
   totalPlayMs: number;
   activeSessionStartedAt: number | null;
   lastDisplayName: string;
+  identifiers: string[];
+  notes: string;
 }
 
 type AdminHistoryActionType = 'warn' | 'ban' | 'kick' | 'mute';
@@ -1295,6 +1307,8 @@ const savePlayerStats = (dataDir: string, force = false): void => {
       totalPlayMs: Math.max(0, Math.floor(entry.totalPlayMs)),
       activeSessionStartedAt: entry.activeSessionStartedAt,
       lastDisplayName: entry.lastDisplayName,
+      identifiers: entry.identifiers,
+      notes: entry.notes,
     }));
     fs.writeFileSync(
       path.join(dataDir, ADMIN_PLAYER_STATS_FILE),
@@ -1345,6 +1359,15 @@ const loadPlayerStats = (dataDir: string): void => {
           typeof (value as any).lastDisplayName === 'string'
             ? (value as any).lastDisplayName.slice(0, 120)
             : '',
+        identifiers: Array.isArray((value as any).identifiers)
+          ? (value as any).identifiers.filter(
+              (v: unknown) => typeof v === 'string',
+            ).slice(0, 20)
+          : [],
+        notes:
+          typeof (value as any).notes === 'string'
+            ? (value as any).notes.slice(0, 2000)
+            : '',
       });
     });
     console.log(
@@ -1379,6 +1402,8 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
         totalPlayMs: 0,
         activeSessionStartedAt: now,
         lastDisplayName: actorName.slice(0, 120),
+        identifiers: [],
+        notes: '',
       });
       changed = true;
       return;
@@ -4605,6 +4630,71 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
+    router.get('/api/admin/players/:userId/profile', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      const userId = Number(ctx.params.userId);
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+      const stats = adminPlayerStats.get(userId);
+      if (!stats) {
+        ctx.status = 404;
+        ctx.body = { ok: false, error: 'player not found' };
+        return;
+      }
+      const now = Date.now();
+      const sessionPlayMs =
+        stats.activeSessionStartedAt !== null
+          ? Math.max(0, now - stats.activeSessionStartedAt)
+          : 0;
+      const history = adminHistory
+        .filter((e) => e.userId === userId)
+        .slice()
+        .reverse();
+      ctx.body = {
+        ok: true,
+        userId: stats.userId,
+        displayName: stats.lastDisplayName,
+        firstJoinedAt: stats.firstJoinedAt,
+        lastConnectionAt: stats.lastConnectionAt,
+        playTimeSec: Math.floor((stats.totalPlayMs + sessionPlayMs) / 1000),
+        online: stats.activeSessionStartedAt !== null,
+        identifiers: stats.identifiers,
+        notes: stats.notes,
+        history,
+      };
+    });
+
+    router.put('/api/admin/players/:userId/profile', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      const userId = Number(ctx.params.userId);
+      if (!Number.isFinite(userId)) {
+        ctx.status = 400;
+        ctx.body = { ok: false, error: 'invalid userId' };
+        return;
+      }
+      const stats = adminPlayerStats.get(userId);
+      if (!stats) {
+        ctx.status = 404;
+        ctx.body = { ok: false, error: 'player not found' };
+        return;
+      }
+      const body = ctx.request.body as Record<string, unknown> | undefined;
+      if (body && Array.isArray(body.identifiers)) {
+        stats.identifiers = (body.identifiers as unknown[])
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+          .map((v) => v.trim().slice(0, 200))
+          .slice(0, 20);
+      }
+      if (body && typeof body.notes === 'string') {
+        stats.notes = body.notes.slice(0, 2000);
+      }
+      savePlayerStats(dataDir, true);
+      ctx.body = { ok: true, userId };
+    });
+
     router.post('/api/admin/players/:userId/kick', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canKick')) return;
       const userId = Number(ctx.params.userId);
@@ -5848,6 +5938,78 @@ export const main = (settings: Settings): void => {
       const server = http.createServer(app.callback());
       server.listen(uiPort, uiListenHost, () => {
         setupLiveConsoleWebSocket(server);
+        setupAdminWebSocket(server);
+        startAdminUpdateBroadcasts(
+          () => ({
+            name: settings.name,
+            master: settings.master,
+            online: getOnlinePlayerIds().length,
+            maxPlayers: settings.maxPlayers,
+            port: settings.port,
+            itemPickupMode: settings.itemPickupMode,
+            uptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
+          }),
+          () => {
+            const now = Date.now();
+            const playersByUserId = new Map<number, any>();
+            getOnlinePlayerIds().forEach((userId) => {
+              const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
+              const stats = adminPlayerStats.get(userId);
+              const sessionPlayMs = stats?.activeSessionStartedAt
+                ? Math.max(0, now - stats.activeSessionStartedAt)
+                : 0;
+              const playTimeSec = Math.floor(
+                ((stats?.totalPlayMs ?? 0) + sessionPlayMs) / 1000,
+              );
+              playersByUserId.set(userId, {
+                userId,
+                actorId,
+                online: true,
+                actorName: actorId
+                  ? safeCall(() => gScampServer.getActorName(actorId), '') ||
+                    stats?.lastDisplayName ||
+                    `userId=${userId}`
+                  : stats?.lastDisplayName || `userId=${userId}`,
+                ip: safeCall(() => gScampServer.getUserIp(userId), ''),
+                pos: actorId
+                  ? safeCall(() => gScampServer.getActorPos(actorId), [])
+                  : [],
+                cellOrWorld: actorId
+                  ? safeCall(() => gScampServer.getActorCellOrWorld(actorId), 0)
+                  : 0,
+                firstJoinedAt: stats?.firstJoinedAt ?? null,
+                lastConnectionAt: stats?.lastConnectionAt ?? now,
+                playTimeSec,
+              });
+            });
+            adminPlayerStats.forEach((stats, userId) => {
+              if (playersByUserId.has(userId)) return;
+              const playTimeSec = Math.floor(Math.max(0, stats.totalPlayMs) / 1000);
+              playersByUserId.set(userId, {
+                userId,
+                actorId: 0,
+                online: false,
+                actorName: stats.lastDisplayName || `userId=${userId}`,
+                ip: '',
+                pos: [],
+                cellOrWorld: 0,
+                firstJoinedAt: stats.firstJoinedAt,
+                lastConnectionAt: stats.lastConnectionAt,
+                playTimeSec,
+              });
+            });
+            const players = Array.from(playersByUserId.values()).sort((a, b) => {
+              if (Boolean(a.online) !== Boolean(b.online)) {
+                return a.online ? -1 : 1;
+              }
+              const aLast = Number(a.lastConnectionAt || 0);
+              const bLast = Number(b.lastConnectionAt || 0);
+              if (aLast !== bLast) return bLast - aLast;
+              return Number(a.userId || 0) - Number(b.userId || 0);
+            });
+            return { players };
+          }
+        );
         logDashboardUrls(uiPort, uiListenHost);
       });
     });

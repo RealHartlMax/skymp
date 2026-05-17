@@ -55,8 +55,7 @@ const shouldSkipNetworkFlush = (endpoint: string): boolean => {
   if (!isBrowserDevUiMode()) return false;
 
   const explicitEndpoint = (window as any)?.SKYMP_METRICS_ENDPOINT;
-  if (typeof explicitEndpoint === 'string' && explicitEndpoint.trim())
-    return false;
+  if (typeof explicitEndpoint === 'string' && explicitEndpoint.trim()) { return false; }
 
   return endpoint === '/api/frontend/metrics';
 };
@@ -73,7 +72,7 @@ const flushMetrics = (): void => {
     platform: navigator.platform,
     visibilityState: String(document.visibilityState || 'unknown'),
     sessionId: metricsSessionId,
-    metrics: metricBuffer,
+    metrics: metricBuffer
   };
 
   const endpoint = resolveMetricsEndpoint();
@@ -93,13 +92,13 @@ const flushMetrics = (): void => {
       return;
     }
 
-    void fetch(endpoint, {
+    fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: encoded,
-      keepalive: true,
+      keepalive: true
     }).catch(() => {
       // Metrics must never break UI runtime.
     });
@@ -118,7 +117,7 @@ const initPerformanceObservers = (): void => {
           name: entry.name,
           value: Number(entry.duration || 0),
           source: entry.entryType,
-          ts: Date.now(),
+          ts: Date.now()
         });
       });
     });
@@ -128,8 +127,8 @@ const initPerformanceObservers = (): void => {
         'navigation',
         'resource',
         'paint',
-        'largest-contentful-paint',
-      ] as any,
+        'largest-contentful-paint'
+      ] as any
     });
   } catch {
     // Some browsers may not support all entry types.
@@ -142,7 +141,7 @@ const initErrorTracking = (): void => {
       name: event.message || 'error',
       value: 1,
       source: 'window.error',
-      ts: Date.now(),
+      ts: Date.now()
     });
   });
 
@@ -151,7 +150,7 @@ const initErrorTracking = (): void => {
       name: 'unhandledrejection',
       value: 1,
       source: 'window.unhandledrejection',
-      ts: Date.now(),
+      ts: Date.now()
     });
   });
 };

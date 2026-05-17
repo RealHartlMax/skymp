@@ -139,9 +139,9 @@ jobs:
           - name: Build frontend
             run: |
               docker run --rm -v "${{ github.workspace }}:/src" -w /src/skymp5-front -u skymp localhost/buildimage \
-                yarn install --frozen-lockfile
+                npm ci
               docker run --rm -v "${{ github.workspace }}:/src" -w /src/skymp5-front -u skymp localhost/buildimage \
-                yarn build
+                npm run build
               test -f "${{ github.workspace }}/skymp5-front/dist/build.js"
 
           - name: CMake Configure

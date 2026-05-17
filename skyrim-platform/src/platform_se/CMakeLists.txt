@@ -91,7 +91,7 @@ if(NOT "${SKIP_SKYRIM_PLATFORM_BUILDING}")
   )
   apply_default_settings(TARGETS skyrim_plugin_resources)
 
-  include(${CMAKE_SOURCE_DIR}/cmake/yarn.cmake)
+  include(${CMAKE_SOURCE_DIR}/cmake/package_manager.cmake)
   yarn_execute_command(
     WORKING_DIRECTORY "${SKYRIM_PLATFORM_SOURCE_DIR}/tools/dev_service"
     COMMAND install

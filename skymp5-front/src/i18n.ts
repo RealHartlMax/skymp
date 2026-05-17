@@ -20,47 +20,47 @@ i18n.use(initReactI18next).init({
     en: {
       translation: {
         ...en,
-        items: itemEn,
-      },
+        items: itemEn
+      }
     },
     ru: {
       translation: {
         ...ru,
-        items: itemRu,
-      },
+        items: itemRu
+      }
     },
     de: {
       translation: {
         ...de,
-        items: itemDe,
-      },
+        items: itemDe
+      }
     },
     es: {
       translation: {
         ...es,
-        items: itemEs,
-      },
+        items: itemEs
+      }
     },
     fr: {
       translation: {
         ...fr,
-        items: itemFr,
-      },
+        items: itemFr
+      }
     },
     it: {
       translation: {
         ...it,
-        items: itemIt,
-      },
-    },
+        items: itemIt
+      }
+    }
   },
   lng: detectRuntimeLanguage(),
   fallbackLng: 'en',
   supportedLngs: ['de', 'en', 'es', 'fr', 'it', 'ru'],
   load: 'languageOnly',
   interpolation: {
-    escapeValue: false,
-  },
+    escapeValue: false
+  }
 });
 
 export default i18n;

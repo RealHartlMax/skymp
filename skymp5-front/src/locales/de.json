@@ -40,6 +40,11 @@
     "reset": "Zurücksetzen",
     "exit": "Verlassen"
   },
+  "appErrorBoundary": {
+    "title": "Etwas ist schiefgelaufen",
+    "description": "Die Oberfläche ist auf einen unerwarteten Fehler gestoßen. Lade die Seite neu, um Launcher oder Admin-Dashboard wiederherzustellen.",
+    "reload": "Oberfläche neu laden"
+  },
   "adminDashboard": {
     "title": "SkyMP Admin-Dashboard",
     "subtitle": "Live-Serverstatus und Spielerverwaltung",
@@ -80,6 +85,7 @@
     "muteRemaining": "Verbleibend",
     "reasonLabel": "Grund",
     "reasonPlaceholder": "Optionaler Grund für Kick/Mute/Sperre/Nachricht…",
+    "reasonTooLong": "Der Grund ist zu lang (maximal {{max}} Zeichen).",
     "unban": "Entsperren",
     "unbanConfirm": "Spieler entsperren",
     "unbanned": "Entsperrt",
@@ -323,6 +329,7 @@
     "noRevivalEvents": "Keine Wiederbelebungsereignisse",
     "refresh": "Aktualisieren",
     "apiError": "API-Fehler — Serververbindung prüfen",
+    "rateLimited": "Zu viele Anfragen — bitte kurz warten und erneut versuchen.",
     "messageBtn": "Msg",
     "inventoryBtn": "Inventar",
     "inventoryTitle": "Inventar",
@@ -412,6 +419,7 @@
     "topWhitelist_addPlayerDescription": "Gib die Spieler-ID ein, die du whitelisten möchtest.",
     "topWhitelist_identifierPlaceholder": "discord:272600190639848628",
     "topWhitelist_identifierRequired": "ID ist erforderlich.",
+    "topWhitelist_identifierInvalid": "Die ID muss das Format \"type:value\" mit einem unterstützten Typ wie discord, steam oder license verwenden.",
     "topWhitelist_identifierTypes": "Dies kann eines der folgenden sein: discord, steam, license, licenseea, live, xblive, fal.",
     "topWhitelist_added": "Spieler zur Whitelist hinzugefügt.",
     "topWhitelist_colValue": "Identifikator",
@@ -457,7 +465,7 @@
     "topHistory_filterAdmin": "Nach Admin filtern",
     "topHistory_anyType": "Beliebiger Typ",
     "topHistory_byAnyAdmin": "Von beliebigem Admin",
-    "topHistory_help": "Aktionen nach ID durchsuchen.",
+    "topHistory_help": "Aktionen nach ID, Spieler oder Grund durchsuchen.",
     "topHistory_noActions": "Keine Aktionen gefunden.",
     "topHistory_colDateTime": "Datum/Uhrzeit ▼",
     "topHistory_colPlayer": "Spieler",
@@ -539,6 +547,8 @@
     "source_demo": "Quelle: Demo",
     "offlineCacheUsed": "Server nicht erreichbar. Zwischengespeicherte Liste geladen.",
     "offlineDemoUsed": "Server nicht erreichbar. Demo-Liste geladen.",
+    "rateLimitedCacheUsed": "API hat das Limit erreicht. Zwischengespeicherte Liste geladen.",
+    "rateLimitedDemoUsed": "API hat das Limit erreicht. Demo-Liste geladen.",
     "invalidApiEndpoint": "Ungültiger API-Endpunkt",
     "autoConnectLast": "Automatisch mit letztem Server verbinden",
     "addFavorite": "Zu Favoriten hinzufügen",

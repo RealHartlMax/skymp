@@ -202,6 +202,7 @@ jobs:
           DIST_ARTIFACT_NAME: running_server_files_windows_dist
           SERVER_DIST_ARTIFACT_NAME: running_server_files_windows_server_dist
           RELEASE_VERSION: ${{ needs.determine-version.outputs.version }}
+          UPLOAD_SERVER_DIST: false
           SKYMP5_PATCHES_PAT: ${{ github.token }}
           NUGET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -222,6 +223,12 @@ jobs:
           name: running_server_files_windows_client_dist
           path: ${{ github.workspace }}/build/running_server_files_windows_client_dist.zip
 
+      - name: Upload cleaned Windows server artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: running_server_files_windows_server_dist
+          path: ${{ github.workspace }}/build/dist/server
+
   linux-server-files:
     name: Linux server files
     needs: determine-version
@@ -239,12 +246,12 @@ jobs:
         run: |
           cat ${{ github.workspace }}/misc/github_env_linux >> "$GITHUB_ENV"
 
-      - name: Setup Node.js with Yarn cache
+      - name: Setup Node.js with npm cache
         uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: 'yarn'
-          cache-dependency-path: ${{ github.workspace }}/skymp5-front/yarn.lock
+          cache: 'npm'
+          cache-dependency-path: ${{ github.workspace }}/skymp5-front/package-lock.json
 
       - name: Prepare workspace owner
         run: |
@@ -255,8 +262,8 @@ jobs:
       - name: Build frontend
         run: |
           cd ${{ github.workspace }}/skymp5-front
-          yarn install --frozen-lockfile
-          yarn build
+          npm ci
+          npm run build
 
       - name: Configure CMake
         run: |

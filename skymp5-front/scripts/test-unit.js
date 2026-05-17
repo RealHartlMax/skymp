@@ -21,6 +21,9 @@ require.extensions['.svg'] = (module, filename) => {
   };
 };
 
+require('../src/i18n.ts');
+const i18n = require('../src/i18n.ts').default;
+
 const {
   getVisibleServers,
   collectServerTags,
@@ -39,6 +42,10 @@ const {
   formatAdminPos,
   formatAdminUptime,
   formatAdminTime,
+  MAX_MODERATION_REASON_LENGTH,
+  isValidModerationReason,
+  isValidDiscordSnowflake,
+  isValidWhitelistIdentifier,
 } = require('../src/features/adminDashboard/utils.ts');
 const {
   detectLanguage,
@@ -67,6 +74,9 @@ const {
 const {
   SkyrimInput,
 } = require('../src/components/SkyrimInput/SkyrimInput.tsx');
+const {
+  AppErrorBoundary,
+} = require('../src/components/AppErrorBoundary/AppErrorBoundary.tsx');
 
 const run = (name, fn) => {
   try {
@@ -250,7 +260,8 @@ run('detectLanguage resolves supported and fallback locales', () => {
   assert.equal(detectLanguage('ru-RU'), 'ru');
   assert.equal(detectLanguage('de-DE'), 'de');
   assert.equal(detectLanguage('es-ES'), 'es');
-  assert.equal(detectLanguage('fr-FR'), 'en');
+  assert.equal(detectLanguage('fr-FR'), 'fr');
+  assert.equal(detectLanguage('it-IT'), 'it');
   assert.equal(detectLanguage(undefined), 'en');
 });
 
@@ -362,6 +373,40 @@ run('filterAdminPlayers matches by userId, actorName and ip', () => {
   );
 });
 
+run('isValidDiscordSnowflake accepts digits and empty values only', () => {
+  assert.equal(isValidDiscordSnowflake(''), true);
+  assert.equal(isValidDiscordSnowflake('  '), true);
+  assert.equal(isValidDiscordSnowflake('272600190639848628'), true);
+  assert.equal(isValidDiscordSnowflake(' 272600190639848628 '), true);
+  assert.equal(isValidDiscordSnowflake('discord:272600190639848628'), false);
+  assert.equal(isValidDiscordSnowflake('abc123'), false);
+});
+
+run('isValidModerationReason keeps optional reason but caps max length', () => {
+  assert.equal(isValidModerationReason(''), true);
+  assert.equal(isValidModerationReason('   '), true);
+  assert.equal(
+    isValidModerationReason('x'.repeat(MAX_MODERATION_REASON_LENGTH)),
+    true,
+  );
+  assert.equal(
+    isValidModerationReason('x'.repeat(MAX_MODERATION_REASON_LENGTH + 1)),
+    false,
+  );
+});
+
+run('isValidWhitelistIdentifier mirrors the backend whitelist contract', () => {
+  assert.equal(isValidWhitelistIdentifier('discord:272600190639848628'), true);
+  assert.equal(isValidWhitelistIdentifier(' LICENSE : abc123 '), true);
+  assert.equal(isValidWhitelistIdentifier('steam:110000104cbe442'), true);
+  assert.equal(isValidWhitelistIdentifier(''), false);
+  assert.equal(isValidWhitelistIdentifier('discord'), false);
+  assert.equal(isValidWhitelistIdentifier('discord:'), false);
+  assert.equal(isValidWhitelistIdentifier(':272600190639848628'), false);
+  assert.equal(isValidWhitelistIdentifier('discordia:272600190639848628'), false);
+  assert.equal(isValidWhitelistIdentifier('licenseea'), false);
+});
+
 run(
   'formatAdminTime returns a non-empty time string for a known timestamp',
   () => {
@@ -372,6 +417,19 @@ run(
     assert.equal(result.length > 0, true);
   },
 );
+
+run('AppErrorBoundary renders localized fallback UI after an error', () => {
+  const boundary = new AppErrorBoundary({
+    children: React.createElement('div', null, 'ok'),
+  });
+
+  boundary.state = AppErrorBoundary.getDerivedStateFromError(new Error('boom'));
+
+  const html = render(boundary.render());
+  assert.match(html, /data-testid="app-error-boundary"/);
+  assert.equal(html.includes(i18n.t('appErrorBoundary.title')), true);
+  assert.equal(html.includes(i18n.t('appErrorBoundary.reload')), true);
+});
 
 run('SkyrimButton renders text and disabled opacity', () => {
   const html = render(

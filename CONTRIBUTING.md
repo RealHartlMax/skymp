@@ -176,19 +176,10 @@ The frontend code is located in `skymp5-front` directory and uses **React 18** w
 
 2. Install dependencies:
    ```sh
-   npm install
-   ```
-   Or if you prefer yarn:
-   ```sh
-   yarn install
-   ```
-
-   If your lockfile and dependency tree are already healthy, you can also use:
-   ```sh
    npm ci
    ```
 
-   If `npm ci` fails because of lockfile drift, regenerate with `npm install` and commit the resulting lockfile updates.
+   Frontend dependency management is npm-only. If `npm ci` fails because of lockfile drift, regenerate with `npm install` and commit the resulting `package-lock.json` updates.
 
 ### Development Server
 

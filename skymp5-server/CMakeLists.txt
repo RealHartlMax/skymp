@@ -4,13 +4,13 @@ enable_testing()
 set(SKYMP5_SERVER_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 include(${CMAKE_SOURCE_DIR}/cmake/apply_default_settings.cmake)
-include(${CMAKE_SOURCE_DIR}/cmake/yarn.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/package_manager.cmake)
 
 find_package(CMakeRC CONFIG REQUIRED)
 
 if(WIN32)
-  yarn_execute_command(
-    COMMAND install
+  npm_execute_command(
+    COMMAND ci
     WORKING_DIRECTORY ${SKYMP5_SERVER_SOURCE_DIR}
   )
 endif()
@@ -352,7 +352,7 @@ if(TARGET ${PROJECT_NAME})
 
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/yarn.lock ${CMAKE_BINARY_DIR}/dist/server/yarn.lock
+    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/package-lock.json ${CMAKE_BINARY_DIR}/dist/server/package-lock.json
   )
 
   add_custom_command(

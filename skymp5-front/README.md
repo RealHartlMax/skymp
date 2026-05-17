@@ -2,12 +2,12 @@
 
 This repo contains GUI demo for Skyrim Multiplayer. Original chat interface by **davinchi59** has been ported.
 
-- `yarn build` is used to build the project.
-- `yarn watch` is used to start live-reload server (auto-selects a free port).
-- `yarn watch:fixed` starts live-reload server on port `1234`.
-- `yarn dev:lan` starts live-reload server for LAN/browser testing (`0.0.0.0` + auto port).
-- `yarn test:api` runs API integration checks for server list endpoint handling.
-- `yarn test:e2e` runs optional Playwright smoke test (if Playwright is installed).
+- `npm run build` is used to build the project.
+- `npm run watch` is used to start live-reload server (auto-selects a free port).
+- `npm run watch:fixed` starts live-reload server on port `1234`.
+- `npm run dev:lan` starts live-reload server for LAN/browser testing (`0.0.0.0` + auto port).
+- `npm run test:api` runs API integration checks for server list endpoint handling.
+- `npm run test:e2e` runs optional Playwright smoke test (if Playwright is installed).
 
 If you start a live-reload server and Skyrim Multiplayer server on the same machine, then live-reload would work in the game.
 
@@ -29,7 +29,7 @@ The webpack dev server is configured to listen on all interfaces.
 1. Start frontend dev server:
 
 ```bash
-yarn watch
+npm run watch
 ```
 
 If port `1234` is already busy, webpack dev server now picks a free port automatically.
@@ -37,13 +37,13 @@ If port `1234` is already busy, webpack dev server now picks a free port automat
 To force the classic fixed port behavior:
 
 ```bash
-yarn watch:fixed
+npm run watch:fixed
 ```
 
 For explicit LAN/browser testing with auto-port fallback:
 
 ```bash
-yarn dev:lan
+npm run dev:lan
 ```
 
 2. Open in browser from the same machine:
@@ -84,17 +84,17 @@ For stable browser automation selectors, dev banner exposes `data-testid` hooks:
 You can override host, port, backend target and health-check interval:
 
 ```bash
-SKYMP_FRONT_HOST=0.0.0.0 SKYMP_FRONT_PORT=1234 SKYMP_FRONT_API_TARGET=http://127.0.0.1:7777 yarn watch
+SKYMP_FRONT_HOST=0.0.0.0 SKYMP_FRONT_PORT=1234 SKYMP_FRONT_API_TARGET=http://127.0.0.1:7777 npm run watch
 ```
 
 ```bash
-SKYMP_FRONT_HEALTH_MS=5000 yarn watch
+SKYMP_FRONT_HEALTH_MS=5000 npm run watch
 ```
 
 For E2E smoke checks with Playwright, set the target URL if needed:
 
 ```bash
-PLAYWRIGHT_E2E_URL=http://127.0.0.1:1234/ yarn test:e2e
+PLAYWRIGHT_E2E_URL=http://127.0.0.1:1234/ npm run test:e2e
 ```
 
 In browser-only dev overlay mode (`?devUi=1`), frontend metrics posting is suppressed by default if no explicit metrics endpoint is configured. This avoids repeated proxy noise when no local backend is running on port `7777`.

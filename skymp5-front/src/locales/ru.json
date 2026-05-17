@@ -40,6 +40,11 @@
     "reset": "Сброс",
     "exit": "Выход"
   },
+  "appErrorBoundary": {
+    "title": "Что-то пошло не так",
+    "description": "Интерфейс столкнулся с неожиданной ошибкой. Перезагрузите страницу, чтобы восстановить лаунчер или панель администратора.",
+    "reload": "Перезагрузить интерфейс"
+  },
   "adminDashboard": {
     "title": "SkyMP Панель администратора",
     "subtitle": "Статус сервера в реальном времени и управление игроками",
@@ -80,6 +85,7 @@
     "muteRemaining": "Осталось",
     "reasonLabel": "Причина",
     "reasonPlaceholder": "Необязательная причина для кика/мута/бана/сообщения…",
+    "reasonTooLong": "Причина слишком длинная (максимум {{max}} символов).",
     "unban": "Разбанить",
     "unbanConfirm": "Разбанить игрока",
     "unbanned": "Разбанен",
@@ -323,6 +329,7 @@
     "noRevivalEvents": "Нет событий воскрешения",
     "refresh": "Обновить",
     "apiError": "Ошибка API — проверьте соединение с сервером",
+    "rateLimited": "Слишком много запросов — подождите немного и попробуйте снова.",
     "messageBtn": "Сообщ.",
     "inventoryBtn": "Инвентарь",
     "inventoryTitle": "Инвентарь",
@@ -412,6 +419,7 @@
     "topWhitelist_addPlayerDescription": "Введите идентификатор игрока, которого хотите добавить в вайтлист.",
     "topWhitelist_identifierPlaceholder": "discord:272600190639848628",
     "topWhitelist_identifierRequired": "Идентификатор обязателен.",
+    "topWhitelist_identifierInvalid": "Идентификатор должен быть в формате \"type:value\" с поддерживаемым типом, например discord, steam или license.",
     "topWhitelist_identifierTypes": "Это может быть одно из: discord, steam, license, licenseea, live, xblive, fal.",
     "topWhitelist_added": "Игрок добавлен в вайтлист.",
     "topWhitelist_colValue": "Идентификатор",
@@ -539,6 +547,8 @@
     "source_demo": "Источник: Демо",
     "offlineCacheUsed": "Сервер недоступен. Загружен список из кэша.",
     "offlineDemoUsed": "Сервер недоступен. Загружен демо-список.",
+    "rateLimitedCacheUsed": "Достигнут лимит API. Загружен список из кэша.",
+    "rateLimitedDemoUsed": "Достигнут лимит API. Загружен демо-список.",
     "invalidApiEndpoint": "Некорректный API-эндпоинт",
     "autoConnectLast": "Автоподключение к последнему серверу",
     "addFavorite": "Добавить в избранное",

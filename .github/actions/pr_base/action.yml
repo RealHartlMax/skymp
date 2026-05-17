@@ -54,13 +54,17 @@ inputs:
     required: false
     default: 'true'
   BUILD_FRONTEND_PRECHECK:
-    description: 'Set to false to skip early skymp5-front yarn build precheck'
+    description: 'Set to false to skip early skymp5-front npm build precheck'
     required: false
     default: 'true'
   RELEASE_VERSION:
     description: 'Optional release version string written into dist/server/release-info.json'
     required: false
     default: ''
+  UPLOAD_SERVER_DIST:
+    description: 'Set to false when the caller wants to post-process build/dist/server before uploading it'
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -78,7 +82,7 @@ runs:
         cache: 'yarn'
         cache-dependency-path: |
           ${{ github.workspace }}/skymp5-client/yarn.lock
-          ${{ github.workspace }}/skymp5-front/yarn.lock
+          ${{ github.workspace }}/skymp5-front/package-lock.json
 
     - name: Gather PRs
       if: ${{ inputs.DEPLOY_BRANCH != '' }}
@@ -127,8 +131,8 @@ runs:
       if: ${{ inputs.EMSCRIPTEN != 'true' && inputs.BUILD_FRONTEND_PRECHECK == 'true' }}
       run: |
         cd ${{github.workspace}}/skymp5-front
-        yarn install --frozen-lockfile
-        yarn build
+        npm ci
+        npm run build
         if (-not (Test-Path "${{github.workspace}}/skymp5-front/dist/build.js")) {
           throw "skymp5-front/dist/build.js was not produced by the frontend build"
         }
@@ -481,6 +485,7 @@ runs:
         path: ${{ github.workspace }}/build/dist/client/Data/Platform/Plugins/${{ inputs.DESCRIPTION }}_skymp5-client.js
 
     - uses: actions/upload-artifact@v7
+      if: ${{ inputs.UPLOAD_SERVER_DIST == 'true' }}
       with:
         name: ${{ inputs.SERVER_DIST_ARTIFACT_NAME }}
         path: ${{github.workspace}}/build/dist/server

@@ -13,6 +13,7 @@ import {
   persistRuntimeLanguage,
 } from '../../utils/i18nLanguage';
 import { EventsPanel, RevivalEventEntry } from './EventsPanel';
+import { PlayerProfileModal } from './PlayerProfileModal';
 import { DownedPlayerEntry, RespawnPanel } from './RespawnPanel';
 import { ITEM_CATALOG, ITEM_CATEGORIES, ItemCategory } from './itemCatalog';
 import './styles.scss';
@@ -21,7 +22,12 @@ import {
   formatAdminPos,
   formatAdminTime,
   formatAdminUptime,
+  isValidModerationReason,
+  isValidDiscordSnowflake,
+  isValidWhitelistIdentifier,
+  MAX_MODERATION_REASON_LENGTH,
 } from './utils';
+import { useAdminWebSocket, useAdminWebSocketMessages } from '../../hooks/useAdminWebSocket';
 
 type Tab =
   | 'overview'
@@ -137,6 +143,23 @@ interface LogEntry {
 }
 
 type AdminHistoryActionType = 'warn' | 'ban' | 'kick' | 'mute';
+
+const extractHistoryUserIdFromLog = (entry: LogEntry): string => {
+  const match = entry.message.match(/\buserId=(\d+)\b/i);
+  return match?.[1] || '';
+};
+
+const inferHistoryActionTypeFromLog = (
+  entry: LogEntry,
+): 'any' | AdminHistoryActionType => {
+  if (entry.type === 'ban' || entry.type === 'kick' || entry.type === 'mute') {
+    return entry.type;
+  }
+  if (entry.type === 'console' && /^warned\s+userId=/i.test(entry.message)) {
+    return 'warn';
+  }
+  return 'any';
+};
 
 interface AdminHistoryEntry {
   id: string;
@@ -443,6 +466,16 @@ const EMPTY_ADMIN_UPDATE_STATUS: AdminUpdateStatus = {
 const REFRESH_INTERVAL_MS = 5000;
 const ADMIN_DASHBOARD_STATE_KEY = 'skymp.adminDashboard.state.v1';
 const ADMIN_MENU_DEBUG_KEY = 'skymp.adminDashboard.menuDebug';
+const ADMIN_WS_RECONNECT_HISTORY_KEY =
+  'skymp.adminDashboard.wsReconnectHistory.v1';
+const WS_RECONNECT_HISTORY_LIMIT = 10;
+
+type WsReconnectEventKind = 'reconnected' | 'reconnecting' | 'fallback';
+
+interface WsReconnectEvent {
+  ts: number;
+  kind: WsReconnectEventKind;
+}
 
 interface MenuDebugPayload {
   source: string;
@@ -790,6 +823,9 @@ const AdminDashboard = () => {
     'masterActions' | 'diagnostics' | 'consoleLog' | 'actionLog'
   >('masterActions');
   const [topbarWhitelistSearch, setTopbarWhitelistSearch] = useState('');
+
+  const moderationReasonInvalid = !isValidModerationReason(moderationReason);
+  const warnReasonInvalid = !isValidModerationReason(warnReason);
   const [topbarPlayersSearch, setTopbarPlayersSearch] = useState('');
   const [cfgEditorTab, setCfgEditorTab] = useState<CfgEditorTab>('general');
   const [cfgEditorSaving, setCfgEditorSaving] = useState(false);
@@ -812,6 +848,8 @@ const AdminDashboard = () => {
   const [sendMsgTargetName, setSendMsgTargetName] = useState('');
   const [sendMsgText, setSendMsgText] = useState('');
   const [sendMsgSending, setSendMsgSending] = useState(false);
+  const [profileModalUserId, setProfileModalUserId] = useState<number | null>(null);
+  const [profileModalName, setProfileModalName] = useState('');
   const [warnDialogOpen, setWarnDialogOpen] = useState(false);
   const [warnTargetId, setWarnTargetId] = useState<number | null>(null);
   const [warnTargetName, setWarnTargetName] = useState('');
@@ -1112,6 +1150,11 @@ const AdminDashboard = () => {
         return;
       }
 
+      if (res.status === 429) {
+        setStatusMsg(t('adminDashboard.rateLimited'));
+        return;
+      }
+
       setStatusMsg(t('adminDashboard.apiError'));
     },
     [t],
@@ -1124,7 +1167,11 @@ const AdminDashboard = () => {
         fetch('/api/admin/players'),
       ]);
       if (!statusRes.ok || !playersRes.ok) {
-        setStatusMsg(t('adminDashboard.apiError'));
+        if (statusRes.status === 429 || playersRes.status === 429) {
+          setStatusMsg(t('adminDashboard.rateLimited'));
+        } else {
+          setStatusMsg(t('adminDashboard.apiError'));
+        }
         return;
       }
 
@@ -2172,6 +2219,16 @@ const AdminDashboard = () => {
 
   const revivePlayer = useCallback(
     async (userId: number) => {
+      if (!isValidModerationReason(moderationReason)) {
+        setStatusMsg(
+          t('adminDashboard.reasonTooLong', {
+            max: MAX_MODERATION_REASON_LENGTH,
+            defaultValue: 'Reason is too long (max {{max}} characters).',
+          }),
+        );
+        return;
+      }
+
       const reason = moderationReason.trim();
       try {
         const res = await fetch('/api/admin/revive', {
@@ -2201,6 +2258,16 @@ const AdminDashboard = () => {
   );
 
   const kickPlayer = async (userId: number) => {
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = moderationReason.trim();
     try {
       const res = await fetch(`/api/admin/players/${userId}/kick`, {
@@ -2218,6 +2285,17 @@ const AdminDashboard = () => {
   const banPlayer = async (userId: number) => {
     if (!window.confirm(`${t('adminDashboard.banConfirm')} userId=${userId}?`))
       return;
+
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = moderationReason.trim();
     try {
       const body: Record<string, unknown> = {
@@ -2261,6 +2339,17 @@ const AdminDashboard = () => {
   const sendMessageToPlayer = async () => {
     if (sendMsgTargetId === null || !capabilities.canMessage) return;
     const text = sendMsgText.trim();
+
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = moderationReason.trim();
     if (!text) return;
     setSendMsgSending(true);
@@ -2305,6 +2394,17 @@ const AdminDashboard = () => {
   const sendWarn = async () => {
     if (warnTargetId === null || !capabilities.canWarn) return;
     const message = warnMessage.trim();
+
+    if (!isValidModerationReason(warnReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = warnReason.trim();
     if (!message) {
       setStatusMsg(
@@ -2373,6 +2473,16 @@ const AdminDashboard = () => {
       )
     )
       return;
+
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
 
     const reason = moderationReason.trim();
     setSidebarActionSending('kick-all');
@@ -2469,6 +2579,16 @@ const AdminDashboard = () => {
       window.prompt(t('adminDashboard.announcementPrompt'))?.trim() ?? '';
     if (!message) return;
 
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = moderationReason.trim();
     setSidebarActionSending('announcement');
     try {
@@ -2492,6 +2612,17 @@ const AdminDashboard = () => {
 
   const mutePlayer = async (userId: number) => {
     if (!capabilities.canMute) return;
+
+    if (!isValidModerationReason(moderationReason)) {
+      setStatusMsg(
+        t('adminDashboard.reasonTooLong', {
+          max: MAX_MODERATION_REASON_LENGTH,
+          defaultValue: 'Reason is too long (max {{max}} characters).',
+        }),
+      );
+      return;
+    }
+
     const reason = moderationReason.trim();
     try {
       const res = await fetch(`/api/admin/players/${userId}/mute`, {
@@ -2614,6 +2745,226 @@ const AdminDashboard = () => {
     }
   };
 
+  // WebSocket for Status + Players updates
+  const wsStatusState = useAdminWebSocketMessages('status', (data) => {
+    if (status) {
+      setStatus({
+        ...status,
+        name: data.name || status.name,
+        master: data.master || status.master,
+        online: data.online !== undefined ? data.online : status.online,
+        maxPlayers: data.maxPlayers || status.maxPlayers,
+        port: data.port || status.port,
+        itemPickupMode: data.itemPickupMode || status.itemPickupMode,
+        uptimeSec: data.uptimeSec !== undefined ? data.uptimeSec : status.uptimeSec,
+      });
+    }
+    setLastUpdated(new Date().toLocaleTimeString());
+  }, visible);
+
+  const wsPlayersState = useAdminWebSocketMessages('players', (data) => {
+    if (data.players && Array.isArray(data.players)) {
+      setPlayers(data.players);
+      setLastUpdated(new Date().toLocaleTimeString());
+    }
+  }, visible);
+
+  // WebSocket for Logs stream (append new entries only)
+  const wsLogState = useAdminWebSocketMessages('log', (data) => {
+    if (data.entry && capabilities.canViewLogs) {
+      setLogEntries((prev) => {
+        // Avoid duplicates
+        if (
+          prev.length > 0 &&
+          prev[0].ts === data.entry.ts &&
+          prev[0].message === data.entry.message
+        ) {
+          return prev;
+        }
+        // Prepend new entry and keep last 200
+        return [data.entry, ...prev.slice(0, 199)];
+      });
+    }
+  }, visible && activeTab === 'logs');
+
+  // WebSocket for Events stream (append new entries only)
+  const wsEventState = useAdminWebSocketMessages('event', (data) => {
+    if (data.entry && capabilities.canViewLogs) {
+      setRevivalEvents((prev) => {
+        // Avoid duplicates
+        if (
+          prev.length > 0 &&
+          prev[0].ts === data.entry.ts &&
+          prev[0].title === data.entry.title
+        ) {
+          return prev;
+        }
+        // Prepend new event and keep last 100
+        return [data.entry, ...prev.slice(0, 99)];
+      });
+    }
+  }, visible && activeTab === 'events');
+
+  // WebSocket for Respawn status updates
+  const wsRespawnState = useAdminWebSocketMessages('respawn', (data) => {
+    if (data.players && Array.isArray(data.players) && capabilities.canManageRespawn) {
+      setDownedPlayers(data.players);
+    }
+  }, visible && activeTab === 'respawn');
+
+  // WebSocket for History entries (append new entries only)
+  const wsHistoryState = useAdminWebSocketMessages('history', (data) => {
+    if (data.entry && capabilities.canViewLogs) {
+      setTopbarHistoryData((prev) => {
+        // Avoid duplicates
+        if (
+          prev.entries.length > 0 &&
+          prev.entries[0].id === data.entry.id
+        ) {
+          return prev;
+        }
+        // Prepend new history entry and update summary counts
+        return {
+          ...prev,
+          entries: [data.entry, ...prev.entries].slice(0, 200),
+          totalWarns: data.totalWarns !== undefined ? data.totalWarns : prev.totalWarns,
+          newWarns7d: data.newWarns7d !== undefined ? data.newWarns7d : prev.newWarns7d,
+          totalBans: data.totalBans !== undefined ? data.totalBans : prev.totalBans,
+          newBans7d: data.newBans7d !== undefined ? data.newBans7d : prev.newBans7d,
+        };
+      });
+    }
+  }, visible && activeTopSection === 'history');
+
+  const wsStates = useMemo(
+    () => [
+      wsStatusState,
+      wsPlayersState,
+      wsLogState,
+      wsEventState,
+      wsRespawnState,
+      wsHistoryState,
+    ],
+    [
+      wsEventState,
+      wsHistoryState,
+      wsLogState,
+      wsPlayersState,
+      wsRespawnState,
+      wsStatusState,
+    ],
+  );
+  const wsAnyConnected = useMemo(
+    () => wsStates.some((state) => state.connected),
+    [wsStates],
+  );
+  const wsAnyReconnecting = useMemo(
+    () => wsStates.some((state) => state.reconnecting),
+    [wsStates],
+  );
+  const wsTotalMessages = useMemo(
+    () => wsStates.reduce((sum, state) => sum + state.messageCount, 0),
+    [wsStates],
+  );
+  const wsLastMessageTs = useMemo(
+    () =>
+      wsStates.reduce<number>(
+        (maxTs, state) => Math.max(maxTs, state.lastMessageTs ?? 0),
+        0,
+      ),
+    [wsStates],
+  );
+  const wsLastMessageLabel = useMemo(
+    () => (wsLastMessageTs > 0 ? formatAdminTime(wsLastMessageTs) : '-'),
+    [wsLastMessageTs],
+  );
+  const wsHealthTone = wsAnyConnected
+    ? 'live'
+    : wsAnyReconnecting
+      ? 'reconnecting'
+      : 'fallback';
+  const wsHealthLabel = wsAnyConnected
+    ? t('adminDashboard.wsHealthLive', { defaultValue: 'WS live' })
+    : wsAnyReconnecting
+      ? t('adminDashboard.wsHealthReconnecting', {
+          defaultValue: 'WS reconnecting',
+        })
+      : t('adminDashboard.wsHealthFallback', {
+          defaultValue: 'HTTP fallback',
+        });
+
+  const wsHadConnectedRef = useRef(false);
+  const wsPrevConnectedRef = useRef(false);
+  const wsPrevReconnectingRef = useRef(false);
+  const [wsReconnectCount, setWsReconnectCount] = useState(0);
+  const [wsReconnectEvents, setWsReconnectEvents] = useState<WsReconnectEvent[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(ADMIN_WS_RECONNECT_HISTORY_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(
+          (entry): entry is WsReconnectEvent =>
+            entry &&
+            typeof entry.ts === 'number' &&
+            (entry.kind === 'reconnected' ||
+              entry.kind === 'reconnecting' ||
+              entry.kind === 'fallback'),
+        )
+        .slice(0, WS_RECONNECT_HISTORY_LIMIT);
+    } catch {
+      return [];
+    }
+  });
+  const appendWsReconnectEvent = useCallback((kind: WsReconnectEventKind) => {
+    setWsReconnectEvents((prev) =>
+      [{ ts: Date.now(), kind }, ...prev].slice(0, WS_RECONNECT_HISTORY_LIMIT),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      wsPrevConnectedRef.current = false;
+      wsPrevReconnectingRef.current = false;
+      return;
+    }
+
+    if (
+      wsAnyConnected &&
+      wsHadConnectedRef.current &&
+      !wsPrevConnectedRef.current
+    ) {
+      setWsReconnectCount((prev) => prev + 1);
+      appendWsReconnectEvent('reconnected');
+    }
+
+    if (wsAnyReconnecting && !wsPrevReconnectingRef.current) {
+      appendWsReconnectEvent('reconnecting');
+    }
+
+    if (!wsAnyConnected && !wsAnyReconnecting && wsPrevConnectedRef.current) {
+      appendWsReconnectEvent('fallback');
+    }
+
+    if (wsAnyConnected) {
+      wsHadConnectedRef.current = true;
+    }
+    wsPrevConnectedRef.current = wsAnyConnected;
+    wsPrevReconnectingRef.current = wsAnyReconnecting;
+  }, [appendWsReconnectEvent, visible, wsAnyConnected, wsAnyReconnecting]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        ADMIN_WS_RECONNECT_HISTORY_KEY,
+        JSON.stringify(wsReconnectEvents),
+      );
+    } catch {
+      // ignore storage write failures
+    }
+  }, [wsReconnectEvents]);
+
   const show = useCallback(async () => {
     setVisible(true);
     setLoading(true);
@@ -2624,7 +2975,6 @@ const AdminDashboard = () => {
       fetchUpdateStatus(),
     ]);
     setLoading(false);
-    intervalRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
   }, [fetchBans, fetchCapabilities, fetchData, fetchUpdateStatus]);
 
   const hide = useCallback(() => {
@@ -2674,6 +3024,37 @@ const AdminDashboard = () => {
       intervalRef.current = null;
     }
   }, []);
+
+  // Manage polling fallback based on WebSocket connection state
+  useEffect(() => {
+    if (!visible) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    if (wsStatusState.connected) {
+      // WebSocket is primary - clear polling interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    } else {
+      // WebSocket unavailable - use polling fallback
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [visible, wsStatusState.connected, fetchData]);
 
   useEffect(() => {
     const onShow = () => void show();
@@ -2743,6 +3124,79 @@ const AdminDashboard = () => {
     visible,
   ]);
 
+  // Periodic polling fallback for Logs+Events when WebSocket unavailable
+  useEffect(() => {
+    if (!visible || activeMenuSurface !== 'sidebar') return;
+
+    let logsInterval: NodeJS.Timeout | null = null;
+    let eventsInterval: NodeJS.Timeout | null = null;
+    let respawnInterval: NodeJS.Timeout | null = null;
+
+    // Logs polling fallback (5s interval when WebSocket unavailable)
+    if (activeTab === 'logs' && !wsLogState.connected && capabilities.canViewLogs) {
+      logsInterval = setInterval(() => {
+        void fetchLogs();
+      }, 5000);
+    }
+
+    // Events polling fallback (5s interval when WebSocket unavailable)
+    if (activeTab === 'events' && !wsEventState.connected && capabilities.canViewLogs) {
+      eventsInterval = setInterval(() => {
+        void fetchRevivalEvents();
+      }, 5000);
+    }
+
+    // Respawn polling fallback (3s interval when WebSocket unavailable)
+    if (activeTab === 'respawn' && !wsRespawnState.connected && capabilities.canManageRespawn) {
+      respawnInterval = setInterval(() => {
+        void fetchDownedPlayers();
+      }, 3000);
+    }
+
+    return () => {
+      if (logsInterval) clearInterval(logsInterval);
+      if (eventsInterval) clearInterval(eventsInterval);
+      if (respawnInterval) clearInterval(respawnInterval);
+    };
+  }, [
+    visible,
+    activeMenuSurface,
+    activeTab,
+    wsLogState.connected,
+    wsEventState.connected,
+    wsRespawnState.connected,
+    fetchLogs,
+    fetchRevivalEvents,
+    fetchDownedPlayers,
+    capabilities.canViewLogs,
+    capabilities.canManageRespawn,
+  ]);
+
+  // Periodic polling fallback for History when WebSocket unavailable
+  useEffect(() => {
+    if (!visible || activeMenuSurface !== 'topbar') return;
+
+    let historyInterval: NodeJS.Timeout | null = null;
+
+    // History polling fallback (5s interval when WebSocket unavailable)
+    if (activeTopSection === 'history' && !wsHistoryState.connected && capabilities.canViewLogs) {
+      historyInterval = setInterval(() => {
+        void fetchTopbarHistory();
+      }, 5000);
+    }
+
+    return () => {
+      if (historyInterval) clearInterval(historyInterval);
+    };
+  }, [
+    visible,
+    activeMenuSurface,
+    activeTopSection,
+    wsHistoryState.connected,
+    fetchTopbarHistory,
+    capabilities.canViewLogs,
+  ]);
+
   useEffect(() => {
     if (!visible || activeMenuSurface !== 'topbar') return;
 
@@ -2791,7 +3245,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (!visible || activeMenuSurface !== 'topbar') return;
     const id = setInterval(() => {
-      if (activeTopSection === 'history') {
+      if (activeTopSection === 'history' && !wsHistoryState.connected) {
         void fetchTopbarHistory();
       }
       if (activeTopSection === 'playerDrops') {
@@ -2825,36 +3279,9 @@ const AdminDashboard = () => {
     fetchTopbarHistory,
     fetchTopbarPlayerDrops,
     fetchTopbarSystemStatus,
+    wsHistoryState.connected,
     visible,
   ]);
-
-  useEffect(() => {
-    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'logs')
-      return;
-    const id = setInterval(() => {
-      void fetchLogs();
-    }, 2000);
-    return () => clearInterval(id);
-  }, [activeMenuSurface, activeTab, fetchLogs, visible]);
-
-  useEffect(() => {
-    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'respawn')
-      return;
-    const id = setInterval(() => {
-      void fetchDownedPlayers();
-      setNowTs(Date.now());
-    }, 2000);
-    return () => clearInterval(id);
-  }, [activeMenuSurface, activeTab, fetchDownedPlayers, visible]);
-
-  useEffect(() => {
-    if (!visible || activeMenuSurface !== 'sidebar' || activeTab !== 'events')
-      return;
-    const id = setInterval(() => {
-      void fetchRevivalEvents();
-    }, 2000);
-    return () => clearInterval(id);
-  }, [activeMenuSurface, activeTab, fetchRevivalEvents, visible]);
 
   useEffect(() => {
     setLogBeforeTs(null);
@@ -3165,10 +3592,20 @@ const AdminDashboard = () => {
 
   const saveTopbarAdminUser = async () => {
     const user = topbarAdminForm.user.trim();
+    const discordId = topbarAdminForm.discordId.trim();
     if (!user) {
       setStatusMsg(
         t('adminDashboard.topAdmins_userRequired', {
           defaultValue: 'Username is required.',
+        }),
+      );
+      return;
+    }
+
+    if (!isValidDiscordSnowflake(discordId)) {
+      setStatusMsg(
+        t('adminDashboard.topAdmins_discordIdInvalid', {
+          defaultValue: 'Discord ID must contain digits only.',
         }),
       );
       return;
@@ -3182,7 +3619,7 @@ const AdminDashboard = () => {
         body: JSON.stringify({
           user,
           role: topbarAdminForm.role,
-          discordId: topbarAdminForm.discordId.trim(),
+          discordId,
         }),
       });
 
@@ -3220,6 +3657,16 @@ const AdminDashboard = () => {
       setStatusMsg(
         t('adminDashboard.topWhitelist_identifierRequired', {
           defaultValue: 'Identifier is required.',
+        }),
+      );
+      return;
+    }
+
+    if (!isValidWhitelistIdentifier(identifier)) {
+      setStatusMsg(
+        t('adminDashboard.topWhitelist_identifierInvalid', {
+          defaultValue:
+            'Identifier must use the format "type:value" with a supported type such as discord, steam or license.',
         }),
       );
       return;
@@ -3318,6 +3765,48 @@ const AdminDashboard = () => {
       // ignore storage remove failures
     }
   };
+
+  const openTopbarHistorySearch = useCallback(
+    ({
+      search,
+      mode = 'player',
+      actionType = 'any',
+    }: {
+      search: string;
+      mode?: 'actionId' | 'player' | 'reason';
+      actionType?: 'any' | AdminHistoryActionType;
+    }) => {
+      emitMenuDebug({
+        source: `cross-search:${mode}`,
+        previous: {
+          surface: activeMenuSurface,
+          tab: activeTab,
+          topSection: activeTopSection,
+        },
+        next: {
+          surface: 'topbar',
+          tab: activeTab,
+          topSection: 'history',
+        },
+        visible,
+        ts: Date.now(),
+      });
+      setHistorySearch(search.trim());
+      setHistorySearchMode(mode);
+      setHistoryActionType(actionType);
+      setHistoryAdmin('any');
+      setActiveTopSection('history');
+      setActiveMenuSurface('topbar');
+      setSystemSectionActive(false);
+    },
+    [
+      activeMenuSurface,
+      activeTab,
+      activeTopSection,
+      emitMenuDebug,
+      visible,
+    ],
+  );
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'overview', label: t('adminDashboard.tabOverview') },
@@ -3658,6 +4147,18 @@ const AdminDashboard = () => {
 
           <div className="admin-dashboard__topbar-meta">
             <span
+              className={`admin-dashboard__ws-pill admin-dashboard__ws-pill--${wsHealthTone}`}
+              title={t('adminDashboard.wsHealthTitle', {
+                defaultValue: 'WebSocket updates health',
+              })}
+            >
+              <span
+                className={`admin-dashboard__ws-pill-dot admin-dashboard__ws-pill-dot--${wsHealthTone}`}
+                aria-hidden="true"
+              />
+              {wsHealthLabel}
+            </span>
+            <span
               className={`admin-dashboard__role admin-dashboard__role--${adminRole}`}
             >
               {adminUser || t(`adminDashboard.role_${adminRole}`)}
@@ -3889,7 +4390,15 @@ const AdminDashboard = () => {
                                 <tbody>
                                   {filteredPlayers.map((player) => (
                                     <tr key={`player-row-${player.userId}`}>
-                                      <td>{player.actorName || `userId=${player.userId}`}</td>
+                                      <td>
+                                        <button
+                                          type="button"
+                                          style={{ background: 'none', border: 'none', color: '#7ec8c8', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                                          onClick={() => { setProfileModalUserId(player.userId); setProfileModalName(player.actorName || `userId=${player.userId}`); }}
+                                        >
+                                          {player.actorName || `userId=${player.userId}`}
+                                        </button>
+                                      </td>
                                       <td>{player.userId}</td>
                                       <td>
                                         {capabilities.canKick && (
@@ -3915,10 +4424,28 @@ const AdminDashboard = () => {
                                         {capabilities.canWarn && (
                                           <button
                                             type="button"
+                                            data-testid={`admin-warn-btn-${player.userId}`}
                                             style={{ color: '#e6b800', borderColor: '#e6b800', marginLeft: 4 }}
                                             onClick={() => openWarnDialog(player.userId, player.actorName || `userId=${player.userId}`)}
                                           >
                                             {t('adminDashboard.warn', { defaultValue: 'Warnen' })}
+                                          </button>
+                                        )}
+                                        {capabilities.canViewLogs && (
+                                          <button
+                                            type="button"
+                                            style={{ marginLeft: 4 }}
+                                            data-testid={`admin-history-btn-${player.userId}`}
+                                            onClick={() =>
+                                              openTopbarHistorySearch({
+                                                search: String(player.userId),
+                                                mode: 'player',
+                                              })
+                                            }
+                                          >
+                                            {t('adminDashboard.topTx_history', {
+                                              defaultValue: 'History',
+                                            })}
                                           </button>
                                         )}
                                       </td>
@@ -3938,6 +4465,20 @@ const AdminDashboard = () => {
                             </div>
                           )}
 
+                          {/* Player Profile Modal */}
+                          {profileModalUserId !== null && (
+                            <PlayerProfileModal
+                              userId={profileModalUserId}
+                              playerName={profileModalName}
+                              onClose={() => setProfileModalUserId(null)}
+                              canBan={capabilities.canBan}
+                              canWarn={capabilities.canWarn}
+                              onKick={capabilities.canKick ? (id) => kickPlayer(id) : undefined}
+                              onBan={capabilities.canBan ? (id) => banPlayer(id) : undefined}
+                              onWarn={capabilities.canWarn ? (id, name) => openWarnDialog(id, name) : undefined}
+                            />
+                          )}
+
                           {/* Warn Dialog */}
                           {warnDialogOpen && (
                             <div className="admin-dashboard__warn-modal-backdrop" onClick={closeWarnDialog}>
@@ -3946,12 +4487,13 @@ const AdminDashboard = () => {
                                   <h3>{t('adminDashboard.warnTitle', { defaultValue: 'Warnen' })}</h3>
                                   <button type="button" onClick={closeWarnDialog} disabled={warnSending}>×</button>
                                 </div>
-                                <div className="admin-dashboard__warn-modal-body">
+                                <div data-testid="admin-warn-form" className="admin-dashboard__warn-modal-body">
                                   <div>{t('adminDashboard.warnTarget', { defaultValue: 'Spieler:' })} <b>{warnTargetName}</b></div>
                                   <label>
                                     {t('adminDashboard.warnMessage', { defaultValue: 'Nachricht' })}
                                     <input
                                       type="text"
+                                      data-testid="admin-warn-message-input"
                                       value={warnMessage}
                                       onChange={e => setWarnMessage(e.target.value)}
                                       placeholder={t('adminDashboard.warnMessagePlaceholder', { defaultValue: 'Bitte Nachricht eingeben...' })}
@@ -3963,19 +4505,23 @@ const AdminDashboard = () => {
                                     {t('adminDashboard.warnReason', { defaultValue: 'Grund (optional)' })}
                                     <input
                                       type="text"
+                                      data-testid="admin-warn-reason-input"
+                                      aria-invalid={warnReasonInvalid}
                                       value={warnReason}
                                       onChange={e => setWarnReason(e.target.value)}
                                       placeholder={t('adminDashboard.warnReasonPlaceholder', { defaultValue: 'Optionaler Grund...' })}
                                       disabled={warnSending}
+                                      maxLength={MAX_MODERATION_REASON_LENGTH + 1}
                                     />
                                   </label>
                                 </div>
                                 <div className="admin-dashboard__warn-modal-foot">
-                                  <button type="button" onClick={closeWarnDialog} disabled={warnSending}>
+                                  <button type="button" data-testid="admin-warn-cancel-btn" onClick={closeWarnDialog} disabled={warnSending}>
                                     {t('adminDashboard.cancel', { defaultValue: 'Abbrechen' })}
                                   </button>
                                   <button
                                     type="button"
+                                    data-testid="admin-warn-submit-btn"
                                     className="admin-dashboard__warn-submit"
                                     onClick={sendWarn}
                                     disabled={warnSending || !warnMessage.trim()}
@@ -5682,6 +6228,13 @@ const AdminDashboard = () => {
                                   <input
                                     type="text"
                                     value={topbarWhitelistModalIdentifier}
+                                    aria-invalid={
+                                      topbarWhitelistModalIdentifier.trim()
+                                        ? !isValidWhitelistIdentifier(
+                                            topbarWhitelistModalIdentifier,
+                                          )
+                                        : false
+                                    }
                                     onChange={(e) =>
                                       setTopbarWhitelistModalIdentifier(
                                         e.target.value,
@@ -5718,7 +6271,10 @@ const AdminDashboard = () => {
                                   onClick={() => saveTopbarWhitelistEntry()}
                                   disabled={
                                     topbarWhitelistModalSaving ||
-                                    !topbarWhitelistModalIdentifier.trim()
+                                    !topbarWhitelistModalIdentifier.trim() ||
+                                    !isValidWhitelistIdentifier(
+                                      topbarWhitelistModalIdentifier,
+                                    )
                                   }
                                 >
                                   {topbarWhitelistModalSaving
@@ -5952,6 +6508,11 @@ const AdminDashboard = () => {
                                   <input
                                     type="text"
                                     value={topbarAdminForm.discordId}
+                                    aria-invalid={
+                                      !isValidDiscordSnowflake(
+                                        topbarAdminForm.discordId,
+                                      )
+                                    }
                                     onChange={(e) =>
                                       setTopbarAdminForm((prev) => ({
                                         ...prev,
@@ -6014,7 +6575,12 @@ const AdminDashboard = () => {
                                   onClick={() => {
                                     void saveTopbarAdminUser();
                                   }}
-                                  disabled={topbarAdminSaving}
+                                  disabled={
+                                    topbarAdminSaving ||
+                                    !isValidDiscordSnowflake(
+                                      topbarAdminForm.discordId,
+                                    )
+                                  }
                                 >
                                   {topbarAdminSaving
                                     ? t('adminDashboard.saving', {
@@ -6237,8 +6803,10 @@ const AdminDashboard = () => {
                         type="text"
                         placeholder={t('adminDashboard.reasonPlaceholder')}
                         aria-label={t('adminDashboard.reasonLabel')}
+                        aria-invalid={moderationReasonInvalid}
                         value={moderationReason}
                         onChange={(e) => setModerationReason(e.target.value)}
+                        maxLength={MAX_MODERATION_REASON_LENGTH + 1}
                       />
                       <label className="admin-dashboard__mute-duration">
                         <span>{t('adminDashboard.muteDuration')}</span>
@@ -7154,6 +7722,27 @@ const AdminDashboard = () => {
                                 <span className="admin-dashboard__log-msg">
                                   {entry.message}
                                 </span>
+                                {capabilities.canViewLogs &&
+                                  extractHistoryUserIdFromLog(entry) && (
+                                    <button
+                                      type="button"
+                                      style={{ marginLeft: 'auto' }}
+                                      onClick={() =>
+                                        openTopbarHistorySearch({
+                                          search: extractHistoryUserIdFromLog(
+                                            entry,
+                                          ),
+                                          mode: 'player',
+                                          actionType:
+                                            inferHistoryActionTypeFromLog(entry),
+                                        })
+                                      }
+                                    >
+                                      {t('adminDashboard.topTx_history', {
+                                        defaultValue: 'History',
+                                      })}
+                                    </button>
+                                  )}
                               </div>
                             ))}
                           </div>
@@ -7270,6 +7859,68 @@ const AdminDashboard = () => {
                                 ? formatAdminTime(metricSummary.lastReceivedAt)
                                 : '-'}
                             </span>
+                          </div>
+                          <div className="admin-dashboard__metric-card">
+                            <span className="admin-dashboard__metric-label">
+                              {t('adminDashboard.wsHealthTitle', {
+                                defaultValue: 'WebSocket updates health',
+                              })}
+                            </span>
+                            <span
+                              className={`admin-dashboard__metric-value admin-dashboard__metric-value--${wsHealthTone}`}
+                            >
+                              {wsHealthLabel}
+                            </span>
+                          </div>
+                          <div className="admin-dashboard__metric-card">
+                            <span className="admin-dashboard__metric-label">
+                              {t('adminDashboard.wsMessagesTotal', {
+                                defaultValue: 'WS messages (session)',
+                              })}
+                            </span>
+                            <span className="admin-dashboard__metric-value">
+                              {wsTotalMessages}
+                            </span>
+                            <span className="admin-dashboard__metric-subvalue">
+                              {t('adminDashboard.wsReconnects', {
+                                defaultValue: 'Reconnects',
+                              })}
+                              : {wsReconnectCount}
+                            </span>
+                            <span className="admin-dashboard__metric-subvalue">
+                              {t('adminDashboard.wsLastMessage', {
+                                defaultValue: 'Last WS message',
+                              })}
+                              : {wsLastMessageLabel}
+                            </span>
+                            <div className="admin-dashboard__metric-sublist">
+                              {wsReconnectEvents.length === 0 && (
+                                <span className="admin-dashboard__metric-subvalue">
+                                  {t('adminDashboard.wsEventsEmpty', {
+                                    defaultValue: 'No reconnect events yet.',
+                                  })}
+                                </span>
+                              )}
+                              {wsReconnectEvents.map((event, index) => (
+                                <span
+                                  key={`${event.ts}-${event.kind}-${index}`}
+                                  className={`admin-dashboard__metric-subvalue admin-dashboard__metric-subvalue--${event.kind}`}
+                                >
+                                  {formatAdminTime(event.ts)}: {' '}
+                                  {event.kind === 'reconnected'
+                                    ? t('adminDashboard.wsEvent_reconnected', {
+                                        defaultValue: 'Reconnected',
+                                      })
+                                    : event.kind === 'reconnecting'
+                                      ? t('adminDashboard.wsEvent_reconnecting', {
+                                          defaultValue: 'Reconnecting',
+                                        })
+                                      : t('adminDashboard.wsEvent_fallback', {
+                                          defaultValue: 'HTTP fallback',
+                                        })}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
@@ -7441,6 +8092,22 @@ const AdminDashboard = () => {
                                   {entry.ip ? `ip=${entry.ip}` : ''}{' '}
                                   {entry.details || ''}
                                 </span>
+                                {capabilities.canViewLogs && (
+                                  <button
+                                    type="button"
+                                    style={{ marginLeft: 'auto' }}
+                                    onClick={() =>
+                                      openTopbarHistorySearch({
+                                        search: String(entry.userId),
+                                        mode: 'player',
+                                      })
+                                    }
+                                  >
+                                    {t('adminDashboard.topTx_history', {
+                                      defaultValue: 'History',
+                                    })}
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>

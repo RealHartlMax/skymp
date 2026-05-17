@@ -30,8 +30,7 @@ const removeTrailingSlash = (value: string): string =>
 const toServersUrl = (apiEndpoint: string): string => {
   const trimmed = apiEndpoint.trim();
   if (!trimmed) return '/api/servers';
-  if (trimmed.startsWith('/'))
-    return `${removeTrailingSlash(trimmed)}/api/servers`;
+  if (trimmed.startsWith('/')) { return `${removeTrailingSlash(trimmed)}/api/servers`; }
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return `${removeTrailingSlash(trimmed)}/api/servers`;
   }
@@ -41,7 +40,7 @@ const toServersUrl = (apiEndpoint: string): string => {
 const toUpdateUrl = (
   apiEndpoint: string,
   releaseChannel: ReleaseChannel,
-  currentVersion?: string,
+  currentVersion?: string
 ): string => {
   const trimmed = apiEndpoint.trim();
   const query = new URLSearchParams({ channel: releaseChannel });
@@ -52,8 +51,7 @@ const toUpdateUrl = (
   if (!trimmed) return `/api/update/latest?${query.toString()}`;
 
   const updatePath = `/api/update/latest?${query.toString()}`;
-  if (trimmed.startsWith('/'))
-    return `${removeTrailingSlash(trimmed)}${updatePath}`;
+  if (trimmed.startsWith('/')) { return `${removeTrailingSlash(trimmed)}${updatePath}`; }
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return `${removeTrailingSlash(trimmed)}${updatePath}`;
   }
@@ -61,14 +59,14 @@ const toUpdateUrl = (
 };
 
 export const fetchServerList = async (
-  apiEndpoint: string,
+  apiEndpoint: string
 ): Promise<ServerEntryDto[]> => {
   const url = toServersUrl(apiEndpoint);
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      Accept: 'application/json',
-    },
+      Accept: 'application/json'
+    }
   });
 
   if (!response.ok) {
@@ -86,14 +84,14 @@ export const fetchServerList = async (
 export const fetchLatestUpdate = async (
   apiEndpoint: string,
   releaseChannel: ReleaseChannel,
-  currentVersion?: string,
+  currentVersion?: string
 ): Promise<LatestUpdateDto | null> => {
   const url = toUpdateUrl(apiEndpoint, releaseChannel, currentVersion);
   const response = await fetch(url, {
     method: 'GET',
     headers: {
-      Accept: 'application/json',
-    },
+      Accept: 'application/json'
+    }
   });
 
   if (!response.ok) {

@@ -19,11 +19,10 @@ export const formatAdminUptime = (seconds: number): string => {
 };
 
 export const formatAdminPos = (
-  pos: AdminPosition | number[] | undefined,
+  pos: AdminPosition | number[] | undefined
 ): string => {
   if (!pos) return '-';
-  if (Array.isArray(pos))
-    return pos.map((v) => Math.round(Number(v))).join(', ');
+  if (Array.isArray(pos)) { return pos.map((v) => Math.round(Number(v))).join(', '); }
   return `${Math.round(pos.x)}, ${Math.round(pos.y)}, ${Math.round(pos.z)}`;
 };
 
@@ -32,7 +31,7 @@ export const formatAdminTime = (ts: number): string =>
 
 export const filterAdminPlayers = <T extends AdminPlayerSearchEntry>(
   players: T[],
-  search: string,
+  search: string
 ): T[] => {
   const query = search.trim().toLowerCase();
   if (!query) return players;
@@ -44,4 +43,38 @@ export const filterAdminPlayers = <T extends AdminPlayerSearchEntry>(
       (player.ip || '').includes(query)
     );
   });
+};
+
+export const isValidDiscordSnowflake = (value: string): boolean => {
+  const trimmed = value.trim();
+  return trimmed === '' || /^\d+$/.test(trimmed);
+};
+
+export const MAX_MODERATION_REASON_LENGTH = 200;
+
+export const isValidModerationReason = (value: string): boolean =>
+  value.trim().length <= MAX_MODERATION_REASON_LENGTH;
+
+const SUPPORTED_WHITELIST_IDENTIFIER_TYPES = new Set([
+  'discord',
+  'steam',
+  'license',
+  'licenseea',
+  'live',
+  'xblive',
+  'fal'
+]);
+
+export const isValidWhitelistIdentifier = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  const colonIndex = trimmed.indexOf(':');
+  if (colonIndex < 1 || colonIndex >= trimmed.length - 1) return false;
+
+  const type = trimmed.slice(0, colonIndex).trim().toLowerCase();
+  const identifierValue = trimmed.slice(colonIndex + 1).trim();
+  if (!identifierValue) return false;
+
+  return SUPPORTED_WHITELIST_IDENTIFIER_TYPES.has(type);
 };

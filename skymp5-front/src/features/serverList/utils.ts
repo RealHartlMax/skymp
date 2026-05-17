@@ -47,7 +47,7 @@ export const isValidHostOrIp = (value: string): boolean => {
 };
 
 export const collectServerTags = <T extends ServerListViewEntry>(
-  servers: T[],
+  servers: T[]
 ): string[] => {
   const tags = new Set<string>();
   servers.forEach((server) => {
@@ -68,7 +68,7 @@ export const getVisibleServers = <T extends ServerListViewEntry>(
     favoriteIds?: Set<string>;
     onlyFavorites?: boolean;
     requiredTag?: string;
-  },
+  }
 ): T[] => {
   const query = search.trim().toLowerCase();
   const favoriteIds = options?.favoriteIds || new Set<string>();
@@ -82,10 +82,9 @@ export const getVisibleServers = <T extends ServerListViewEntry>(
       if (
         requiredTag &&
         !(server.tags || []).some(
-          (tag) => String(tag).toLowerCase() === requiredTag,
+          (tag) => String(tag).toLowerCase() === requiredTag
         )
-      )
-        return false;
+      ) { return false; }
       if (!query) return true;
       return (
         server.name.toLowerCase().includes(query) || server.ip.includes(query)

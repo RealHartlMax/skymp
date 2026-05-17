@@ -40,6 +40,11 @@
     "reset": "Reset",
     "exit": "Exit"
   },
+  "appErrorBoundary": {
+    "title": "Something went wrong",
+    "description": "The interface hit an unexpected error. Reload the page to restore the launcher or dashboard.",
+    "reload": "Reload interface"
+  },
   "adminDashboard": {
     "title": "SkyMP Admin Dashboard",
     "subtitle": "Live server status and player controls",
@@ -80,6 +85,7 @@
     "muteRemaining": "Remaining",
     "reasonLabel": "Reason",
     "reasonPlaceholder": "Optional reason for kick/mute/ban/message…",
+    "reasonTooLong": "Reason is too long (max {{max}} characters).",
     "unban": "Unban",
     "unbanConfirm": "Unban player",
     "unbanned": "Unbanned",
@@ -323,6 +329,7 @@
     "noRevivalEvents": "No revival events",
     "refresh": "Refresh",
     "apiError": "API error — check server connection",
+    "rateLimited": "Too many requests — please wait a moment and try again.",
     "messageBtn": "Msg",
     "inventoryBtn": "Inventory",
     "inventoryTitle": "Inventory",
@@ -412,6 +419,7 @@
     "topWhitelist_addPlayerDescription": "Type in the Player Identifier you want to whitelist.",
     "topWhitelist_identifierPlaceholder": "discord:272600190639848628",
     "topWhitelist_identifierRequired": "Identifier is required.",
+    "topWhitelist_identifierInvalid": "Identifier must use the format \"type:value\" with a supported type such as discord, steam or license.",
     "topWhitelist_identifierTypes": "This can be any of the following: discord, steam, license, licenseea, live, xblive, fal.",
     "topWhitelist_added": "Player added to whitelist.",
     "topWhitelist_colValue": "Identifier",
@@ -457,7 +465,7 @@
     "topHistory_filterAdmin": "Filter by admin",
     "topHistory_anyType": "Any type",
     "topHistory_byAnyAdmin": "By any admin",
-    "topHistory_help": "Search actions by their ID.",
+    "topHistory_help": "Search actions by ID, player, or reason.",
     "topHistory_noActions": "No actions found.",
     "topHistory_colDateTime": "Date Time \u25bc",
     "topHistory_colPlayer": "Player",
@@ -539,6 +547,8 @@
     "source_demo": "Source: Demo",
     "offlineCacheUsed": "Server unreachable. Cached list loaded.",
     "offlineDemoUsed": "Server unreachable. Demo list loaded.",
+    "rateLimitedCacheUsed": "Rate limited by API. Cached list loaded.",
+    "rateLimitedDemoUsed": "Rate limited by API. Demo list loaded.",
     "invalidApiEndpoint": "Invalid API endpoint",
     "autoConnectLast": "Auto-connect to last server",
     "addFavorite": "Add to favorites",

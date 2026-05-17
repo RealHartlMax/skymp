@@ -123,6 +123,16 @@ const isReleaseChannel = (value: unknown): value is ReleaseChannel => {
   return value === 'stable' || value === 'beta' || value === 'nightly';
 };
 
+const getApiStatusFromError = (error: unknown): number | null => {
+  const message =
+    error instanceof Error ? error.message : String(error ?? '').trim();
+  const match = /(?:server-list-api|launcher-update-api):(\d{3})/.exec(message);
+  if (!match) return null;
+
+  const status = Number(match[1]);
+  return Number.isFinite(status) ? status : null;
+};
+
 const normalizeUpdateNotes = (
   value: string[] | string | undefined,
 ): string[] => {
@@ -299,17 +309,30 @@ const ServerList = () => {
       if (!selected && data.length > 0) {
         setSelected(data[0]);
       }
-    } catch {
+    } catch (error) {
+      const isRateLimited = getApiStatusFromError(error) === 429;
       const cached = getCachedServers();
       if (cached.length > 0) {
         setServers(cached);
         setServerSource('cache');
-        setError(t('serverList.offlineCacheUsed'));
+        setError(
+          t(
+            isRateLimited
+              ? 'serverList.rateLimitedCacheUsed'
+              : 'serverList.offlineCacheUsed',
+          ),
+        );
         if (!selected) setSelected(cached[0]);
       } else {
         setServers(demoServers);
         setServerSource('demo');
-        setError(t('serverList.offlineDemoUsed'));
+        setError(
+          t(
+            isRateLimited
+              ? 'serverList.rateLimitedDemoUsed'
+              : 'serverList.offlineDemoUsed',
+          ),
+        );
         if (!selected) setSelected(demoServers[0]);
       }
     } finally {
