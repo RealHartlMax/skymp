@@ -75,13 +75,12 @@ runs:
         $sha = git rev-parse HEAD
         echo "sha=$sha" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
-    - name: Setup Node.js with Yarn cache
+    - name: Setup Node.js with npm cache
       uses: actions/setup-node@v5
       with:
         node-version: '22'
-        cache: 'yarn'
+        cache: 'npm'
         cache-dependency-path: |
-          ${{ github.workspace }}/skymp5-client/yarn.lock
           ${{ github.workspace }}/skymp5-front/package-lock.json
 
     - name: Gather PRs

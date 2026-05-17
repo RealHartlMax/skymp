@@ -6007,7 +6007,7 @@ export const main = (settings: Settings): void => {
               if (aLast !== bLast) return bLast - aLast;
               return Number(a.userId || 0) - Number(b.userId || 0);
             });
-            return { players };
+            return players;
           }
         );
         logDashboardUrls(uiPort, uiListenHost);
