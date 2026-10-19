@@ -208,6 +208,12 @@ npm run build
 
 Output artifacts will be placed in `skymp5-front/dist`.
 
+This command uses production mode and fails if the combined emitted JavaScript
+exceeds the current 850 KiB gzip budget. `bundle-size.json` in the output folder
+records per-file and total raw/gzip sizes. The longer-term 500 KiB target remains
+open. Use `npm run build:dev` for a development bundle, or the `watch` commands
+for hot reload. See `skymp5-front/README.md` for budget details.
+
 ### Code Style Guidelines
 
 #### TypeScript

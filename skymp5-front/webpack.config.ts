@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const BundleBudgetPlugin = require('./scripts/bundle-budget-plugin');
 
 const defaultConfig = {
   outputPath: 'dist',
@@ -66,7 +67,7 @@ module.exports = {
     path: distPath,
     filename: 'build.js',
   },
-  mode: 'development',
+  mode: 'production',
   devServer: {
     host: devServerHost,
     port: devServerPort,
@@ -88,6 +89,7 @@ module.exports = {
     },
   },
   plugins: [
+    new BundleBudgetPlugin(),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
     }),

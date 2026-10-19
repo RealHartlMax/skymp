@@ -30,18 +30,18 @@ const MAX_RECONNECT_DELAY = 30000;
  */
 export const useAdminWebSocket = (
   onMessage: (message: AdminWebSocketMessage) => void,
-  enabled: boolean = true,
+  enabled: boolean = true
 ): AdminWebSocketState => {
   const [state, setState] = useState<AdminWebSocketState>({
     connected: false,
     reconnecting: false,
     messageCount: 0,
     lastMessageTs: null,
-    error: null,
+    error: null
   });
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef<number>(DEFAULT_RECONNECT_DELAY);
   const closedByUserRef = useRef<boolean>(false);
   const onMessageRef = useRef(onMessage);
@@ -69,7 +69,7 @@ export const useAdminWebSocket = (
           ...prev,
           connected: true,
           reconnecting: false,
-          error: null,
+          error: null
         }));
       };
 
@@ -80,7 +80,7 @@ export const useAdminWebSocket = (
           setState((prev) => ({
             ...prev,
             messageCount: prev.messageCount + 1,
-            lastMessageTs: Date.now(),
+            lastMessageTs: Date.now()
           }));
           onMessageRef.current(message);
         } catch (error) {
@@ -93,7 +93,7 @@ export const useAdminWebSocket = (
         setState((prev) => ({
           ...prev,
           connected: false,
-          error: 'WebSocket error',
+          error: 'WebSocket error'
         }));
       };
 
@@ -102,7 +102,7 @@ export const useAdminWebSocket = (
         wsRef.current = null;
         setState((prev) => ({
           ...prev,
-          connected: false,
+          connected: false
         }));
 
         // Auto-reconnect with exponential backoff
@@ -111,7 +111,7 @@ export const useAdminWebSocket = (
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
               reconnectDelayRef.current * 1.5,
-              MAX_RECONNECT_DELAY,
+              MAX_RECONNECT_DELAY
             );
             connect();
           }, reconnectDelayRef.current);
@@ -122,7 +122,7 @@ export const useAdminWebSocket = (
       setState((prev) => ({
         ...prev,
         error: String(error),
-        reconnecting: false,
+        reconnecting: false
       }));
     }
   }, [enabled]);
@@ -142,7 +142,7 @@ export const useAdminWebSocket = (
       reconnecting: false,
       messageCount: 0,
       lastMessageTs: null,
-      error: null,
+      error: null
     });
   }, []);
 
@@ -167,7 +167,7 @@ export const useAdminWebSocket = (
 export const useAdminWebSocketMessages = (
   messageType: AdminWebSocketMessage['type'],
   onMessage: (data: any) => void,
-  enabled: boolean = true,
+  enabled: boolean = true
 ): AdminWebSocketState => {
   const handleMessage = useCallback(
     (message: AdminWebSocketMessage) => {
@@ -175,7 +175,7 @@ export const useAdminWebSocketMessages = (
         onMessage(message.data);
       }
     },
-    [messageType, onMessage],
+    [messageType, onMessage]
   );
 
   return useAdminWebSocket(handleMessage, enabled);

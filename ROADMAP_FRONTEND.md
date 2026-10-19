@@ -2,6 +2,23 @@
 
 This roadmap tracks the development of the admin dashboard, launcher UI, testing infrastructure, and frontend tooling for the Skyrim Multiplayer project.
 
+## Production Build Checkpoint (2026-10-19)
+
+The production-build and bundle-monitoring baseline is implemented. Runtime code
+splitting/lazy loading and the 500 KiB gzip target remain open.
+
+| Measurement | Previous development bundle | Production bundle |
+| --- | ---: | ---: |
+| JavaScript bytes | 5,845,671 | 3,451,700 |
+| JavaScript gzip bytes | 1,153,515 | 813,004 |
+
+- `npm run build` uses production mode; `build:dev` and all dev-server commands use development mode.
+- `bundle-size.json` records per-file raw/gzip sizes and totals for emitted JavaScript. The production baseline guard is 850 KiB gzip (870,400 bytes), including future lazy chunks. Images/audio/maps are outside this JavaScript budget.
+- The guard runs in existing CI prechecks that build this checkout; CMake packaging includes the report with the prebuilt frontend assets. `npm run test:bundle` verifies rejection above the production budget, inclusion of lazy chunks, and unrestricted development builds.
+- The single `build.js` entry and current server/Skyrim UI packaging are retained. Gzip is a measurement, not an assumption about server compression.
+- Next optimization phase: reduce the remaining JavaScript payload toward 500 KiB, with browser and game-UI asset-path checks before introducing runtime chunk downloads.
+- Verified: production build/budget, lint, TypeScript, locale/component tests, API tests, and the launcher/admin browser smoke against the production output at both `/` and `/game/ui/` (simulated API/WebSocket responses). The production bundle and report were copied into the local server distribution and verified by hash. An actual Skyrim/CEF session was not tested.
+
 ## Status Audit (2026-05-17)
 
 | Area                                 | Roadmap Claim                                                                                                                         | Evidence in Repository                                                   | Audit Result               |
@@ -78,7 +95,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 ### Recommended Next Adoption Steps
 
 1. Extend guarded server control with richer operator diagnostics (which supervisor is active, last action result, command health checks).
-2. Expand Players into a txAdmin-style player profile modal (notes/history/identifiers/warn templates).
+2. Player profile modal with notes/history/identifiers is implemented; reusable warn templates remain a possible extension.
 3. Add a first scheduler page for planned restarts and warning announcements.
 4. ~~Introduce WebSocket push for dashboard status/player/events to reduce polling lag and API load.~~ ✅ Done (2026-05-16) — Phases 1-4 complete, all 6 streams live.
 5. ~~WebSocket health observability~~ ✅ Done (2026-05-17) — Animated health-dot pill in admin topbar (live/reconnecting/HTTP-fallback tones); persistent reconnect-event log (last 10 events, localStorage) in Metrics tab; redundant high-frequency polling loops removed (2 s loops replaced by WS-first + fallback-only polling).
@@ -143,7 +160,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | _CI/CD Pipeline_                 | 📋 Planned                        | GitHub Actions: TypeScript check, tests, build, deploy artifacts                                                         |
 | _Installer Pipeline Integration_ | ✅ Done                           | Main branch pushes trigger installer repository dispatch; installer binary is built in external/private installer repo   |
 | _Dev Server Documentation_       | 📋 Planned                        | HMR setup, dev proxy configuration, troubleshooting                                                                      |
-| _Build Optimization_             | 📋 Planned                        | Code splitting, lazy loading, bundle analysis                                                                            |
+| _Build Optimization_ | 🔄 In Progress | Production mode, minification, raw/gzip reports and 850 KiB JavaScript gzip guard implemented (2026-10-19); code splitting/lazy loading and 500 KiB target remain open |
 | _Docker Support_                 | 📋 Planned                        | Dockerfile for frontend build and dev containers                                                                         |
 | _Environment Configuration_      | 📋 Planned                        | .env variables for API endpoints, feature flags                                                                          |
 | _Release Process_                | ✅ Done (Repo-level)              | The server release workflow derives semantic versions from commits, gates releases on trigger commits, and generates grouped changelog text for release notes |
@@ -176,7 +193,7 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | _Network Graph_                   | 📋 Planned                        | Real-time ping visualization, bandwidth monitoring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | _User Permissions_                | 📋 Planned (Extended)             | Full role-based access control (admin, moderator, viewer), policy editor, and audit integration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | _Settings Panel_                  | 📋 Planned                        | Language/timezone, notification preferences, theme                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| _WebSocket Updates_               | 📋 Planned                        | Real-time dashboard updates via WebSocket                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| _WebSocket Updates_ | ✅ Done | Six push streams, reconnect diagnostics and HTTP fallback are implemented; see the WebSocket checkpoint above. |
 | _Search & Filter_                 | 🔄 In Progress                    | Player search by id/name/ip and log type filters are implemented; cross-panel quick search into admin history now works from players/logs/runtime metrics; advanced stat queries and saved filters remain planned                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Launcher Application
@@ -203,11 +220,11 @@ This section compares txAdmin concepts with current SkyMP implementation status.
 | ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | npm peer dependency warnings          | Low      | Some deprecation warnings during install; consider updating packages                                                                                                               |
 | TypeScript 6 compatibility            | Done     | Frontend baseline is stable and plugin-example tsconfig has been modernized (`target/moduleResolution` updates + `ignoreDeprecations: "6.0"`)                                      |
-| Bundle size optimization              | Medium   | Implement code splitting and lazy loading for better performance                                                                                                                   |
+| Bundle size optimization | Medium | Production baseline and 850 KiB gzip guard implemented; reduce the remaining 813,004 gzip bytes toward the 500 KiB target with further optimization. |
 | Missing error boundaries              | Done     | Root React rendering is now wrapped in `AppErrorBoundary`, providing a localized fallback screen and reload action for unexpected UI crashes                                      |
 | Inconsistent loading states           | Medium   | Standardize spinner/skeleton loaders across all async views                                                                                                                        |
 | Lack of input validation              | Medium   | Basic client-side validation is now active for Admin CFG Access/Discord fields, topbar admin-user Discord IDs, whitelist `type:value` identifiers, and shared moderation reasons (length cap, including warn dialog); extend the same guardrails to remaining admin forms |
-| No rate limiting UI feedback          | Medium   | Show rate limit messages when API calls are throttled                                                                                                                              |
+| Rate limiting UI feedback consistency | Medium | Launcher and common admin actions already display HTTP 429 feedback; consistent handling across all forms and Retry-After feedback remain open. |
 | npm install blocker for new test libs | Done     | npm dependency resolution is stabilized via updated ESLint peer chain (`eslint-config-standard@17` + `eslint-plugin-n`) and project-level npm setting (`legacy-peer-deps=true`); on Windows, avoid concurrent package-manager runs in the same workspace to prevent transient file-lock EPERM/ENOTEMPTY failures |
 | Dependency tree corruption (lint)     | Done     | `npm run lint` now exits 0; all `comma-dangle`, `curly`, and `no-void` violations in `src/**/*.ts` were fixed (319 auto-fixed via `--fix`, 1 manual `no-void` removal) — 2026-05-16 |
 | Dependency tree corruption (build)    | Done     | `npm run build` now compiles successfully again; no missing transitive dependency blocker reproduced                                                                                 |
@@ -250,7 +267,7 @@ skymp5-front/
 
 - Initial load time: < 2s (with network throttling)
 - Time to interactive: < 3s
-- Bundle size: < 500KB (gzipped)
+- JavaScript bundle size: < 500 KiB gzip (optimization target; current production baseline is 813,004 bytes)
 - Lighthouse score: > 80 across all categories
 
 ## Dependencies
@@ -276,7 +293,7 @@ See `skymp5-front/package.json` for complete dependency list.
 2. **Week 2-3**: ✅ Done — Warn flow and cross-panel history search are wired with audit-log consistency (2026-05-16).
 3. **Week 3-4**: ✅ Done — Warn action E2E scenario added; `admin-warn-btn-{userId}`, `admin-warn-form`, `admin-warn-submit-btn` data-testid hooks wired. Exit criterion for Admin moderation workflows complete (2026-05-16).
 4. **Week 4-5**: Complete mobile and accessibility pass for launcher/admin critical paths and add automated a11y checks.
-5. **Week 5-6**: Implement build optimization track (code splitting/lazy loading) and baseline bundle monitoring.
+5. **Week 5-6**: 🔄 Production builds and bundle monitoring implemented (2026-10-19); code splitting/lazy loading and the 500 KiB gzip target remain open.
 6. **Week 6+**: CI/CD hardening and broader frontend verification gates (artifacts, lint/test/build enforcement, deployment discipline).
 
 ## Contributing
