@@ -7,7 +7,7 @@ Ein erneuter Abruf am 19. Oktober 2026 bestätigte dieselben Remote-Stände.
 
 | Stand | Commit |
 | --- | --- |
-| Fork `origin/main` und ursprünglicher lokaler `main` | `25b82485e8dd901ef032e46ad8f2b873114cadc1` |
+| Ursprünglicher Fork-Stand (`origin/main` und lokaler `main` vor der Integration) | `25b82485e8dd901ef032e46ad8f2b873114cadc1` |
 | Haupt-Repository `upstream/main` | `2849e676fe008925384b26f34476e382a30bd877` |
 | Arbeitsbranch für die Integration | `sync/upstream-20261018` |
 
@@ -20,7 +20,7 @@ Konflikten unterbrochen. Der vollständige angefangene Stand einschließlich
 Index, Rebase-Metadaten, Patches und betroffenen Dateien wurde lokal unter
 `build/fork-sync-backup-20261018/` gesichert. Anschließend wurde der ursprüngliche
 Fork wiederhergestellt und Upstream auf einem eigenen Branch zusammengeführt.
-Der ursprüngliche `main` und `backup-sync-20261018123519` bleiben erhalten.
+Der ursprüngliche Fork-Stand bleibt in `backup-sync-20261018123519` erhalten.
 
 ## Auswirkungen und Anpassungen
 
@@ -115,10 +115,13 @@ Client-Einstellungen. Die bestehende Serverwelt wurde für die Integrationstests
 nicht verwendet. Testprotokolle und das isolierte PowerShell-Testskript liegen
 unter `build/fork-sync-*` und sind lokale, nicht versionierte Prüfartefakte.
 
-Die Integration ist auf `sync/upstream-20261018` lokal vorbereitet. Es wurde
-nichts zu GitHub gepusht; `main` und `origin/main` stehen weiterhin auf dem
-ursprünglichen Fork-Commit. Der Integrationsbranch enthält diesen Commit und
-den aktuellen Upstream-Commit vollständig als Vorfahren.
+Die getestete Integration wurde zunächst auf `sync/upstream-20261018` zum
+Fork gepusht und am 19. Oktober 2026 auf ausdrücklichen Wunsch per Fast-Forward
+in `main` übernommen. Der Code entspricht dem getesteten Stand `cc48d6f0`;
+anschließend wurde nur dieser Veröffentlichungsstatus im Bericht aktualisiert.
+`main` enthält den ursprünglichen Fork-Commit und den aktuellen Upstream-Commit
+vollständig als Vorfahren. Das Push-Ziel ist ausschließlich der eigene Fork
+`RealHartlMax/skymp`.
 
 Die nativen Integrationstests setzen `server-settings.json` und `gamemode.js`
 zurück und löschen `world/changeForms` in ihrer Server-Distribution. Sie dürfen
