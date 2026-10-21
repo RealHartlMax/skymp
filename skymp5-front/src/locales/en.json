@@ -1,4 +1,5 @@
 {
+  "widgetForm": { "title": "Game menu", "content": "Menu controls", "inputLabel": "Input {{index}}" },
   "LOGIN": {
     "HEADER_TEXT_LOGIN": "login",
     "HEADER_TEXT_REGISTER": "registration",
@@ -46,6 +47,13 @@
     "reload": "Reload interface"
   },
   "adminDashboard": {
+    "close": "Close",
+    "profileTitle": "Player profile",
+    "profileTabIdentifiers": "Identifiers",
+    "profileTabHistory": "History",
+    "profileTabNotes": "Notes",
+    "profileIdentifierType": "Identifier type",
+    "profileIdentifierValue": "Identifier value",
     "title": "SkyMP Admin Dashboard",
     "subtitle": "Live server status and player controls",
     "online": "Online",
@@ -308,6 +316,8 @@
     "cfgItemCodePlaceholder": "Custom item code (hex)",
     "cfgWorn": "Worn",
     "cfgWornLeft": "Worn left",
+    "topAdmins_discordIdInvalid": "Discord ID must contain digits only.",
+    "cfgItemCategory": "Item category",
     "cfgItem": "Item",
     "cfgCode": "Code",
     "cfgCount": "Count",

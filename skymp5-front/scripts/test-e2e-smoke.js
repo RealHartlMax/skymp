@@ -1,5 +1,10 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const assert = require('node:assert/strict');
+const { checkAccessibility, checkFocusWrap } = require('./accessibility-checks');
+const accessibility = process.argv.includes('--a11y');
+const { installAdminFormMocks } = require('./admin-form-checks');
+const { checkAdminAuthentication } = require('./admin-auth-checks');
+const { checkGameWidgets } = require('./game-widget-checks');
 
 const targetUrl =
   process.env.PLAYWRIGHT_E2E_URL || 'http://127.0.0.1:1234/?devUi=1';
@@ -71,6 +76,7 @@ const frontendMetricsPayload = {
   try {
     playwright = require('playwright');
   } catch {
+    if (accessibility) throw new Error('Playwright is required for the accessibility checks');
     console.log(
       '[SKIP] Playwright is not installed. Install with: npm --prefix skymp5-front i -D playwright',
     );
@@ -78,8 +84,9 @@ const frontendMetricsPayload = {
   }
 
   const browser = await playwright.chromium.launch({ headless: true });
-  const context = await browser.newContext({ locale: 'en-US' });
+  const context = await browser.newContext({ locale: 'en-US', colorScheme: 'light', ...(accessibility ? { viewport: { width: 360, height: 800 } } : {}) });
   const page = await context.newPage();
+  const checkAdminForms = await installAdminFormMocks(page);
   let mutedUsers = [];
   let lastMuteRequestBody = null;
   let lastMessageRequestBody = null;
@@ -130,6 +137,14 @@ const frontendMetricsPayload = {
       window.__connectEvents = [];
       window.addEventListener('serverList:connect', (event) => {
         window.__connectEvents.push(event.detail);
+      });
+    });
+
+    await page.route('**/api/admin/players/1/profile', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, userId: 1, displayName: 'Player One', firstJoinedAt: Date.now(), lastConnectionAt: Date.now(), playTimeSec: 3600, online: true, identifiers: ['steam:110000104e4b93c'], notes: 'Test note', history: [{ id: 'profile-warn', type: 'warn', reason: 'Test reason', author: 'Admin', ts: Date.now() }] }),
       });
     });
 
@@ -466,6 +481,24 @@ const frontendMetricsPayload = {
 
     const serverListVisible = await ensureServerListVisible();
     assert.equal(serverListVisible, true, 'Launcher server list must be visible');
+    if (accessibility) {
+      await page.keyboard.press('Escape');
+      await page.locator('.server-overlay').waitFor({ state: 'hidden' });
+      const launcherOpener = page.locator('[data-testid="dev-banner-retry-btn"]');
+      await launcherOpener.focus();
+      await page.evaluate(() => window.dispatchEvent(new Event('showServerList')));
+      await page.waitForFunction(() => document.activeElement?.classList.contains('server-list__search'));
+      await page.keyboard.press('Escape');
+      await page.locator('.server-overlay').waitFor({ state: 'hidden' });
+      assert.ok(await launcherOpener.evaluate(element => document.activeElement === element));
+      await page.evaluate(() => window.dispatchEvent(new Event('showServerList')));
+      await page.locator('.server-overlay').waitFor({ state: 'visible' });
+      await checkAccessibility(page, '.server-overlay', 'launcher');
+      await checkFocusWrap(page, '.server-overlay');
+      await page.locator('.server-list__theme-btn').first().click();
+      await checkAccessibility(page, '.server-overlay', 'launcher-dark');
+      await page.locator('.server-list__theme-btn').first().click();
+    }
 
     await page
       .locator('.server-list')
@@ -540,6 +573,10 @@ const frontendMetricsPayload = {
       .waitFor({ state: 'visible', timeout: 10000 });
 
     const connectionsBeforeEdit = adminSocketConnections;
+    if (accessibility) {
+      await checkAccessibility(page, '.admin-overlay', 'admin-players', '[data-testid="admin-panel-players"]');
+      await checkFocusWrap(page, '.admin-overlay');
+    }
     await page.locator('[data-testid="admin-reason-input"]').fill('Spam');
     for (const socket of adminSockets) {
       socket.send(JSON.stringify({
@@ -652,6 +689,7 @@ const frontendMetricsPayload = {
     await page.locator('[data-testid="admin-downed-row-7"]')
       .waitFor({ state: 'visible', timeout: 5000 });
     assert.equal(await page.locator('[data-testid="admin-revive-btn-7"]').isVisible(), true);
+    if (accessibility) await checkAccessibility(page, '.admin-overlay', 'admin-respawn', '#admin-panel-respawn');
 
     // --- Events tab smoke ---
     const eventsResponse = page.waitForResponse(
@@ -665,6 +703,7 @@ const frontendMetricsPayload = {
 
     await page.locator('[data-testid="admin-event-entry-downed-0"]')
       .waitFor({ state: 'visible', timeout: 5000 });
+    if (accessibility) await checkAccessibility(page, '.admin-overlay', 'admin-events', '[data-testid="admin-event-entry-downed-0"]');
 
     // --- Warn action E2E flow (Exit-Criterion: Admin moderation workflows) ---
     await page
@@ -675,9 +714,10 @@ const frontendMetricsPayload = {
       .waitFor({ state: 'visible', timeout: 10000 });
 
     const warnBtn = page.locator('[data-testid="admin-warn-btn-1"]');
+    await warnBtn.waitFor({ state: 'visible', timeout: 10000 });
     if ((await warnBtn.count()) > 0) {
       await warnBtn.waitFor({ state: 'visible', timeout: 5000 });
-      await warnBtn.evaluate((element) => element.click());
+      await warnBtn.click();
 
       // Warn dialog should open
       await page
@@ -691,6 +731,18 @@ const frontendMetricsPayload = {
       await page
         .locator('[data-testid="admin-warn-reason-input"]')
         .fill('Repeated spam');
+
+      if (accessibility) {
+        await checkAccessibility(page, '[data-testid="admin-warn-dialog"]', 'warn-dialog');
+        await checkFocusWrap(page, '[data-testid="admin-warn-dialog"]');
+        await page.keyboard.press('Escape');
+        await page.locator('[data-testid="admin-warn-form"]').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('.admin-overlay').isVisible(), true);
+        assert.equal(await warnBtn.evaluate(element => document.activeElement === element), true);
+        await warnBtn.click();
+        await page.locator('[data-testid="admin-warn-message-input"]').fill('Stop spamming in chat');
+        await page.locator('[data-testid="admin-warn-reason-input"]').fill('Repeated spam');
+      }
 
       // Submit the warn
       const warnResponsePromise = page.waitForResponse(
@@ -723,6 +775,44 @@ const frontendMetricsPayload = {
       console.log('[OK] Warn action E2E flow: dialog open → message+reason filled → submitted → API called → dialog closed');
     } else {
       console.log('[WARN] Warn button not found for player 1; warn flow test skipped (canWarn may be false)');
+    }
+
+    if (accessibility) {
+      await page.locator('#admin-system-toggle').click();
+      assert.equal(await page.locator('#admin-system-toggle').getAttribute('aria-expanded'), 'true');
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#admin-system-toggle').getAttribute('aria-expanded'), 'false');
+      assert.equal(await page.locator('.admin-overlay').isVisible(), true);
+      await page.locator('[data-testid="admin-top-tab-settings"]').focus();
+      await page.keyboard.press('Home');
+      assert.equal(await page.locator('[data-testid="admin-top-tab-players"]').getAttribute('aria-selected'), 'true');
+      await page.locator('[data-testid="admin-tab-players"]').click();
+      const opener = page.locator('[data-testid="admin-profile-btn-1"]');
+      await opener.click();
+      const profile = page.locator('[data-testid="admin-profile-dialog"]');
+      await profile.getByRole('textbox', { name: 'Identifier value' }).waitFor();
+      await checkAccessibility(page, '[data-testid="admin-profile-dialog"]', 'player-profile');
+      await checkFocusWrap(page, '[data-testid="admin-profile-dialog"]');
+      await profile.locator('#admin-profile-tab-identifiers').focus();
+      await page.keyboard.press('End');
+      assert.equal(await profile.locator('#admin-profile-tab-notes').getAttribute('aria-selected'), 'true');
+      await profile.getByRole('textbox', { name: 'Notes' }).fill('Keyboard-accessible notes');
+      await checkAccessibility(page, '[data-testid="admin-profile-dialog"]', 'profile-notes');
+      await profile.locator('#admin-profile-tab-notes').focus();
+      await page.keyboard.press('Home');
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await profile.locator('#admin-profile-tab-history').getAttribute('aria-selected'), 'true');
+      await checkAccessibility(page, '[data-testid="admin-profile-dialog"]', 'profile-history');
+      await page.keyboard.press('Escape');
+      await profile.waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('.admin-overlay').isVisible(), true);
+      assert.equal(await opener.evaluate(element => document.activeElement === element), true);
+      await opener.click();
+      await profile.locator('[data-testid="admin-profile-warn"]').click();
+      await page.locator('[data-testid="admin-warn-dialog"]').waitFor({ state: 'visible' });
+      await page.keyboard.press('Escape');
+      await page.locator('[data-testid="admin-warn-dialog"]').waitFor({ state: 'hidden' });
+      assert.equal(await opener.evaluate(element => document.activeElement === element), true);
     }
 
     // --- Cross-panel history search smoke ---
@@ -760,6 +850,9 @@ const frontendMetricsPayload = {
       console.log('[WARN] Player row not found; cross-panel search test skipped');
     }
 
+    await checkAdminForms(accessibility);
+    await checkAdminAuthentication(context, targetUrl, accessibility);
+    await checkGameWidgets(browser, targetUrl, accessibility);
     assert.deepEqual(browserErrors, [], 'Browser must not report uncaught errors');
     console.log(`[OK] E2E launcher/admin metrics flow passed for ${targetUrl}`);
   } finally {

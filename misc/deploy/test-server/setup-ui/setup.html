@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SkyMP · Ersteinrichtung</title>
+  <link rel="stylesheet" href="/setup.css">
+  <script src="/setup.js" defer></script>
+</head>
+<body>
+  <main class="shell" aria-labelledby="title">
+    <header class="heading">
+      <span class="wordmark">SKYMP <span>SERVER</span></span>
+      <h1 id="title">Dein Server beginnt hier.</h1>
+      <p>Richte deinen SkyMP-Server ein. Danach öffnet sich dein Admin-Dashboard.</p>
+    </header>
+    <ol class="steps" aria-label="Einrichtungsschritte">
+      <li aria-current="step"><span>1</span>Freigabe</li>
+      <li><span>2</span>Server</li>
+      <li><span>3</span>Spieldaten</li>
+      <li><span>4</span>Admin-Konto</li>
+    </ol>
+    <div id="error" class="error" role="alert" aria-atomic="true"></div>
+    <section class="card" id="unlock-step" aria-labelledby="unlock-title">
+      <p class="eyebrow">Schritt 1 von 4</p>
+      <h2 id="unlock-title" tabindex="-1">Server freigeben</h2>
+      <p class="muted">Gib den vierstelligen Code aus dem Server-Terminal ein, um die Einrichtung in diesem Browser freizugeben.</p>
+      <form id="unlock-form">
+        <label for="code">Einrichtungscode</label>
+        <input id="code" name="code" class="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" minlength="4" maxlength="4" placeholder="0000" aria-describedby="code-hint" required>
+        <p class="hint" id="code-hint">Der Code ist 10 Minuten gültig und kann einmal verwendet werden. Nach fünf Fehlversuchen erscheint nach einer Minute ein neuer Code im Terminal.</p>
+        <div class="actions"><button type="submit">Server freigeben</button></div>
+      </form>
+    </section>
+    <section class="card" id="server-step" aria-labelledby="server-title" hidden>
+      <p class="eyebrow">Schritt 2 von 4</p>
+      <h2 id="server-title" tabindex="-1">Dein Server</h2>
+      <p class="muted">Wähle Namen, Ports und die Erreichbarkeit für deine Testgruppe.</p>
+      <form id="server-form">
+        <label for="serverName">Servername</label>
+        <input id="serverName" name="serverName" maxlength="120" required autocomplete="off">
+        <div class="columns">
+          <div><label for="port">Spielport · UDP</label><input id="port" name="port" type="number" min="1" max="65535" step="1" required></div>
+          <div><label for="uiPort">Dashboard-Port · TCP</label><input id="uiPort" name="uiPort" type="number" min="1" max="65535" step="1" required></div>
+        </div>
+        <label for="maxPlayers">Spielerplätze</label>
+        <input id="maxPlayers" name="maxPlayers" type="number" min="1" max="1000" step="1" aria-describedby="slots-hint" required>
+        <p class="hint" id="slots-hint">16 ist ein Startwert für Tests. Die mögliche Spielerzahl hängt von deinem Server und Gamemode ab.</p>
+        <label for="access">Erreichbarkeit</label>
+        <select id="access" name="access">
+          <option value="public">VPS · Dashboard und Spiel öffentlich erreichbar</option>
+          <option value="private">VPS · Dashboard nur über SSH-Tunnel</option>
+          <option value="local">Lokal · nur auf diesem Rechner</option>
+        </select>
+        <div id="public-host-wrap"><label for="publicHost">Öffentliche IPv4-Adresse oder Domain</label><input id="publicHost" name="publicHost" placeholder="z. B. 87.106.58.116" autocomplete="off" maxlength="253" aria-describedby="host-hint"><p class="hint" id="host-hint">Ohne http://, Port oder Pfad. Diese Adresse verwenden deine Testspieler.</p></div>
+        <p class="notice" id="access-note"></p>
+        <div class="actions"><button type="submit">Weiter zu den Spieldaten</button></div>
+      </form>
+    </section>
+    <section class="card" id="data-step" aria-labelledby="data-title" hidden>
+      <p class="eyebrow">Schritt 3 von 4</p>
+      <h2 id="data-title" tabindex="-1">Spieldaten prüfen</h2>
+      <p class="muted">Kopiere diese fünf Masterdateien aus deiner Skyrim-Installation in <strong id="data-dir">data/</strong> im entpackten Serverordner, zum Beispiel per SFTP. Sie sind im Download nicht enthalten.</p>
+      <ul id="data-files" class="file-list" aria-label="Masterdateien"></ul>
+      <p id="data-status" class="notice" role="status" aria-live="polite"></p>
+      <div class="actions split"><button type="button" class="secondary" id="data-back">Zurück</button><div><button type="button" class="secondary" id="refresh-data">Dateien erneut prüfen</button><button type="button" id="data-next" disabled>Weiter zum Admin-Konto</button></div></div>
+    </section>
+    <section class="card" id="account-step" aria-labelledby="account-title" hidden>
+      <p class="eyebrow">Schritt 4 von 4</p>
+      <h2 id="account-title" tabindex="-1">Dein Admin-Konto</h2>
+      <p class="muted">Mit diesem Konto meldest du dich künftig am Dashboard an. Der Einrichtungscode wird dafür nicht mehr benötigt.</p>
+      <dl id="review" class="review"></dl>
+      <form id="account-form">
+        <label for="adminUser">Benutzername</label><input id="adminUser" name="adminUser" autocomplete="username" minlength="3" maxlength="32" pattern="[a-zA-Z0-9._\-]{3,32}" aria-describedby="user-hint" required>
+        <p class="hint" id="user-hint">3–32 Buchstaben, Ziffern, Punkte, Unterstriche oder Bindestriche.</p>
+        <label for="password">Passwort</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="1024" aria-describedby="password-hint" required>
+        <p class="hint" id="password-hint">Mindestens 10 Zeichen. Das Passwort wird nur als scrypt-Hash auf dem Server gespeichert.</p>
+        <label for="passwordConfirm">Passwort bestätigen</label><input id="passwordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" minlength="10" maxlength="1024" required>
+        <div class="actions split"><button type="button" class="secondary" id="account-back">Zurück</button><button type="submit" id="complete">Einrichtung abschließen und Server starten</button></div>
+      </form>
+    </section>
+    <section class="card" id="done-step" aria-labelledby="done-title" hidden>
+      <p class="eyebrow">Einrichtung abgeschlossen</p>
+      <h2 id="done-title" tabindex="-1">Dein Server ist eingerichtet.</h2>
+      <p id="done-status" class="muted" role="status" aria-live="polite"></p>
+      <p id="done-connection"></p>
+      <p class="hint">Adressen und eine Vorlage für deine Testspieler findest du auch in VERBINDUNG.txt und skymp5-client-settings.example.txt im Serverordner.</p>
+      <div class="actions"><a class="button" id="dashboard-link" href="/admin">Zum Admin-Dashboard</a></div>
+    </section>
+    <footer>SkyMP Server · Ersteinrichtung <span>Vorhandene Welt- und Spieldaten bleiben erhalten.</span></footer>
+    <noscript><p class="error">Bitte JavaScript aktivieren, um den Server im Browser einzurichten.</p></noscript>
+  </main>
+</body>
+</html>

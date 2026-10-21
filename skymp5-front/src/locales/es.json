@@ -1,4 +1,5 @@
 {
+  "widgetForm": { "title": "Menú del juego", "content": "Controles del menú", "inputLabel": "Entrada {{index}}" },
   "LOGIN": {
     "HEADER_TEXT_LOGIN": "iniciar sesion",
     "HEADER_TEXT_REGISTER": "registro",
@@ -46,6 +47,13 @@
     "reload": "Recargar interfaz"
   },
   "adminDashboard": {
+    "close": "Cerrar",
+    "profileTitle": "Perfil del jugador",
+    "profileTabIdentifiers": "Identificadores",
+    "profileTabHistory": "Historial",
+    "profileTabNotes": "Notas",
+    "profileIdentifierType": "Tipo de identificador",
+    "profileIdentifierValue": "Valor del identificador",
     "title": "Panel de administracion SkyMP",
     "subtitle": "Estado en vivo del servidor y control de jugadores",
     "online": "En linea",
@@ -304,6 +312,8 @@
     "cfgItemCodePlaceholder": "Codigo de objeto personalizado (hex)",
     "cfgWorn": "Equipado",
     "cfgWornLeft": "Equipado a la izquierda",
+    "topAdmins_discordIdInvalid": "El ID de Discord solo puede contener dígitos.",
+    "cfgItemCategory": "Categoría de objeto",
     "cfgItem": "Objeto",
     "cfgCode": "Codigo",
     "cfgCount": "Cantidad",

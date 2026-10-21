@@ -1,4 +1,5 @@
 {
+  "widgetForm": { "title": "Menu du jeu", "content": "Commandes du menu", "inputLabel": "Saisie {{index}}" },
   "LOGIN": {
     "HEADER_TEXT_LOGIN": "se connecter",
     "HEADER_TEXT_REGISTER": "inscription",
@@ -46,6 +47,13 @@
     "reload": "Recharger l'interface"
   },
   "adminDashboard": {
+    "close": "Fermer",
+    "profileTitle": "Profil du joueur",
+    "profileTabIdentifiers": "Identifiants",
+    "profileTabHistory": "Historique",
+    "profileTabNotes": "Notes",
+    "profileIdentifierType": "Type d’identifiant",
+    "profileIdentifierValue": "Valeur de l’identifiant",
     "title": "Tableau de bord d'administration SkyMP",
     "subtitle": "Statut du serveur en direct et contrôles des joueurs",
     "online": "En ligne",
@@ -308,6 +316,8 @@
     "cfgItemCodePlaceholder": "Code d'article personnalisé (hexadécimal)",
     "cfgWorn": "Porté",
     "cfgWornLeft": "Porté à gauche",
+    "topAdmins_discordIdInvalid": "L’identifiant Discord ne doit contenir que des chiffres.",
+    "cfgItemCategory": "Catégorie d’objet",
     "cfgItem": "Article",
     "cfgCode": "Code",
     "cfgCount": "Compter",

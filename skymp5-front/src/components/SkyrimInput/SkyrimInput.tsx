@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 import { SkyrimInputProps } from '../../interfaces';
 import './SkyrimInput.scss';
@@ -13,24 +13,33 @@ export const SkyrimInput = ({
   initialValue,
   placeholder,
   onInput,
+  id,
+  ...other
 }: SkyrimInputProps) => {
+  const generatedId = useId();
+  const inputId = id || generatedId;
   return (
     <div>
-      <span className={'login-form--content_main__label___text'}>
+      <label
+        htmlFor={inputId}
+        className={'login-form--content_main__label___text'}
+      >
         {labelText}
-      </span>
+      </label>
       <div
         className={`skymp-input`}
         style={{ width: `${width}px`, height: `${height}px` }}
       >
         <input
+          {...other}
+          id={inputId}
           disabled={disabled}
           type={type}
-          defaultValue={initialValue ? initialValue : ''}
+          defaultValue={initialValue ?? ''}
           spellCheck={'false'}
           name={name}
           placeholder={placeholder ? placeholder : ''}
-          onInput={(e) => onInput(e)}
+          onInput={onInput}
           style={{ opacity: disabled ? 0.6 : 1.0 }}
         />
       </div>

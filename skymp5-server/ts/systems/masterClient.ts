@@ -44,6 +44,11 @@ export class MasterClient implements System {
   private readonly updateIntervalMs: number;
 
   async initAsync(): Promise<void> {
+    if (this.offlineMode) {
+      this.log('Master server heartbeat is disabled in offline mode');
+      return;
+    }
+
     if (!this.masterUrl) {
       this.log('No master server specified');
       return;

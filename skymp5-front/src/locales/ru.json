@@ -1,4 +1,5 @@
 {
+  "widgetForm": { "title": "Игровое меню", "content": "Управление меню", "inputLabel": "Поле {{index}}" },
   "LOGIN": {
     "HEADER_TEXT_LOGIN": "авторизация",
     "HEADER_TEXT_REGISTER": "регистрация",
@@ -46,6 +47,13 @@
     "reload": "Перезагрузить интерфейс"
   },
   "adminDashboard": {
+    "close": "Закрыть",
+    "profileTitle": "Профиль игрока",
+    "profileTabIdentifiers": "Идентификаторы",
+    "profileTabHistory": "История",
+    "profileTabNotes": "Заметки",
+    "profileIdentifierType": "Тип идентификатора",
+    "profileIdentifierValue": "Значение идентификатора",
     "title": "SkyMP Панель администратора",
     "subtitle": "Статус сервера в реальном времени и управление игроками",
     "online": "Онлайн",
@@ -308,6 +316,8 @@
     "cfgItemCodePlaceholder": "Свой код предмета (hex)",
     "cfgWorn": "Надето",
     "cfgWornLeft": "Левая рука",
+    "topAdmins_discordIdInvalid": "Discord ID должен содержать только цифры.",
+    "cfgItemCategory": "Категория предмета",
     "cfgItem": "Предмет",
     "cfgCode": "Код",
     "cfgCount": "Кол-во",

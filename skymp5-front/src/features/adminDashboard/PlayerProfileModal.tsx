@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ModalDialog } from '../../components/ModalDialog/ModalDialog';
+import { handleTabNavigation } from '../../utils/tabNavigation';
 
 export interface PlayerProfileData {
   ok: boolean;
@@ -193,25 +195,28 @@ export const PlayerProfileModal: React.FC<Props> = ({
       style={{ zIndex: 1100 }}
       onClick={backdrop}
     >
-      <div
-        className="admin-dashboard__warn-modal"
-        style={{ width: 600, maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+      <ModalDialog
+        className="admin-dashboard__warn-modal admin-dashboard__profile-modal"
+        data-testid="admin-profile-dialog"
+        onClose={onClose}
+        aria-labelledby="admin-profile-title"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="admin-dashboard__warn-modal-head" style={{ flexShrink: 0 }}>
           <div>
-            <h3 style={{ margin: 0 }}>
+            <h3 id="admin-profile-title" style={{ margin: 0 }}>
               {t('adminDashboard.profileTitle', { defaultValue: 'Spielerprofil' })}
             </h3>
             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
               {playerName} &nbsp;·&nbsp; userId={userId}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="admin-dashboard__profile-actions">
             {canWarn && onWarn && (
               <button
                 type="button"
+                data-testid="admin-profile-warn"
                 style={{ color: '#e6b800', borderColor: '#e6b800' }}
                 onClick={() => { onWarn(userId, playerName); onClose(); }}
               >
@@ -221,7 +226,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
             {canBan && onBan && (
               <button
                 type="button"
-                style={{ color: '#e05555', borderColor: '#e05555' }}
+                style={{ color: '#ff9999', borderColor: '#ff9999' }}
                 onClick={() => { onBan(userId); onClose(); }}
               >
                 {t('adminDashboard.ban', { defaultValue: 'Ban' })}
@@ -232,7 +237,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
                 {t('adminDashboard.kick', { defaultValue: 'Kick' })}
               </button>
             )}
-            <button type="button" onClick={onClose}>×</button>
+            <button type="button" aria-label={t('adminDashboard.close')} onClick={onClose}>×</button>
           </div>
         </div>
 
@@ -289,6 +294,10 @@ export const PlayerProfileModal: React.FC<Props> = ({
 
         {/* Tabs */}
         <div
+          role="tablist"
+          aria-label={t('adminDashboard.profileTitle')}
+          onKeyDown={handleTabNavigation}
+          className="admin-dashboard__profile-tabs"
           style={{
             display: 'flex',
             gap: 0,
@@ -300,6 +309,11 @@ export const PlayerProfileModal: React.FC<Props> = ({
             <button
               key={tab}
               type="button"
+              role="tab"
+              id={`admin-profile-tab-${tab}`}
+              aria-selected={activeTab === tab}
+              aria-controls={`admin-profile-panel-${tab}`}
+              tabIndex={activeTab === tab ? 0 : -1}
               style={{
                 padding: '8px 16px',
                 background: 'none',
@@ -322,7 +336,13 @@ export const PlayerProfileModal: React.FC<Props> = ({
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        <div
+          className="admin-dashboard__profile-body"
+          role="tabpanel"
+          id={`admin-profile-panel-${activeTab}`}
+          aria-labelledby={`admin-profile-tab-${activeTab}`}
+          tabIndex={0}
+        >
           {loading && (
             <div style={{ color: '#aaa' }}>
               {t('adminDashboard.loading', { defaultValue: 'Laden...' })}
@@ -343,6 +363,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
               {/* Add new identifier */}
               <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <select
+                  aria-label={t('adminDashboard.profileIdentifierType')}
                   value={identifierType}
                   onChange={(e) => setIdentifierType(e.target.value)}
                   disabled={saving}
@@ -353,6 +374,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
                   ))}
                 </select>
                 <input
+                  aria-label={t('adminDashboard.profileIdentifierValue')}
                   type="text"
                   value={identifierValue}
                   onChange={(e) => { setIdentifierValue(e.target.value); setIdentifierError(''); }}
@@ -396,7 +418,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
                       <th style={{ textAlign: 'left', padding: '4px 8px' }}>Typ</th>
                       <th style={{ textAlign: 'left', padding: '4px 8px' }}>Wert</th>
                       <th style={{ textAlign: 'left', padding: '4px 8px' }}>Link</th>
-                      <th style={{ padding: '4px 8px' }}></th>
+                      <th style={{ padding: '4px 8px' }}>{t('adminDashboard.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -524,6 +546,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
               </div>
               <textarea
                 ref={notesRef}
+                aria-label={t('adminDashboard.profileTabNotes')}
                 value={notesText}
                 onChange={(e) => { setNotesText(e.target.value); setNotesDirty(true); }}
                 disabled={notesSaving}
@@ -562,7 +585,7 @@ export const PlayerProfileModal: React.FC<Props> = ({
             </div>
           )}
         </div>
-      </div>
+      </ModalDialog>
     </div>
   );
 };

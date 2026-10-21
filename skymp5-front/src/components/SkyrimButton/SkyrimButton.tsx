@@ -9,16 +9,20 @@ export const SkyrimButton = ({
   disabled,
   onClick,
   text,
+  ...other
 }: SkyrimButtonProps) => {
   return (
     <button
+      {...other}
+      type={other.type || 'button'}
+      disabled={disabled}
       style={{
         width: `${width}px`,
         height: `${height}px`,
         opacity: disabled ? 0.6 : 1.0,
       }}
       className={'skymp-input-button'}
-      onClick={(e) => (onClick && !disabled ? onClick(e) : console.log(e))}
+      onClick={disabled ? undefined : onClick}
     >
       <span
         className={'skymp-input-button_text'}

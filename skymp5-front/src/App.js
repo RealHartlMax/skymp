@@ -236,6 +236,8 @@ class App extends React.Component {
   }
 
   componentDidMount() {
+    // Retire the plaintext password key used by the removed demo login.
+    try { window.localStorage.removeItem('password'); } catch { /* Storage can be unavailable in CEF. */ }
     this.isMountedFlag = true;
     window.addEventListener('focus', this.onWindowFocus.bind(this));
     window.addEventListener('blur', this.onWindowFocus.bind(this));
@@ -554,11 +556,7 @@ class App extends React.Component {
           {this.state.widgets.map((widget, index) => (
             <Constructor
               key={
-                index.toString() +
-                widget.type +
-                (widget.type === 'form'
-                  ? widget.elements + widget.caption
-                  : 'chat')
+                `${widget.type}-${widget.id ?? index}`
               }
               dynamicSize={true}
               elem={widget}

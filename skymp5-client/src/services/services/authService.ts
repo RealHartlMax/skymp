@@ -811,6 +811,7 @@ export class AuthService extends ClientListener {
         {
           type: 'text',
           text: browserState.comment,
+          isStatus: true,
           tags: [],
         },
       ],

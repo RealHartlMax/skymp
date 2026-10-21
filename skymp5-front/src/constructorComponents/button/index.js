@@ -48,6 +48,7 @@ const Button = (props) => {
     case 'BUTTON_STYLE_PATREON':
       return (
         <ImageButton
+          aria-label={text || props.hint}
           disabled={disabled}
           src={require('../../img/patreon.svg').default}
           onClick={onClick}
@@ -58,6 +59,7 @@ const Button = (props) => {
     case 'BUTTON_STYLE_GITHUB':
       return (
         <ImageButton
+          aria-label={text || props.hint}
           disabled={disabled}
           src={require('../../img/github.svg').default}
           onClick={onClick}

@@ -1,6 +1,12 @@
 # Resource Auto-Download & Distribution
 
-SkyMP implements a FiveM-inspired resource distribution system. The server exposes a public HTTP API that allows clients to discover, verify, and download game resources (scripts and mods) automatically.
+The standalone `skymp-client-launcher` now installs server mod files before
+starting SKSE. The path-preserving v2 contract, full operator setup and
+client-runtime discovery are documented in [Launcher mod packages](docs_launcher_modpacks.md).
+
+The endpoints below describe the older flat-file v1 API. They remain available
+for older launchers. The in-game `skymp5-client` does not automatically install
+mod files; installation belongs to the standalone launcher.
 
 ## Overview
 
@@ -142,9 +148,10 @@ server/
 
 ---
 
-## Client Integration (Phase 2 — Planned)
+## Legacy in-game client proposal
 
-The following describes the intended client-side flow once Phase 2 is implemented in `skymp5-client`:
+The following was an earlier proposal for `skymp5-client`. The implemented
+standalone launcher uses `/api/launcher/manifest` before game startup instead:
 
 1. On server connect, fetch `/api/resources/manifest`
 2. For each resource in the manifest:

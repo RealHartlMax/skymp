@@ -15,16 +15,16 @@ const Icon = (props) => {
 
   switch (css) {
     case 'ICON_STYLE_MAIL':
-      image = <img src={mailSVG} />;
+      image = <img src={mailSVG} alt="" />;
       break;
     case 'ICON_STYLE_KEY':
-      image = <img src={passwordSVG} />;
+      image = <img src={passwordSVG} alt="" />;
       break;
     case 'ICON_STYLE_SKYMP':
-      image = <img src={skympSVG} />;
+      image = <img src={skympSVG} alt="" />;
       break;
     case 'ICON_STYLE_DISCORD':
-      image = <img src={discordSVG} />;
+      image = <img src={discordSVG} alt="" />;
       break;
     default:
       break;

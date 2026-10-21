@@ -361,6 +361,7 @@ if(TARGET ${PROJECT_NAME})
       -DDEST_DIR=${CMAKE_BINARY_DIR}/dist/server/data
       -DPEX_SOURCE_DIR=${CMAKE_SOURCE_DIR}/skymp5-scripts/pex
       -DSOURCE_DATA_DIR=${server_data_source_dir}
+      -DDOWNLOAD_SKYRIM_DATA=${DOWNLOAD_SKYRIM_DATA}
       -P ${CMAKE_SOURCE_DIR}/cmake/scripts/prepare_server_data.cmake
   )
 

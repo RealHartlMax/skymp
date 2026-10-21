@@ -6,6 +6,19 @@ endif()
 
 file(MAKE_DIRECTORY "${DEST_DIR}")
 
+# Publish local copies only after they are complete. Interrupted packaging must
+# not leave a truncated master file that the next build treats as existing data.
+function(copy_local_server_data SOURCE_PATH TARGET_PATH)
+  set(STAGING_PATH "${TARGET_PATH}.skymp-copying")
+  configure_file("${SOURCE_PATH}" "${STAGING_PATH}" COPYONLY)
+  file(SIZE "${SOURCE_PATH}" SOURCE_SIZE)
+  file(SIZE "${STAGING_PATH}" TARGET_SIZE)
+  if(NOT SOURCE_SIZE EQUAL TARGET_SIZE)
+    message(FATAL_ERROR "Incomplete local data copy: ${SOURCE_PATH}")
+  endif()
+  file(RENAME "${STAGING_PATH}" "${TARGET_PATH}")
+endfunction()
+
 # Optional local source (Skyrim/Data or UNIT_DATA_DIR) provided by the build.
 set(HAVE_SOURCE_DATA_DIR OFF)
 if(DEFINED SOURCE_DATA_DIR AND NOT "${SOURCE_DATA_DIR}" STREQUAL "" AND EXISTS "${SOURCE_DATA_DIR}")
@@ -26,7 +39,7 @@ foreach(FILE_NAME ${REQUIRED_FILES})
   if(NOT EXISTS "${FILE_PATH}" AND HAVE_SOURCE_DATA_DIR)
     set(SRC_FILE_PATH "${SOURCE_DATA_DIR}/${FILE_NAME}")
     if(EXISTS "${SRC_FILE_PATH}")
-      file(COPY "${SRC_FILE_PATH}" DESTINATION "${DEST_DIR}")
+      copy_local_server_data("${SRC_FILE_PATH}" "${FILE_PATH}")
     endif()
   endif()
 endforeach()
@@ -49,12 +62,13 @@ foreach(FILE_NAME ${OPTIONAL_FILES})
     if(HAVE_SOURCE_DATA_DIR)
       set(SRC_FILE_PATH "${SOURCE_DATA_DIR}/${FILE_NAME}")
       if(EXISTS "${SRC_FILE_PATH}")
-        file(COPY "${SRC_FILE_PATH}" DESTINATION "${DEST_DIR}")
+        copy_local_server_data("${SRC_FILE_PATH}" "${FILE_PATH}")
       endif()
     endif()
   endif()
 
-  if(NOT EXISTS "${FILE_PATH}")
+  if(NOT EXISTS "${FILE_PATH}" AND
+     (NOT DEFINED DOWNLOAD_SKYRIM_DATA OR DOWNLOAD_SKYRIM_DATA))
     file(DOWNLOAD "${URL_BASE}/${FILE_NAME}" "${FILE_PATH}"
       STATUS status
       LOG log

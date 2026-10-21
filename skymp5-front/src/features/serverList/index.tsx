@@ -7,7 +7,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { FrameButton } from '../../components/FrameButton/FrameButton';
+import { ModalDialog } from '../../components/ModalDialog/ModalDialog';
 import {
   LatestUpdateDto,
   ReleaseChannel,
@@ -374,7 +374,6 @@ const ServerList = () => {
     setUpdateDismissed(false);
     void checkForUpdate();
     await fetchServers();
-    setTimeout(() => searchRef.current?.focus(), 100);
   }, [checkForUpdate, fetchServers]);
 
   const hide = useCallback(() => {
@@ -424,20 +423,6 @@ const ServerList = () => {
     };
   }, [show, hide]);
 
-  useEffect(() => {
-    if (!visible) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        hide();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hide, visible]);
-
   const filtered = getVisibleServers(servers, search, sortKey, showFull, {
     favoriteIds: favoriteSet,
     onlyFavorites,
@@ -447,11 +432,11 @@ const ServerList = () => {
   if (!visible) return <></>;
 
   return (
-    <div
+    <ModalDialog
       className="server-overlay"
-      role="dialog"
-      aria-modal="true"
       aria-label={t('serverList.title')}
+      onClose={hide}
+      initialFocusRef={searchRef}
     >
       <div
         className={`server-list ${
@@ -474,14 +459,11 @@ const ServerList = () => {
                 ? t('serverList.themeLight')
                 : t('serverList.themeDark')}
             </button>
-            <FrameButton
-              name="closeServerList"
-              text={t('serverList.exit')}
-              variant="DEFAULT"
-              width={120}
-              height={44}
+            <button
+              type="button"
+              className="server-list__theme-btn"
               onClick={hide}
-            />
+            >{t('serverList.exit')}</button>
           </div>
         </div>
 
@@ -655,12 +637,17 @@ const ServerList = () => {
                         onClick={() => setSelected(server)}
                         onDoubleClick={() => connect(server)}
                         onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
                           if (e.key === 'Enter') connect(server);
+                          if (e.key === ' ') {
+                            e.preventDefault();
+                            setSelected(server);
+                          }
                           if (e.key.toLowerCase() === 'f')
                             toggleFavorite(server.id);
                         }}
                         tabIndex={0}
-                        aria-selected={selected?.id === server.id}
+                        aria-current={selected?.id === server.id ? 'true' : undefined}
                         aria-label={`${server.name} ${server.players}/${server.maxPlayers}`}
                       >
                         <td className="server-list__col-name">
@@ -787,14 +774,11 @@ const ServerList = () => {
                   ⚠ {t('serverList.versionMismatch')}
                 </div>
               )}
-              <FrameButton
-                name="connectSelected"
-                text={t('serverList.connect')}
-                variant="DEFAULT"
-                width={220}
-                height={48}
+              <button
+                type="button"
+                className="server-list__connect-btn server-list__detail-connect"
                 onClick={() => connect(selected)}
-              />
+              >{t('serverList.connect')}</button>
             </div>
           )}
         </div>
@@ -903,7 +887,7 @@ const ServerList = () => {
           </div>
         </div>
       )}
-    </div>
+    </ModalDialog>
   );
 };
 

@@ -2,6 +2,10 @@
 
 Data directory of the server (`"./data"` by default) contains different kinds of game resources, including mods, UI, etc.
 
+Client mod publication uses a separate `client-resources/Data/` directory,
+with verified downloads and installation by the standalone launcher before
+SKSE starts. See [Launcher mod packages](docs_launcher_modpacks.md).
+
 ## Vanilla Skyrim SE Mods
 
 Should be placed into the root of the data directory and added to `"loadOrder"` in `server-settings.json`.

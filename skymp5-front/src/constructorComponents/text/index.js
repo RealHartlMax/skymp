@@ -5,7 +5,11 @@ import './styles.scss';
 const Text = (props) => {
   const text = props.text || '';
   return (
-    <div className={'skyrimText'}>
+    <div
+      className={'skyrimText'}
+      role={props.isStatus ? 'status' : undefined}
+      aria-atomic={props.isStatus ? true : undefined}
+    >
       <span>{text}</span>
     </div>
   );

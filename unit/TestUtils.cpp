@@ -4,6 +4,7 @@
 #include "MsgType.h"
 #include "PartOne.h"
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
 
 // Utilities for testing
 
@@ -19,6 +20,26 @@ bool IsCmakeOptionSpecified(const std::string& optionValue)
 
 const char* GetDataDir()
 {
+#ifdef _MSC_VER
+  static const std::string overrideDir = [] {
+    char* value = nullptr;
+    size_t length = 0;
+    if (_dupenv_s(&value, &length, "SKYMP_UNIT_DATA_DIR") != 0) {
+      return std::string{};
+    }
+    const std::string result = value ? value : "";
+    std::free(value);
+    return result;
+  }();
+  if (!overrideDir.empty()) {
+    return overrideDir.c_str();
+  }
+#else
+  if (const char* overrideDir = std::getenv("SKYMP_UNIT_DATA_DIR");
+      overrideDir && *overrideDir) {
+    return overrideDir;
+  }
+#endif
   return IsCmakeOptionSpecified(UNIT_DATA_DIR) ? UNIT_DATA_DIR
                                                : SKYRIM_DIR "/Data";
 }

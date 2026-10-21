@@ -128,10 +128,12 @@ export const FrameButton = ({
       {isDefault && (
         <button
           {...other}
+          type={other.type || 'button'}
+          disabled={disabled}
           className={getFrameButtonClassName(disabled)}
           onClick={(e) => {
             if (shouldHandleFrameButtonClick(disabled)) {
-              onClick ? onClick(e) : console.log(e);
+              onClick?.(e);
             }
           }}
           style={{ height: `${height}px`, width: `${width}px` }}
@@ -157,10 +159,13 @@ export const FrameButton = ({
       )}
       {isFrameLeft && (
         <button
+          {...other}
+          type={other.type || 'button'}
+          disabled={disabled}
           className={getFrameButtonClassName(disabled)}
           onClick={(e) => {
             if (shouldHandleFrameButtonClick(disabled)) {
-              onClick ? onClick(e) : console.log(e);
+              onClick?.(e);
             }
           }}
           style={{ height: `${height}px`, width: `${width}px` }}
@@ -187,10 +192,13 @@ export const FrameButton = ({
       )}
       {isFrameRight && (
         <button
+          {...other}
+          type={other.type || 'button'}
+          disabled={disabled}
           className={getFrameButtonClassName(disabled)}
           onClick={(e) => {
             if (shouldHandleFrameButtonClick(disabled)) {
-              onClick ? onClick(e) : console.log(e);
+              onClick?.(e);
             }
           }}
           style={{ height: `${height}px`, width: `${width}px` }}

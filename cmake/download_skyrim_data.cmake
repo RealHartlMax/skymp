@@ -1,4 +1,9 @@
 function(download_skyrim_data DEST_DIR)
+    if(DEFINED DOWNLOAD_SKYRIM_DATA AND NOT DOWNLOAD_SKYRIM_DATA)
+        message(STATUS "Skipping Skyrim data downloads (DOWNLOAD_SKYRIM_DATA=OFF)")
+        return()
+    endif()
+
     if(NOT EXISTS "${DEST_DIR}")
         file(MAKE_DIRECTORY "${DEST_DIR}")
     endif()

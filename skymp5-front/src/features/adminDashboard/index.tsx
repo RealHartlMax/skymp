@@ -7,13 +7,14 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { FrameButton } from '../../components/FrameButton/FrameButton';
 import {
   detectLanguage,
   persistRuntimeLanguage,
 } from '../../utils/i18nLanguage';
 import { EventsPanel, RevivalEventEntry } from './EventsPanel';
 import { PlayerProfileModal } from './PlayerProfileModal';
+import { ModalDialog } from '../../components/ModalDialog/ModalDialog';
+import { handleTabNavigation } from '../../utils/tabNavigation';
 import { DownedPlayerEntry, RespawnPanel } from './RespawnPanel';
 import { ITEM_CATALOG, ITEM_CATEGORIES, ItemCategory } from './itemCatalog';
 import './styles.scss';
@@ -27,7 +28,10 @@ import {
   isValidWhitelistIdentifier,
   MAX_MODERATION_REASON_LENGTH,
 } from './utils';
-import { useAdminWebSocket, useAdminWebSocketMessages } from '../../hooks/useAdminWebSocket';
+import {
+  useAdminWebSocket,
+  useAdminWebSocketMessages,
+} from '../../hooks/useAdminWebSocket';
 
 type Tab =
   | 'overview'
@@ -803,6 +807,7 @@ const AdminDashboard = () => {
     EMPTY_TOPBAR_ADMINS_DATA,
   );
   const [topbarAdminModalOpen, setTopbarAdminModalOpen] = useState(false);
+  const [topbarAdminError, setTopbarAdminError] = useState('');
   const [topbarAdminEditingUser, setTopbarAdminEditingUser] = useState<
     string | null
   >(null);
@@ -812,6 +817,7 @@ const AdminDashboard = () => {
   const [topbarAdminSaving, setTopbarAdminSaving] = useState(false);
   const [topbarWhitelistModalOpen, setTopbarWhitelistModalOpen] =
     useState(false);
+  const [topbarWhitelistError, setTopbarWhitelistError] = useState('');
   const [topbarWhitelistModalIdentifier, setTopbarWhitelistModalIdentifier] =
     useState('');
   const [topbarWhitelistModalSaving, setTopbarWhitelistModalSaving] =
@@ -2281,7 +2287,9 @@ const AdminDashboard = () => {
         body: JSON.stringify(reason ? { reason } : {}),
       });
       setForbiddenAwareStatus(res, `${t('adminDashboard.kicked')}: ${userId}`);
-      if (res.ok) await fetchData();
+      if (res.ok) {
+        await fetchData();
+      }
     } catch {
       setStatusMsg(t('adminDashboard.apiError'));
     }
@@ -3027,6 +3035,8 @@ const AdminDashboard = () => {
     setSendMsgTargetId(null);
     setSendMsgText('');
     setModerationReason('');
+    setProfileModalUserId(null);
+    setWarnDialogOpen(false);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -3085,20 +3095,6 @@ const AdminDashboard = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [hide, show]);
-
-  useEffect(() => {
-    if (!visible) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        hide();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hide, visible]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -3583,12 +3579,14 @@ const AdminDashboard = () => {
   };
 
   const openTopbarAdminCreateModal = () => {
+    setTopbarAdminError('');
     setTopbarAdminEditingUser(null);
     setTopbarAdminForm(EMPTY_TOPBAR_ADMIN_FORM);
     setTopbarAdminModalOpen(true);
   };
 
   const openTopbarAdminEditModal = (entry: TopbarAdminUserEntry) => {
+    setTopbarAdminError('');
     setTopbarAdminEditingUser(entry.user);
     setTopbarAdminForm({
       user: entry.user,
@@ -3602,7 +3600,7 @@ const AdminDashboard = () => {
     const user = topbarAdminForm.user.trim();
     const discordId = topbarAdminForm.discordId.trim();
     if (!user) {
-      setStatusMsg(
+      setTopbarAdminError(
         t('adminDashboard.topAdmins_userRequired', {
           defaultValue: 'Username is required.',
         }),
@@ -3611,7 +3609,7 @@ const AdminDashboard = () => {
     }
 
     if (!isValidDiscordSnowflake(discordId)) {
-      setStatusMsg(
+      setTopbarAdminError(
         t('adminDashboard.topAdmins_discordIdInvalid', {
           defaultValue: 'Discord ID must contain digits only.',
         }),
@@ -3619,6 +3617,7 @@ const AdminDashboard = () => {
       return;
     }
 
+    setTopbarAdminError('');
     setTopbarAdminSaving(true);
     try {
       const res = await fetch('/api/admin/admin-users', {
@@ -3634,9 +3633,15 @@ const AdminDashboard = () => {
       const payload = await res.json().catch(() => null);
       if (!res.ok) {
         if (payload?.error) {
-          setStatusMsg(String(payload.error));
+          setTopbarAdminError(String(payload.error));
         } else {
-          setForbiddenAwareStatus(res, '');
+          setTopbarAdminError(
+            t(
+              res.status === 403
+                ? 'adminDashboard.noPermission'
+                : 'adminDashboard.apiError',
+            ),
+          );
         }
         return;
       }
@@ -3653,7 +3658,7 @@ const AdminDashboard = () => {
       setTopbarAdminModalOpen(false);
       await Promise.all([fetchTopbarAdminSnapshot(), fetchTopbarAdmins()]);
     } catch {
-      setStatusMsg(t('adminDashboard.apiError'));
+      setTopbarAdminError(t('adminDashboard.apiError'));
     } finally {
       setTopbarAdminSaving(false);
     }
@@ -3662,7 +3667,7 @@ const AdminDashboard = () => {
   const saveTopbarWhitelistEntry = async () => {
     const identifier = topbarWhitelistModalIdentifier.trim();
     if (!identifier) {
-      setStatusMsg(
+      setTopbarWhitelistError(
         t('adminDashboard.topWhitelist_identifierRequired', {
           defaultValue: 'Identifier is required.',
         }),
@@ -3671,7 +3676,7 @@ const AdminDashboard = () => {
     }
 
     if (!isValidWhitelistIdentifier(identifier)) {
-      setStatusMsg(
+      setTopbarWhitelistError(
         t('adminDashboard.topWhitelist_identifierInvalid', {
           defaultValue:
             'Identifier must use the format "type:value" with a supported type such as discord, steam or license.',
@@ -3680,6 +3685,7 @@ const AdminDashboard = () => {
       return;
     }
 
+    setTopbarWhitelistError('');
     setTopbarWhitelistModalSaving(true);
     try {
       const res = await fetch('/api/admin/whitelist/add', {
@@ -3691,9 +3697,10 @@ const AdminDashboard = () => {
       const payload = await res.json().catch(() => null);
       if (!res.ok) {
         if (payload?.error) {
-          setStatusMsg(String(payload.error));
+          setTopbarWhitelistError(String(payload.error));
         } else {
-          setForbiddenAwareStatus(res, '');
+          setTopbarWhitelistError(t(res.status === 403
+            ? 'adminDashboard.noPermission' : 'adminDashboard.apiError'));
         }
         return;
       }
@@ -3706,7 +3713,7 @@ const AdminDashboard = () => {
       setTopbarWhitelistModalOpen(false);
       await fetchTopbarCfgSnapshots();
     } catch {
-      setStatusMsg(t('adminDashboard.apiError'));
+      setTopbarWhitelistError(t('adminDashboard.apiError'));
     } finally {
       setTopbarWhitelistModalSaving(false);
     }
@@ -3807,13 +3814,7 @@ const AdminDashboard = () => {
       setActiveMenuSurface('topbar');
       setSystemSectionActive(false);
     },
-    [
-      activeMenuSurface,
-      activeTab,
-      activeTopSection,
-      emitMenuDebug,
-      visible,
-    ],
+    [activeMenuSurface, activeTab, activeTopSection, emitMenuDebug, visible],
   );
 
   const tabs: Array<{ key: Tab; label: string }> = [
@@ -4000,11 +4001,15 @@ const AdminDashboard = () => {
   if (!visible) return <></>;
 
   return (
-    <div
+    <ModalDialog
       className="admin-overlay"
-      role="dialog"
-      aria-modal="true"
       aria-label={t('adminDashboard.title')}
+      onClose={() => {
+        if (systemDropdownOpen) {
+          setSystemDropdownOpen(false);
+          document.getElementById('admin-system-toggle')?.focus();
+        } else hide();
+      }}
     >
       <div className="admin-dashboard">
         <div className="admin-dashboard__topbar">
@@ -4020,10 +4025,12 @@ const AdminDashboard = () => {
             </div>
           </div>
 
+          <div className="admin-dashboard__topnav">
           <div
-            className="admin-dashboard__topnav"
+              className="admin-dashboard__topnav-tabs"
             role="tablist"
             aria-label={t('adminDashboard.title')}
+              onKeyDown={handleTabNavigation}
           >
             {topNavItems.map(({ key, label }) => (
               <button
@@ -4032,8 +4039,19 @@ const AdminDashboard = () => {
                 id={`admin-top-tab-${key}`}
                 data-testid={`admin-top-tab-${key}`}
                 role="tab"
-                aria-selected={activeTopSection === key}
-                aria-controls={`admin-top-panel-${key}`}
+                  aria-selected={
+                    activeMenuSurface === 'topbar' &&
+                    activeTopSection === key &&
+                    !systemSectionActive
+                  }
+                  tabIndex={activeTopSection === key ? 0 : -1}
+                  aria-controls={
+                    activeMenuSurface === 'topbar' &&
+                    activeTopSection === key &&
+                    !systemSectionActive
+                      ? `admin-top-panel-${key}`
+                      : undefined
+                  }
                 className={`admin-dashboard__topnav-item${
                   activeTopSection === key
                     ? ' admin-dashboard__topnav-item--active'
@@ -4063,11 +4081,17 @@ const AdminDashboard = () => {
                 {label}
               </button>
             ))}
+            </div>
 
             {/* System Dropdown Menu */}
             <div className="admin-dashboard__topnav-dropdown">
               <button
                 type="button"
+                id="admin-system-toggle"
+                aria-expanded={systemDropdownOpen}
+                aria-controls={
+                  systemDropdownOpen ? 'admin-system-actions' : undefined
+                }
                 className={`admin-dashboard__topnav-item admin-dashboard__topnav-item--dropdown${
                   systemDropdownOpen
                     ? ' admin-dashboard__topnav-item--active'
@@ -4079,7 +4103,10 @@ const AdminDashboard = () => {
                 <span className="admin-dashboard__dropdown-arrow">▾</span>
               </button>
               {systemDropdownOpen && (
-                <div className="admin-dashboard__topnav-dropdown-menu">
+                <div
+                  id="admin-system-actions"
+                  className="admin-dashboard__topnav-dropdown-menu"
+                >
                   <button
                     type="button"
                     className={`admin-dashboard__dropdown-item${
@@ -4171,14 +4198,13 @@ const AdminDashboard = () => {
             >
               {adminUser || t(`adminDashboard.role_${adminRole}`)}
             </span>
-            <FrameButton
-              name="closeAdmin"
-              text={t('adminDashboard.exit')}
-              variant="DEFAULT"
-              width={112}
-              height={40}
+            <button
+              type="button"
+              className="admin-dashboard__close-btn"
               onClick={hide}
-            />
+            >
+              {t('adminDashboard.close')}
+            </button>
           </div>
         </div>
 
@@ -4385,94 +4411,6 @@ const AdminDashboard = () => {
 
           <main className="admin-dashboard__main">
             <div className="admin-dashboard__main-header">
-                          {activeTab === 'players' && activeMenuSurface === 'sidebar' && (
-                            <div className="admin-dashboard__players-table-wrap">
-                              <table className="admin-dashboard__players-table">
-                                <thead>
-                                  <tr>
-                                    <th>{t('adminDashboard.playerName', { defaultValue: 'Name' })}</th>
-                                    <th>{t('adminDashboard.playerId', { defaultValue: 'User ID' })}</th>
-                                    <th>{t('adminDashboard.playerActions', { defaultValue: 'Aktionen' })}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {filteredPlayers.map((player) => (
-                                    <tr key={`player-row-${player.userId}`}>
-                                      <td>
-                                        <button
-                                          type="button"
-                                          style={{ background: 'none', border: 'none', color: '#7ec8c8', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                                          onClick={() => { setProfileModalUserId(player.userId); setProfileModalName(player.actorName || `userId=${player.userId}`); }}
-                                        >
-                                          {player.actorName || `userId=${player.userId}`}
-                                        </button>
-                                      </td>
-                                      <td>{player.userId}</td>
-                                      <td>
-                                        {capabilities.canKick && (
-                                          <button type="button" onClick={() => kickPlayer(player.userId)}>
-                                            {t('adminDashboard.kick', { defaultValue: 'Kick' })}
-                                          </button>
-                                        )}
-                                        {capabilities.canBan && (
-                                          <button type="button" onClick={() => banPlayer(player.userId)}>
-                                            {t('adminDashboard.ban', { defaultValue: 'Ban' })}
-                                          </button>
-                                        )}
-                                        {capabilities.canMute && (
-                                          <button type="button" onClick={() => mutePlayer(player.userId)}>
-                                            {t('adminDashboard.mute', { defaultValue: 'Mute' })}
-                                          </button>
-                                        )}
-                                        {capabilities.canMessage && (
-                                          <button type="button" onClick={() => { setSendMsgTargetId(player.userId); setSendMsgTargetName(player.actorName || `userId=${player.userId}`); }}>
-                                            {t('adminDashboard.message', { defaultValue: 'Nachricht' })}
-                                          </button>
-                                        )}
-                                        {capabilities.canWarn && (
-                                          <button
-                                            type="button"
-                                            data-testid={`admin-warn-btn-${player.userId}`}
-                                            style={{ color: '#e6b800', borderColor: '#e6b800', marginLeft: 4 }}
-                                            onClick={() => openWarnDialog(player.userId, player.actorName || `userId=${player.userId}`)}
-                                          >
-                                            {t('adminDashboard.warn', { defaultValue: 'Warnen' })}
-                                          </button>
-                                        )}
-                                        {capabilities.canViewLogs && (
-                                          <button
-                                            type="button"
-                                            style={{ marginLeft: 4 }}
-                                            data-testid={`admin-history-btn-${player.userId}`}
-                                            onClick={() =>
-                                              openTopbarHistorySearch({
-                                                search: String(player.userId),
-                                                mode: 'player',
-                                              })
-                                            }
-                                          >
-                                            {t('adminDashboard.topTx_history', {
-                                              defaultValue: 'History',
-                                            })}
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {filteredPlayers.length === 0 && (
-                                    <tr>
-                                      <td colSpan={3}>
-                                        {t('adminDashboard.noPlayersStored', {
-                                          defaultValue: 'No players found yet',
-                                        })}
-                                      </td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-
                           {/* Player Profile Modal */}
                           {profileModalUserId !== null && (
                             <PlayerProfileModal
@@ -4489,43 +4427,90 @@ const AdminDashboard = () => {
 
                           {/* Warn Dialog */}
                           {warnDialogOpen && (
-                            <div className="admin-dashboard__warn-modal-backdrop" onClick={closeWarnDialog}>
-                              <div className="admin-dashboard__warn-modal" onClick={e => e.stopPropagation()}>
+                <div
+                  className="admin-dashboard__warn-modal-backdrop"
+                  onClick={closeWarnDialog}
+                >
+                  <ModalDialog
+                    data-testid="admin-warn-dialog"
+                    className="admin-dashboard__warn-modal"
+                    onClose={() => {
+                      if (!warnSending) closeWarnDialog();
+                    }}
+                    aria-labelledby="admin-warn-title"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                                 <div className="admin-dashboard__warn-modal-head">
-                                  <h3>{t('adminDashboard.warnTitle', { defaultValue: 'Warnen' })}</h3>
-                                  <button type="button" onClick={closeWarnDialog} disabled={warnSending}>×</button>
+                      <h3 id="admin-warn-title">
+                        {t('adminDashboard.warnTitle', {
+                          defaultValue: 'Warnen',
+                        })}
+                      </h3>
+                      <button
+                        type="button"
+                        aria-label={t('adminDashboard.close')}
+                        onClick={closeWarnDialog}
+                        disabled={warnSending}
+                      >
+                        ×
+                      </button>
                                 </div>
-                                <div data-testid="admin-warn-form" className="admin-dashboard__warn-modal-body">
-                                  <div>{t('adminDashboard.warnTarget', { defaultValue: 'Spieler:' })} <b>{warnTargetName}</b></div>
+                    <div
+                      data-testid="admin-warn-form"
+                      className="admin-dashboard__warn-modal-body"
+                    >
+                      <div>
+                        {t('adminDashboard.warnTarget', {
+                          defaultValue: 'Spieler:',
+                        })}{' '}
+                        <b>{warnTargetName}</b>
+                      </div>
                                   <label>
-                                    {t('adminDashboard.warnMessage', { defaultValue: 'Nachricht' })}
+                        {t('adminDashboard.warnMessage', {
+                          defaultValue: 'Nachricht',
+                        })}
                                     <input
                                       type="text"
                                       data-testid="admin-warn-message-input"
                                       value={warnMessage}
-                                      onChange={e => setWarnMessage(e.target.value)}
-                                      placeholder={t('adminDashboard.warnMessagePlaceholder', { defaultValue: 'Bitte Nachricht eingeben...' })}
+                          onChange={(e) => setWarnMessage(e.target.value)}
+                          placeholder={t(
+                            'adminDashboard.warnMessagePlaceholder',
+                            { defaultValue: 'Bitte Nachricht eingeben...' },
+                          )}
                                       disabled={warnSending}
                                       autoFocus
                                     />
                                   </label>
                                   <label>
-                                    {t('adminDashboard.warnReason', { defaultValue: 'Grund (optional)' })}
+                        {t('adminDashboard.warnReason', {
+                          defaultValue: 'Grund (optional)',
+                        })}
                                     <input
                                       type="text"
                                       data-testid="admin-warn-reason-input"
                                       aria-invalid={warnReasonInvalid}
                                       value={warnReason}
-                                      onChange={e => setWarnReason(e.target.value)}
-                                      placeholder={t('adminDashboard.warnReasonPlaceholder', { defaultValue: 'Optionaler Grund...' })}
+                          onChange={(e) => setWarnReason(e.target.value)}
+                          placeholder={t(
+                            'adminDashboard.warnReasonPlaceholder',
+                            { defaultValue: 'Optionaler Grund...' },
+                          )}
                                       disabled={warnSending}
                                       maxLength={MAX_MODERATION_REASON_LENGTH + 1}
                                     />
                                   </label>
                                 </div>
                                 <div className="admin-dashboard__warn-modal-foot">
-                                  <button type="button" data-testid="admin-warn-cancel-btn" onClick={closeWarnDialog} disabled={warnSending}>
-                                    {t('adminDashboard.cancel', { defaultValue: 'Abbrechen' })}
+                      <button
+                        type="button"
+                        data-testid="admin-warn-cancel-btn"
+                        onClick={closeWarnDialog}
+                        disabled={warnSending}
+                      >
+                        {t('adminDashboard.cancel', {
+                          defaultValue: 'Abbrechen',
+                        })}
                                   </button>
                                   <button
                                     type="button"
@@ -4535,12 +4520,16 @@ const AdminDashboard = () => {
                                     disabled={warnSending || !warnMessage.trim()}
                                   >
                                     {warnSending
-                                      ? t('adminDashboard.sending', { defaultValue: 'Sende...' })
-                                      : t('adminDashboard.warnSend', { defaultValue: 'Warnen' })}
+                          ? t('adminDashboard.sending', {
+                              defaultValue: 'Sende...',
+                            })
+                          : t('adminDashboard.warnSend', {
+                              defaultValue: 'Warnen',
+                            })}
                                   </button>
                                 </div>
+                  </ModalDialog>
                               </div>
-                            </div>
                           )}
               <div>
                 <h2 className="admin-dashboard__main-title">
@@ -4583,7 +4572,8 @@ const AdminDashboard = () => {
                   {t('adminDashboard.updateInstalledLabel', {
                     defaultValue: 'Installed',
                   })}
-                  : {installedVersionLabel} · {t('adminDashboard.updateLatestLabel', {
+                  : {installedVersionLabel} ·{' '}
+                  {t('adminDashboard.updateLatestLabel', {
                     defaultValue: 'Latest',
                   })}
                   : {latestVersionLabel}
@@ -4597,7 +4587,8 @@ const AdminDashboard = () => {
                         defaultValue: 'Runtime',
                       })}: ${t(`adminDashboard.runtimeStatus_${runtimeOverall}`, {
                         defaultValue: runtimeOverall,
-                      })}`
+                        },
+                      )}`
                     : ''}
                 </span>
               </div>
@@ -4645,10 +4636,9 @@ const AdminDashboard = () => {
                 className="admin-dashboard__update-modal-backdrop"
                 onClick={() => setUpdateModalOpen(false)}
               >
-                <div
+                <ModalDialog
                   className="admin-dashboard__update-modal"
-                  role="dialog"
-                  aria-modal="true"
+                  onClose={() => setUpdateModalOpen(false)}
                   aria-label={t('adminDashboard.updateModalTitle', {
                     defaultValue: 'Server update changelog',
                   })}
@@ -4665,12 +4655,10 @@ const AdminDashboard = () => {
                         {t('adminDashboard.updateInstalledLabel', {
                           defaultValue: 'Installed',
                         })}
-                        : {installedVersionLabel} · {t(
-                          'adminDashboard.updateLatestLabel',
-                          {
+                        : {installedVersionLabel} ·{' '}
+                        {t('adminDashboard.updateLatestLabel', {
                             defaultValue: 'Latest',
-                          },
-                        )}
+                        })}
                         : {latestVersionLabel}
                       </p>
                     </div>
@@ -4720,12 +4708,14 @@ const AdminDashboard = () => {
                               <span className="admin-dashboard__runtime-readiness-item-status">
                                 {t(`adminDashboard.runtimeStatus_${check.level}`, {
                                   defaultValue: check.level,
-                                })}
+                                  },
+                                )}
                               </span>
                               <span className="admin-dashboard__runtime-readiness-item-text">
                                 {t(`adminDashboard.runtimeCheckCode_${check.code}`, {
                                   defaultValue: check.message,
-                                })}
+                                  },
+                                )}
                               </span>
                             </li>
                           ))}
@@ -4760,8 +4750,8 @@ const AdminDashboard = () => {
                       {t('adminDashboard.exit')}
                     </button>
                   </div>
+                </ModalDialog>
                 </div>
-              </div>
             )}
 
             {/* System Dropdown Subsections */}
@@ -5189,10 +5179,9 @@ const AdminDashboard = () => {
                                   e.target.value as 'name' | 'id',
                                 )
                               }
-                              aria-label={t(
-                                'adminDashboard.topPlayersSearchBy',
-                                { defaultValue: 'Search by' },
-                              )}
+                            aria-label={t('adminDashboard.topPlayersSearchBy', {
+                              defaultValue: 'Search by',
+                            })}
                             >
                               <option value="name">
                                 {t('adminDashboard.topPlayersSearchByName', {
@@ -5270,10 +5259,9 @@ const AdminDashboard = () => {
                                   })}
                                 </th>
                                 <th>
-                                  {t(
-                                    'adminDashboard.topPlayersLastConnection',
-                                    { defaultValue: 'Last Connection' },
-                                  )}
+                                {t('adminDashboard.topPlayersLastConnection', {
+                                  defaultValue: 'Last Connection',
+                                })}
                                 </th>
                               </tr>
                             </thead>
@@ -5403,21 +5391,18 @@ const AdminDashboard = () => {
                                 historySearchMode === 'actionId'
                                   ? 'XXXX-XXXX'
                                   : historySearchMode === 'player'
-                                  ? t(
-                                      'adminDashboard.topHistory_searchPlayer',
-                                      { defaultValue: 'Player name or ID' },
-                                    )
-                                  : t(
-                                      'adminDashboard.topHistory_searchReason',
-                                      { defaultValue: 'Reason text' },
-                                    )
+                                ? t('adminDashboard.topHistory_searchPlayer', {
+                                    defaultValue: 'Player name or ID',
+                                  })
+                                : t('adminDashboard.topHistory_searchReason', {
+                                    defaultValue: 'Reason text',
+                                  })
                               }
                               value={historySearch}
                               onChange={(e) => setHistorySearch(e.target.value)}
-                              aria-label={t(
-                                'adminDashboard.topHistory_search',
-                                { defaultValue: 'Search' },
-                              )}
+                            aria-label={t('adminDashboard.topHistory_search', {
+                              defaultValue: 'Search',
+                            })}
                             />
                             <select
                               className="admin-dashboard__tx-history-select"
@@ -5742,8 +5727,7 @@ const AdminDashboard = () => {
                                       <td>{entry.reason || '-'}</td>
                                       <td>{formatAdminTime(entry.ts)}</td>
                                     </tr>
-                                  ),
-                                )}
+                              ))}
                               </tbody>
                             </table>
                           )}
@@ -5769,9 +5753,7 @@ const AdminDashboard = () => {
                               from: formatPeriodTs(
                                 topbarPlayerDropsData.periodStart,
                               ),
-                              to: formatPeriodTs(
-                                topbarPlayerDropsData.periodEnd,
-                              ),
+                            to: formatPeriodTs(topbarPlayerDropsData.periodEnd),
                             })}
                           </div>
                         </div>
@@ -5859,10 +5841,9 @@ const AdminDashboard = () => {
                                     })}
                                   </th>
                                   <th>
-                                    {t(
-                                      'adminDashboard.topDrops_colDescription',
-                                      { defaultValue: 'Description' },
-                                    )}
+                                  {t('adminDashboard.topDrops_colDescription', {
+                                    defaultValue: 'Description',
+                                  })}
                                   </th>
                                   <th>
                                     {t('adminDashboard.topDrops_colTime', {
@@ -6040,14 +6021,14 @@ const AdminDashboard = () => {
                                     {
                                       defaultValue:
                                         'Players that tried to join the server but were not whitelisted.',
-                                    },
-                                  )}
+                                })}
                                 </p>
                               </div>
                               <div className="admin-dashboard__tx-whitelist-search-wrap">
                                 <input
                                   type="text"
                                   className="admin-dashboard__tx-whitelist-search"
+                                  aria-label={t('adminDashboard.topWhitelist_searchPlaceholder')}
                                   value={topbarWhitelistSearch}
                                   onChange={(e) =>
                                     setTopbarWhitelistSearch(e.target.value)
@@ -6117,14 +6098,14 @@ const AdminDashboard = () => {
                                     {
                                       defaultValue:
                                         "Players that are already approved, but haven't joined the server yet.",
-                                    },
-                                  )}
+                                })}
                                 </p>
                               </div>
                               <button
                                 type="button"
                                 className="admin-dashboard__tx-whitelist-approve"
                                 onClick={() => {
+                                  setTopbarWhitelistError('');
                                   setTopbarWhitelistModalIdentifier('');
                                   setTopbarWhitelistModalOpen(true);
                                 }}
@@ -6135,7 +6116,9 @@ const AdminDashboard = () => {
                                 })}
                               </button>
                             </div>
-                            <div className="admin-dashboard__tx-whitelist-panel-body">
+                            <div className="admin-dashboard__tx-whitelist-panel-body"
+                              tabIndex={0} role="region"
+                              aria-label={t('adminDashboard.topWhitelist_approvedTitle')}>
                               {whitelistApprovedEntries.length === 0 ? (
                                 <div className="admin-dashboard__tx-whitelist-panel-body--empty">
                                   {t('adminDashboard.topWhitelist_noPlayers', {
@@ -6188,113 +6171,122 @@ const AdminDashboard = () => {
                           <div
                             className="admin-dashboard__tx-whitelist-modal-backdrop"
                             onClick={() =>
-                              !topbarWhitelistModalSaving &&
-                              setTopbarWhitelistModalOpen(false)
+                              !topbarWhitelistModalSaving && setTopbarWhitelistModalOpen(false)
                             }
                           >
-                            <div
+                            <ModalDialog
                               className="admin-dashboard__tx-whitelist-modal"
+                              data-testid="admin-whitelist-dialog"
+                              aria-labelledby="admin-whitelist-title"
+                              aria-busy={topbarWhitelistModalSaving}
+                              onClose={() => {
+                                if (!topbarWhitelistModalSaving) setTopbarWhitelistModalOpen(false);
+                              }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <div className="admin-dashboard__tx-whitelist-modal-head">
-                                <h5>
-                                  {t('adminDashboard.topWhitelist_addPlayer', {
-                                    defaultValue: 'Whitelist player',
-                                  })}
-                                </h5>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setTopbarWhitelistModalOpen(false)
-                                  }
-                                  disabled={topbarWhitelistModalSaving}
-                                >
-                                  ×
-                                </button>
-                              </div>
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (!topbarWhitelistModalSaving) void saveTopbarWhitelistEntry();
+                                }}
+                              >
+                                <div className="admin-dashboard__tx-whitelist-modal-head">
+                                  <h5 id="admin-whitelist-title">
+                                    {t('adminDashboard.topWhitelist_addPlayer', {
+                                      defaultValue: 'Whitelist player',
+                                    })}
+                                  </h5>
+                                  <button
+                                    type="button"
+                                    aria-label={t('adminDashboard.close')}
+                                    onClick={() => setTopbarWhitelistModalOpen(false)}
+                                    disabled={topbarWhitelistModalSaving}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
 
-                              <div className="admin-dashboard__tx-whitelist-modal-body">
-                                <p>
-                                  {t(
-                                    'adminDashboard.topWhitelist_addPlayerDescription',
-                                    {
+                                <div className="admin-dashboard__tx-whitelist-modal-body">
+                                  <p>
+                                    {t('adminDashboard.topWhitelist_addPlayerDescription', {
                                       defaultValue:
                                         'Type in the Player Identifier you want to whitelist.',
-                                    },
-                                  )}
-                                </p>
-                                <p className="admin-dashboard__tx-whitelist-modal-hint">
-                                  {t(
-                                    'adminDashboard.topWhitelist_identifierTypes',
-                                    {
+                                    })}
+                                  </p>
+                                  <p
+                                    id="admin-whitelist-hint"
+                                    className="admin-dashboard__tx-whitelist-modal-hint"
+                                  >
+                                    {t('adminDashboard.topWhitelist_identifierTypes', {
                                       defaultValue:
                                         'This can be any of the following: discord, steam, license, licenseea, live, xblive, fal.',
-                                    },
-                                  )}
-                                </p>
-                                <label>
-                                  <input
-                                    type="text"
-                                    value={topbarWhitelistModalIdentifier}
-                                    aria-invalid={
-                                      topbarWhitelistModalIdentifier.trim()
-                                        ? !isValidWhitelistIdentifier(
-                                            topbarWhitelistModalIdentifier,
-                                          )
-                                        : false
-                                    }
-                                    onChange={(e) =>
-                                      setTopbarWhitelistModalIdentifier(
-                                        e.target.value,
-                                      )
-                                    }
-                                    placeholder={t(
-                                      'adminDashboard.topWhitelist_identifierPlaceholder',
-                                      {
-                                        defaultValue:
-                                          'discord:272600190639848628',
-                                      },
-                                    )}
-                                    disabled={topbarWhitelistModalSaving}
-                                    autoFocus
-                                  />
-                                </label>
-                              </div>
+                                    })}
+                                  </p>
+                                  <label>
+                                    <span>{t('adminDashboard.topWhitelist_colValue')}</span>
+                                    <input
+                                      type="text"
+                                      required
+                                      autoComplete="off"
+                                      autoCapitalize="none"
+                                      spellCheck={false}
+                                      aria-describedby="admin-whitelist-hint"
+                                      value={topbarWhitelistModalIdentifier}
+                                      aria-invalid={
+                                        topbarWhitelistModalIdentifier.trim()
+                                          ? !isValidWhitelistIdentifier(
+                                              topbarWhitelistModalIdentifier,
+                                            )
+                                          : false
+                                      }
+                                      onChange={(e) =>
+                                        setTopbarWhitelistModalIdentifier(e.target.value)
+                                      }
+                                      placeholder={t(
+                                        'adminDashboard.topWhitelist_identifierPlaceholder',
+                                        {
+                                          defaultValue: 'discord:272600190639848628',
+                                        },
+                                      )}
+                                      disabled={topbarWhitelistModalSaving}
+                                      autoFocus
+                                    />
+                                  </label>
+                                  <p className="admin-dashboard__form-error" role="alert">
+                                    {topbarWhitelistError}
+                                  </p>
+                                </div>
 
-                              <div className="admin-dashboard__tx-whitelist-modal-foot">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setTopbarWhitelistModalOpen(false)
-                                  }
-                                  disabled={topbarWhitelistModalSaving}
-                                >
-                                  {t('adminDashboard.cancel', {
-                                    defaultValue: 'Cancel',
-                                  })}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-dashboard__tx-whitelist-submit"
-                                  onClick={() => saveTopbarWhitelistEntry()}
-                                  disabled={
-                                    topbarWhitelistModalSaving ||
-                                    !topbarWhitelistModalIdentifier.trim() ||
-                                    !isValidWhitelistIdentifier(
-                                      topbarWhitelistModalIdentifier,
-                                    )
-                                  }
-                                >
-                                  {topbarWhitelistModalSaving
-                                    ? t('adminDashboard.saving', {
-                                        defaultValue: 'Saving...',
-                                      })
-                                    : t('adminDashboard.submit', {
-                                        defaultValue: 'Submit',
-                                      })}
-                                </button>
-                              </div>
-                            </div>
+                                <div className="admin-dashboard__tx-whitelist-modal-foot">
+                                  <button
+                                    type="button"
+                                    onClick={() => setTopbarWhitelistModalOpen(false)}
+                                    disabled={topbarWhitelistModalSaving}
+                                  >
+                                    {t('adminDashboard.cancel', {
+                                      defaultValue: 'Cancel',
+                                    })}
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    className="admin-dashboard__tx-whitelist-submit"
+                                    disabled={
+                                      topbarWhitelistModalSaving ||
+                                      !topbarWhitelistModalIdentifier.trim() ||
+                                      !isValidWhitelistIdentifier(topbarWhitelistModalIdentifier)
+                                    }
+                                  >
+                                    {topbarWhitelistModalSaving
+                                      ? t('adminDashboard.saving', {
+                                          defaultValue: 'Saving...',
+                                        })
+                                      : t('adminDashboard.submit', {
+                                          defaultValue: 'Submit',
+                                        })}
+                                  </button>
+                                </div>
+                              </form>
+                            </ModalDialog>
                           </div>
                         )}
                       </section>
@@ -6459,147 +6451,165 @@ const AdminDashboard = () => {
                         {topbarAdminModalOpen && (
                           <div
                             className="admin-dashboard__tx-admins-modal-backdrop"
-                            onClick={() =>
-                              !topbarAdminSaving &&
-                              setTopbarAdminModalOpen(false)
-                            }
+                            onClick={() => !topbarAdminSaving && setTopbarAdminModalOpen(false)}
                           >
-                            <div
+                            <ModalDialog
                               className="admin-dashboard__tx-admins-modal"
+                              data-testid="admin-user-dialog"
+                              aria-labelledby="admin-user-dialog-title"
+                              aria-busy={topbarAdminSaving}
+                              onClose={() => {
+                                if (!topbarAdminSaving) setTopbarAdminModalOpen(false);
+                              }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <div className="admin-dashboard__tx-admins-modal-head">
-                                <h5>
-                                  {topbarAdminEditingUser
-                                    ? t('adminDashboard.topAdmins_editAdmin', {
-                                        defaultValue: 'Edit Admin',
-                                      })
-                                    : t('adminDashboard.topAdmins_newAdmin', {
-                                        defaultValue: 'New Admin',
-                                      })}
-                                </h5>
-                                <button
-                                  type="button"
-                                  onClick={() => setTopbarAdminModalOpen(false)}
-                                  disabled={topbarAdminSaving}
-                                >
-                                  ×
-                                </button>
-                              </div>
-
-                              <div className="admin-dashboard__tx-admins-modal-body">
-                                <label>
-                                  <span>
-                                    {t('adminDashboard.topAdmins_colUsername', {
-                                      defaultValue: 'Username',
-                                    })}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={topbarAdminForm.user}
-                                    disabled={Boolean(topbarAdminEditingUser)}
-                                    onChange={(e) =>
-                                      setTopbarAdminForm((prev) => ({
-                                        ...prev,
-                                        user: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="username"
-                                  />
-                                </label>
-                                <label>
-                                  <span>
-                                    {t('adminDashboard.topAdmins_discordId', {
-                                      defaultValue: 'Discord ID (optional)',
-                                    })}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={topbarAdminForm.discordId}
-                                    aria-invalid={
-                                      !isValidDiscordSnowflake(
-                                        topbarAdminForm.discordId,
-                                      )
-                                    }
-                                    onChange={(e) =>
-                                      setTopbarAdminForm((prev) => ({
-                                        ...prev,
-                                        discordId: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="123456789012345678"
-                                  />
-                                </label>
-                                <label>
-                                  <span>
-                                    {t('adminDashboard.role', {
-                                      defaultValue: 'Role',
-                                    })}
-                                  </span>
-                                  <select
-                                    value={topbarAdminForm.role}
-                                    onChange={(e) =>
-                                      setTopbarAdminForm((prev) => ({
-                                        ...prev,
-                                        role: e.target.value as AdminRole,
-                                      }))
-                                    }
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (!topbarAdminSaving) void saveTopbarAdminUser();
+                                }}
+                              >
+                                <div className="admin-dashboard__tx-admins-modal-head">
+                                  <h5 id="admin-user-dialog-title">
+                                    {topbarAdminEditingUser
+                                      ? t('adminDashboard.topAdmins_editAdmin', {
+                                          defaultValue: 'Edit Admin',
+                                        })
+                                      : t('adminDashboard.topAdmins_newAdmin', {
+                                          defaultValue: 'New Admin',
+                                        })}
+                                  </h5>
+                                  <button
+                                    type="button"
+                                    aria-label={t('adminDashboard.close')}
+                                    onClick={() => setTopbarAdminModalOpen(false)}
+                                    disabled={topbarAdminSaving}
                                   >
-                                    <option value="admin">
-                                      {t('adminDashboard.role_admin')}
-                                    </option>
-                                    <option value="moderator">
-                                      {t('adminDashboard.role_moderator')}
-                                    </option>
-                                    <option value="viewer">
-                                      {t('adminDashboard.role_viewer')}
-                                    </option>
-                                  </select>
-                                </label>
-                                <p className="admin-dashboard__tx-admins-modal-note">
-                                  {t(
-                                    'adminDashboard.topAdmins_discordLoginNote',
-                                    {
+                                    ×
+                                  </button>
+                                </div>
+
+                                <div className="admin-dashboard__tx-admins-modal-body">
+                                  <label>
+                                    <span>
+                                      {t('adminDashboard.topAdmins_colUsername', {
+                                        defaultValue: 'Username',
+                                      })}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      required
+                                      autoFocus={!topbarAdminEditingUser}
+                                      autoComplete="off"
+                                      value={topbarAdminForm.user}
+                                      disabled={
+                                        Boolean(topbarAdminEditingUser) || topbarAdminSaving
+                                      }
+                                      onChange={(e) =>
+                                        setTopbarAdminForm((prev) => ({
+                                          ...prev,
+                                          user: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="username"
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>
+                                      {t('adminDashboard.topAdmins_discordId', {
+                                        defaultValue: 'Discord ID (optional)',
+                                      })}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      autoFocus={Boolean(topbarAdminEditingUser)}
+                                      disabled={topbarAdminSaving}
+                                      aria-describedby="admin-user-discord-hint"
+                                      value={topbarAdminForm.discordId}
+                                      aria-invalid={
+                                        !isValidDiscordSnowflake(topbarAdminForm.discordId)
+                                      }
+                                      onChange={(e) =>
+                                        setTopbarAdminForm((prev) => ({
+                                          ...prev,
+                                          discordId: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="123456789012345678"
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>
+                                      {t('adminDashboard.role', {
+                                        defaultValue: 'Role',
+                                      })}
+                                    </span>
+                                    <select
+                                      disabled={topbarAdminSaving}
+                                      value={topbarAdminForm.role}
+                                      onChange={(e) =>
+                                        setTopbarAdminForm((prev) => ({
+                                          ...prev,
+                                          role: e.target.value as AdminRole,
+                                        }))
+                                      }
+                                    >
+                                      <option value="admin">
+                                        {t('adminDashboard.role_admin')}
+                                      </option>
+                                      <option value="moderator">
+                                        {t('adminDashboard.role_moderator')}
+                                      </option>
+                                      <option value="viewer">
+                                        {t('adminDashboard.role_viewer')}
+                                      </option>
+                                    </select>
+                                  </label>
+                                  <p
+                                    id="admin-user-discord-hint"
+                                    className="admin-dashboard__tx-admins-modal-note"
+                                  >
+                                    {t('adminDashboard.topAdmins_discordIdInvalid')}{' '}
+                                    {t('adminDashboard.topAdmins_discordLoginNote', {
                                       defaultValue:
                                         'Discord IDs can use the Discord button on the regular admin login page once OAuth is configured.',
-                                    },
-                                  )}
-                                </p>
-                              </div>
+                                    })}
+                                  </p>
+                                  <p role="alert" className="admin-dashboard__form-error">
+                                    {topbarAdminError}
+                                  </p>
+                                </div>
 
-                              <div className="admin-dashboard__tx-admins-modal-foot">
-                                <button
-                                  type="button"
-                                  onClick={() => setTopbarAdminModalOpen(false)}
-                                  disabled={topbarAdminSaving}
-                                >
-                                  {t('adminDashboard.cancel', {
-                                    defaultValue: 'Cancel',
-                                  })}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-dashboard__tx-admins-save"
-                                  onClick={() => {
-                                    void saveTopbarAdminUser();
-                                  }}
-                                  disabled={
-                                    topbarAdminSaving ||
-                                    !isValidDiscordSnowflake(
-                                      topbarAdminForm.discordId,
-                                    )
-                                  }
-                                >
-                                  {topbarAdminSaving
-                                    ? t('adminDashboard.saving', {
-                                        defaultValue: 'Saving...',
-                                      })
-                                    : t('adminDashboard.save', {
-                                        defaultValue: 'Save',
-                                      })}
-                                </button>
-                              </div>
-                            </div>
+                                <div className="admin-dashboard__tx-admins-modal-foot">
+                                  <button
+                                    type="button"
+                                    onClick={() => setTopbarAdminModalOpen(false)}
+                                    disabled={topbarAdminSaving}
+                                  >
+                                    {t('adminDashboard.cancel', {
+                                      defaultValue: 'Cancel',
+                                    })}
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    className="admin-dashboard__tx-admins-save"
+                                    disabled={
+                                      topbarAdminSaving ||
+                                      !isValidDiscordSnowflake(topbarAdminForm.discordId)
+                                    }
+                                  >
+                                    {topbarAdminSaving
+                                      ? t('adminDashboard.saving', {
+                                          defaultValue: 'Saving...',
+                                        })
+                                      : t('adminDashboard.save', {
+                                          defaultValue: 'Save',
+                                        })}
+                                  </button>
+                                </div>
+                              </form>
+                            </ModalDialog>
                           </div>
                         )}
                       </section>
@@ -6921,7 +6931,21 @@ const AdminDashboard = () => {
                                   <td>{player.userId}</td>
                                   <td>{player.actorId || '-'}</td>
                                   <td>
-                                    <span>{player.actorName || '-'}</span>
+                                    <button
+                                      type="button"
+                                      className="admin-dashboard__profile-link"
+                                      data-testid={`admin-profile-btn-${player.userId}`}
+                                      onClick={() => {
+                                        setProfileModalUserId(player.userId);
+                                        setProfileModalName(
+                                          player.actorName ||
+                                            `userId=${player.userId}`,
+                                        );
+                                      }}
+                                    >
+                                      {player.actorName ||
+                                        `userId=${player.userId}`}
+                                    </button>
                                     {muteEntry && (
                                       <span
                                         className="admin-dashboard__muted-badge"
@@ -6952,6 +6976,7 @@ const AdminDashboard = () => {
                                     {formatAdminPos(player.pos)}
                                   </td>
                                   <td className="admin-dashboard__actions-cell">
+                                    <div className="admin-dashboard__player-actions">
                                     <button
                                       type="button"
                                       className="admin-dashboard__kick-btn"
@@ -6992,9 +7017,44 @@ const AdminDashboard = () => {
                                     >
                                       {t('adminDashboard.mute')}
                                     </button>
+                                      {capabilities.canWarn && (
                                     <button
                                       type="button"
+                                          className="admin-dashboard__msg-btn admin-dashboard__warn-btn"
+                                          data-testid={`admin-warn-btn-${player.userId}`}
+                                          onClick={() =>
+                                            openWarnDialog(
+                                              player.userId,
+                                              player.actorName ||
+                                                `userId=${player.userId}`,
+                                            )
+                                          }
+                                        >
+                                          {t('adminDashboard.warn', {
+                                            defaultValue: 'Warnen',
+                                          })}
+                                        </button>
+                                      )}
+                                      {capabilities.canViewLogs && (
+                                        <button
+                                          type="button"
                                       className="admin-dashboard__msg-btn"
+                                          data-testid={`admin-history-btn-${player.userId}`}
+                                          onClick={() =>
+                                            openTopbarHistorySearch({
+                                              search: String(player.userId),
+                                              mode: 'player',
+                                            })
+                                          }
+                                        >
+                                          {t('adminDashboard.topTx_history', {
+                                            defaultValue: 'History',
+                                          })}
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="admin-dashboard__msg-btn"
                                       data-testid={`admin-msg-btn-${player.userId}`}
                                       onClick={() => {
                                         setSendMsgTargetId(player.userId);
@@ -7028,6 +7088,7 @@ const AdminDashboard = () => {
                                         defaultValue: 'Inventory',
                                       })}
                                     </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -7737,12 +7798,13 @@ const AdminDashboard = () => {
                                       style={{ marginLeft: 'auto' }}
                                       onClick={() =>
                                         openTopbarHistorySearch({
-                                          search: extractHistoryUserIdFromLog(
-                                            entry,
-                                          ),
+                                          search:
+                                            extractHistoryUserIdFromLog(entry),
                                           mode: 'player',
                                           actionType:
-                                            inferHistoryActionTypeFromLog(entry),
+                                            inferHistoryActionTypeFromLog(
+                                            entry,
+                                          ),
                                         })
                                       }
                                     >
@@ -8214,6 +8276,7 @@ const AdminDashboard = () => {
                     <div
                       className="admin-dashboard__cfg-tabs"
                       role="tablist"
+                      onKeyDown={handleTabNavigation}
                       aria-label={t('adminDashboard.cfgEditorTitle')}
                     >
                       {(
@@ -8228,7 +8291,14 @@ const AdminDashboard = () => {
                           key={tab}
                           type="button"
                           role="tab"
+                          id={`admin-cfg-tab-${tab}`}
+                          aria-controls={
+                            cfgEditorTab === tab
+                              ? `admin-cfg-panel-${tab}`
+                              : undefined
+                          }
                           aria-selected={cfgEditorTab === tab}
+                          tabIndex={cfgEditorTab === tab ? 0 : -1}
                           className={`admin-dashboard__cfg-tab${
                             cfgEditorTab === tab
                               ? ' admin-dashboard__cfg-tab--active'
@@ -8242,7 +8312,9 @@ const AdminDashboard = () => {
                     </div>
 
                     {cfgEditorTab === 'general' && (
-                      <div className="admin-dashboard__cfg-form-grid">
+                      <div className="admin-dashboard__cfg-form-grid"
+                        role="tabpanel" id="admin-cfg-panel-general"
+                        aria-labelledby="admin-cfg-tab-general" tabIndex={0}>
                         <label className="admin-dashboard__cfg-field">
                           <span>{t('adminDashboard.cfgServerName')}</span>
                           <input
@@ -8398,7 +8470,9 @@ const AdminDashboard = () => {
                           <input
                             type="text"
                             className="admin-dashboard__search-input"
-                            placeholder={t('adminDashboard.cfgSupervisorStopCommandPlaceholder')}
+                              placeholder={t(
+                                'adminDashboard.cfgSupervisorStopCommandPlaceholder',
+                              )}
                             value={cfgForm.supervisorStopCommand}
                             onChange={(e) =>
                               setCfgForm((prev) => ({
@@ -8413,7 +8487,9 @@ const AdminDashboard = () => {
                           <input
                             type="text"
                             className="admin-dashboard__search-input"
-                            placeholder={t('adminDashboard.cfgSupervisorRestartCommandPlaceholder')}
+                              placeholder={t(
+                                'adminDashboard.cfgSupervisorRestartCommandPlaceholder',
+                              )}
                             value={cfgForm.supervisorRestartCommand}
                             onChange={(e) =>
                               setCfgForm((prev) => ({
@@ -8452,7 +8528,9 @@ const AdminDashboard = () => {
                     )}
 
                     {cfgEditorTab === 'access' && (
-                      <div className="admin-dashboard__cfg-form-grid">
+                      <div className="admin-dashboard__cfg-form-grid"
+                        role="tabpanel" id="admin-cfg-panel-access"
+                        aria-labelledby="admin-cfg-tab-access" tabIndex={0}>
                         <label className="admin-dashboard__cfg-check">
                           <input
                             type="checkbox"
@@ -8490,7 +8568,9 @@ const AdminDashboard = () => {
                               {t('adminDashboard.cfgJoinMode_none')}
                             </option>
                             <option value="approvedLicense">
-                              {t('adminDashboard.cfgJoinMode_approvedLicense')}
+                                {t(
+                                  'adminDashboard.cfgJoinMode_approvedLicense',
+                                )}
                             </option>
                             <option value="discordMember">
                               {t('adminDashboard.cfgJoinMode_discordMember')}
@@ -8634,7 +8714,9 @@ const AdminDashboard = () => {
                     )}
 
                     {cfgEditorTab === 'inventory' && (
-                      <>
+                      <div className="admin-dashboard__cfg-tabpanel"
+                        role="tabpanel" id="admin-cfg-panel-inventory"
+                        aria-labelledby="admin-cfg-tab-inventory" tabIndex={0}>
                         <div className="admin-dashboard__cfg-inventory">
                           <h4 className="admin-dashboard__section-subtitle">
                             {t('adminDashboard.cfgStartSetup')}
@@ -8907,6 +8989,10 @@ const AdminDashboard = () => {
                             {t('adminDashboard.cfgStarterInventory')}
                           </h4>
                           <div className="admin-dashboard__cfg-inventory-controls">
+                              <label className="admin-dashboard__cfg-field">
+                                <span>
+                                  {t('adminDashboard.cfgItemCategory')}
+                                </span>
                             <select
                               className="admin-dashboard__log-select"
                               value={inventoryCategory}
@@ -8918,11 +9004,15 @@ const AdminDashboard = () => {
                             >
                               {ITEM_CATEGORIES.map((category) => (
                                 <option key={category} value={category}>
-                                  {t(`adminDashboard.itemCategory_${category}`)}
+                                      {t(
+                                        `adminDashboard.itemCategory_${category}`,
+                                      )}
                                 </option>
                               ))}
                             </select>
-
+                              </label>
+                              <label className="admin-dashboard__cfg-field">
+                                <span>{t('adminDashboard.cfgItem')}</span>
                             <select
                               className="admin-dashboard__log-select"
                               value={inventoryItemCode}
@@ -8939,7 +9029,11 @@ const AdminDashboard = () => {
                                 })} (${item.codeHex})`}</option>
                               ))}
                             </select>
-
+                              </label>
+                              <label className="admin-dashboard__cfg-field">
+                                <span>
+                                  {t('adminDashboard.cfgItemCodePlaceholder')}
+                                </span>
                             <input
                               className="admin-dashboard__search-input"
                               type="text"
@@ -8951,16 +9045,21 @@ const AdminDashboard = () => {
                                 setInventoryCustomCode(e.target.value)
                               }
                             />
-
+                              </label>
+                              <label className="admin-dashboard__cfg-field">
+                                <span>{t('adminDashboard.cfgCount')}</span>
                             <input
                               className="admin-dashboard__search-input"
                               type="number"
                               min={1}
                               value={inventoryCount}
                               onChange={(e) =>
-                                setInventoryCount(Number(e.target.value) || 1)
+                                    setInventoryCount(
+                                      Number(e.target.value) || 1,
+                                    )
                               }
                             />
+                              </label>
 
                             <label className="admin-dashboard__cfg-check">
                               <input
@@ -8994,7 +9093,12 @@ const AdminDashboard = () => {
                             </button>
                           </div>
 
-                          <div className="admin-dashboard__table-wrapper">
+                          <div
+                            className="admin-dashboard__table-wrapper"
+                            tabIndex={0}
+                            role="region"
+                            aria-label={t('adminDashboard.cfgStarterInventory')}
+                          >
                             <table className="admin-dashboard__table">
                               <thead>
                                 <tr>
@@ -9015,8 +9119,11 @@ const AdminDashboard = () => {
                                             catalogNameByBaseId.get(
                                               entry.baseId,
                                             ) ||
-                                            t('adminDashboard.cfgCustomItem'),
-                                        })}
+                                                t(
+                                                  'adminDashboard.cfgCustomItem',
+                                                ),
+                                            },
+                                          )}
                                       </td>
                                       <td>{toCodeHex(entry.baseId)}</td>
                                       <td>{entry.count}</td>
@@ -9046,10 +9153,13 @@ const AdminDashboard = () => {
                             </table>
                           </div>
                         </div>
-                      </>
+                      </div>
                     )}
 
                     {cfgEditorTab === 'json' && (
+                      <div className="admin-dashboard__cfg-tabpanel"
+                        role="tabpanel" id="admin-cfg-panel-json"
+                        aria-labelledby="admin-cfg-tab-json" tabIndex={0}>
                       <textarea
                         className="admin-dashboard__cfg-editor"
                         value={cfgEditorText}
@@ -9057,8 +9167,9 @@ const AdminDashboard = () => {
                         spellCheck={false}
                         aria-label={t('adminDashboard.cfgEditorTitle')}
                       />
+                      </div>
                     )}
-                    <div className="admin-dashboard__cfg-status">
+                    <div className="admin-dashboard__cfg-status" role="status">
                       {cfgEditorStatus}
                     </div>
                   </div>
@@ -9164,7 +9275,7 @@ const AdminDashboard = () => {
           </aside>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   );
 };
 

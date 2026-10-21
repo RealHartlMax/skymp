@@ -3,7 +3,7 @@ $admin-card: #182833;
 $admin-text: #e6f0f2;
 $admin-muted: #9db4bb;
 $admin-accent: #19b47a;
-$admin-warn: #d85d5d;
+$admin-warn: #ff9999;
 $admin-line: #2c4552;
 
 .admin-overlay {
@@ -1590,7 +1590,7 @@ $admin-line: #2c4552;
   &__tx-whitelist-approve {
     border: 1px solid rgba(40, 208, 132, 0.52);
     background: rgba(40, 208, 132, 0.86);
-    color: #f8fffc;
+    color: #062818;
     border-radius: 7px;
     min-height: 38px;
     padding: 0 12px;
@@ -1666,7 +1666,7 @@ $admin-line: #2c4552;
   &__tx-admins-add {
     border: 1px solid rgba(40, 208, 132, 0.55);
     background: rgba(40, 208, 132, 0.84);
-    color: #f7fffc;
+    color: #062818;
     border-radius: 7px;
     min-height: 34px;
     padding: 0 12px;
@@ -1817,14 +1817,32 @@ $admin-line: #2c4552;
 
   &__tx-admins-modal {
     width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    display: flex;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: #252a33;
     box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
     overflow: hidden;
+
+    form {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+    }
+
+    :focus-visible {
+      outline: 2px solid #7ee2bf;
+      outline-offset: 2px;
+    }
   }
 
   &__tx-admins-modal-head {
+    flex-shrink: 0;
+    gap: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1848,6 +1866,8 @@ $admin-line: #2c4552;
   }
 
   &__tx-admins-modal-body {
+    min-height: 0;
+    overflow-y: auto;
     padding: 14px 16px;
     display: grid;
     gap: 12px;
@@ -1864,6 +1884,8 @@ $admin-line: #2c4552;
 
     input,
     select {
+      box-sizing: border-box;
+      min-width: 0;
       width: 100%;
       min-height: 38px;
       border-radius: 6px;
@@ -1889,6 +1911,8 @@ $admin-line: #2c4552;
   }
 
   &__tx-admins-modal-foot {
+    flex-shrink: 0;
+    flex-wrap: wrap;
     padding: 12px 16px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
@@ -1909,7 +1933,14 @@ $admin-line: #2c4552;
   &__tx-admins-save {
     border-color: rgba(34, 203, 129, 0.5) !important;
     background: #20bc72 !important;
-    color: #f8fff9 !important;
+    color: #062818 !important;
+  }
+
+  &__form-error {
+    color: #ffb3b3;
+    margin: 0;
+    overflow-wrap: anywhere;
+    &:empty { display: none; }
   }
 
   // ---------------------------------------------------------------------------
@@ -1927,14 +1958,27 @@ $admin-line: #2c4552;
 
   &__tx-whitelist-modal {
     width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    display: flex;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: #252a33;
     box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
     overflow: hidden;
+
+    form {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+    }
   }
 
   &__tx-whitelist-modal-head {
+    flex-shrink: 0;
+    gap: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1958,6 +2002,8 @@ $admin-line: #2c4552;
   }
 
   &__tx-whitelist-modal-body {
+    min-height: 0;
+    overflow-y: auto;
     padding: 14px 16px;
     display: grid;
     gap: 12px;
@@ -1974,6 +2020,8 @@ $admin-line: #2c4552;
       gap: 5px;
 
       input {
+        box-sizing: border-box;
+        min-width: 0;
         width: 100%;
         min-height: 38px;
         border-radius: 6px;
@@ -1998,6 +2046,8 @@ $admin-line: #2c4552;
   }
 
   &__tx-whitelist-modal-foot {
+    flex-shrink: 0;
+    flex-wrap: wrap;
     padding: 12px 16px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
@@ -2023,7 +2073,7 @@ $admin-line: #2c4552;
   &__tx-whitelist-submit {
     border-color: rgba(34, 203, 129, 0.5) !important;
     background: #20bc72 !important;
-    color: #f8fff9 !important;
+    color: #062818 !important;
 
     &:disabled {
       opacity: 0.55;
@@ -2458,7 +2508,16 @@ $admin-line: #2c4552;
     }
   }
 
+  &__cfg-tabpanel {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
   &__cfg-field {
+    min-width: 0;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -2522,6 +2581,7 @@ $admin-line: #2c4552;
 
   &__cfg-editor {
     width: 100%;
+    box-sizing: border-box;
     min-height: 520px;
     resize: vertical;
     border-radius: 10px;
@@ -2540,6 +2600,7 @@ $admin-line: #2c4552;
   }
 
   &__cfg-status {
+    overflow-wrap: anywhere;
     font-size: 12px;
     color: $admin-muted;
     padding-top: 6px;
@@ -3171,7 +3232,7 @@ $admin-line: #2c4552;
   &__ban-btn {
     background: rgba(#e07b40, 0.1);
     border: 1px solid rgba(#e07b40, 0.35);
-    color: #e07b40;
+    color: #ffad7a;
     border-radius: 6px;
     padding: 4px 12px;
     font-size: 12px;
@@ -4125,6 +4186,136 @@ $admin-line: #2c4552;
   }
 }
 
+// Child dialogs remain above the dashboard and fit narrow/short viewports.
+.admin-dashboard__warn-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.admin-dashboard__warn-modal {
+  box-sizing: border-box;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: $admin-bg;
+  color: $admin-text;
+  border: 1px solid $admin-line;
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  input, select, textarea {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 8px;
+    color: $admin-text;
+    background: $admin-card;
+    border: 1px solid $admin-line;
+    border-radius: 6px;
+  }
+
+  button {
+    min-height: 36px;
+    padding: 6px 10px;
+    color: $admin-text;
+    background: $admin-card;
+    border: 1px solid $admin-line;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  :is(button, input, select, textarea, a, [role='tab']):focus-visible {
+    outline: 2px solid #67ead3;
+    outline-offset: 2px;
+  }
+}
+
+.admin-dashboard__warn-modal-head,
+.admin-dashboard__warn-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 12px 16px;
+
+  h3 { margin: 0; }
+}
+
+.admin-dashboard__warn-modal-body,
+.admin-dashboard__profile-body {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+  flex: 1;
+}
+
+.admin-dashboard__warn-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  label { display: grid; gap: 6px; }
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 8px;
+    color: $admin-text;
+    background: $admin-card;
+    border: 1px solid $admin-line;
+    border-radius: 6px;
+  }
+}
+
+.admin-dashboard__profile-modal { width: min(600px, 100%); }
+.admin-dashboard__profile-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-dashboard__profile-tabs { overflow-x: auto; }
+.admin-dashboard__table td.admin-dashboard__actions-cell { display: table-cell; min-width: 300px; width: auto; }
+.admin-dashboard__player-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-dashboard__warn-btn { color: #ffda70; }
+.admin-dashboard__profile-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #9be4e4;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.admin-dashboard__topnav-tabs { display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; }
+
+.admin-dashboard__close-btn {
+  min-height: 40px;
+  padding: 8px 16px;
+  color: $admin-text;
+  background: $admin-card;
+  border: 1px solid $admin-line;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-overlay :is(button, input, select, textarea, a, [tabindex]):focus-visible {
+  outline: 2px solid #67ead3;
+  outline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   .admin-dashboard {
     padding: 20px 16px;
@@ -4159,12 +4350,40 @@ $admin-line: #2c4552;
 
 @media (max-width: 640px) {
   .admin-overlay {
+    box-sizing: border-box;
     padding: 12px 8px;
   }
 
   .admin-dashboard {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
     border-radius: 10px;
     padding: 14px 10px;
+
+    &__topbar, &__chrome, &__main { flex-shrink: 0; }
+    &__brand { min-width: 0; }
+    &__brand-text { min-width: 0; overflow-wrap: anywhere; }
+    &__main-header { flex-wrap: wrap; }
+    &__main-title { font-size: 28px; overflow-wrap: anywhere; }
+    &__search-row { flex-wrap: wrap; align-items: stretch; }
+    &__search-input { flex: 1 1 100%; min-width: 0; width: 100%; }
+    &__chrome { display: flex; flex-direction: column; flex: none; overflow: visible; padding: 12px 0; }
+    &__main, &__sidebar, &__rightbar { overflow: visible; }
+    &__nav-list { flex-direction: row; overflow-x: auto; }
+    &__nav-item { flex: 0 0 auto; width: auto; white-space: nowrap; font-size: 14px; }
+    &__server-name { font-size: 26px; overflow-wrap: anywhere; }
+    &__table-wrap { max-width: 100%; overflow-x: auto; }
+    &__tx-admins-head { flex-wrap: wrap; padding: 12px; }
+    &__tx-admins-head h4 { font-size: 26px; }
+    &__tx-admins-table-wrap { padding: 12px; }
+    &__tx-whitelist-panel-foot { flex-wrap: wrap; }
+    &__tx-whitelist-search-wrap { min-width: 0; max-width: 100%; width: 100%; }
+    &__tx-whitelist-panel-body--empty { font-size: 26px; }
+    &__panel-toolbar { flex-direction: column; align-items: stretch; }
+    &__panel-toolbar-right { justify-content: flex-start; }
+    input, select, textarea { box-sizing: border-box; max-width: 100%; }
 
     &__title {
       font-size: 20px;
@@ -4200,3 +4419,5 @@ $admin-line: #2c4552;
     }
   }
 }
+
+.admin-dashboard input::placeholder { font-family: inherit; font-size: 13px; }

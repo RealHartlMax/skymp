@@ -10,8 +10,94 @@ This repo contains GUI demo for Skyrim Multiplayer. Original chat interface by *
 - `npm run test:api` runs API integration checks for server list endpoint handling.
 - `npm run test:bundle` verifies the production budget guard, including lazy chunks and development-mode behavior.
 - `npm run test:e2e` runs optional Playwright smoke test (if Playwright is installed).
+- `npm run test:a11y` extends the smoke test with mobile layout, axe WCAG checks, dialog focus and keyboard navigation.
 
 If you start a live-reload server and Skyrim Multiplayer server on the same machine, then live-reload would work in the game.
+
+## Mobile And Keyboard Accessibility
+
+Launcher controls stack at narrow widths, with scrollable content instead of
+clipped actions. Wide data tables scroll inside their own containers. The admin
+dashboard uses a vertically scrollable layout at phone widths. Player profiles
+open from the player name in the existing player list; there is no duplicate
+player table in the heading.
+
+Launcher, dashboard, update, warn, player-profile, admin-user and whitelist dialogs share focus handling:
+Tab/Shift+Tab stay in the active dialog, Escape closes the top dialog, and focus
+returns to its opener. Background controls are inert while a modal is open.
+Profile, dashboard and configuration tabs support Left/Right and Home/End.
+Close controls and form fields have accessible names; new labels are included
+in all six locales. Configuration results use a live status message. The
+inventory table's scroll area is also reachable by keyboard.
+
+Admin-user forms support Enter to save and Escape to cancel. During saving,
+fields and close controls are disabled. API failures remain in the dialog and
+preserve the entered values. Dialog bodies scroll when viewport height is limited.
+Whitelist approval uses the same behavior and validates the `type:value`
+identifier before writing. Its panel search is named and its entry table can be
+scrolled by keyboard.
+
+The server-rendered `/admin` login, initial setup and legacy migration screens
+have visible focus, announced errors and a scrollable layout. Pending requests
+disable form fields and competing actions. Setup declares password requirements;
+migration labels the old and new passwords separately. The German document
+language matches the current server template.
+
+The in-game sign-in uses the client `AuthService` OAuth widget, rendered by
+`components/WidgetForm`. The unused email/password login/register demos were
+removed. On startup, the old `localStorage.password` key is removed; OAuth
+session storage in the native client is unaffected. Shared controls keep their
+existing callbacks, with real disabled buttons, associated input labels and
+native checkboxes. Game forms scroll on short screens, wrap long server names
+and retain focus when client status updates arrive. Login comments use a live
+status region. The existing shared control skin moved to
+`components/WidgetForm/legacyControls.scss`.
+
+Start `npm run watch`, then run the accessibility checks in another terminal
+using its printed port (or serve the production output and use that URL):
+
+```powershell
+$env:PLAYWRIGHT_E2E_URL = 'http://127.0.0.1:1234/?devUi=1'
+npm run test:a11y
+```
+
+The test uses simulated API/WebSocket data. It checks light/dark launcher,
+players, respawn, events, warning, all three profile tabs, admin-user
+create/edit/error states, all four configuration tabs, whitelist panel/dialog/
+error/populated states, admin login/error/setup/migration, and three in-game
+widget states at **360px and 1280px** (54 axe checks), plus focus wrapping/restoration, nested Escape
+handling and tab keys. The regular smoke also checks user creation, role
+editing, invalid Discord IDs, rejected saves, cancellation without a write,
+and preservation of unrelated configuration JSON fields during saving. It also
+checks whitelist validation/retry/cancel/refresh and admin login, duplicate
+pending submissions, setup validation, migration payloads and the Discord entry
+redirect. Short viewport checks keep form actions reachable at 360px by 480px.
+`scripts/game-widget-checks.js` extracts the actual widget factory from the
+client source and checks OAuth/Play/server-selection events, focus during
+refresh, old-password cleanup, input callbacks and checkbox keyboard behavior.
+Its native client bridge is simulated; it does not authenticate a real account.
+Missing Playwright fails this check instead of reporting a successful skip.
+JSON findings and screenshots are saved in `.cache/accessibility/` (gitignored).
+Reports retain axe's `incomplete` findings for manual review. These checks do not
+replace screen-reader testing, checks of other remaining forms, a real Discord
+OAuth callback, or a Skyrim/CEF session.
+Test writes are intercepted by `scripts/admin-form-checks.js` and
+`scripts/admin-auth-checks.js`; they never update real accounts or settings.
+Authentication checks render `skymp5-server/ts/adminLoginPage.ts`, the same
+template used by the server's `/admin` route, and intercept its API requests.
+
+When adding a modal, use `ModalDialog` with an accessible name and `onClose`
+instead of adding a global Escape listener. Keep wide content inside a scroll
+container and ensure the dialog can shrink vertically.
+
+For the intended Linux VPS with 12 vCores / 24 GB RAM, see
+[Linux VPS build and operation](../docs/docs_linux_vps.md). Build the native server
+for Linux; the frontend assets are portable, while a Windows `scam_native.node`
+is not. The client plugin is distributed separately to Windows game clients.
+The paired server test packages dated 2026-10-19 include the same production UI
+on both operating systems. Native build and runtime results are recorded in
+[the validation report](../docs/docs_native_validation_2026_10_19.md); actual
+VPS deployment and the Skyrim/CEF client test remain separate steps.
 
 ## Production Build And Bundle Budget
 

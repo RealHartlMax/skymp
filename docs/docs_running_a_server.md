@@ -89,7 +89,13 @@ If you use `update_server.ps1 -StartAfter`, the script starts the packaged `laun
 
 ### Linux
 
-Linux server support is prepared for source builds.
+Für einen eigenen Linux-VPS gibt es zusätzlich die Anleitung
+[Linux-VPS: Build und Betrieb](docs_linux_vps.md), einschließlich Linux-Nativbuild,
+Frontend-Paketierung und systemd-Beispiel für 12 vCores / 24 GB RAM.
+
+Linux server support includes native source builds. The paired local test packages
+for Ubuntu 26.04 x86_64 and Windows x64, with their own launchers and test credentials,
+are described in [Linux VPS build and operation](docs_linux_vps.md).
 
 If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
 
@@ -99,9 +105,10 @@ If you add `--start-after`, the update script starts the packaged `launch_server
 
 `launch_server.sh` validates runtime dependencies on startup: if `node` is missing it attempts package-manager based installation, and if `node_modules` is missing it installs runtime packages automatically.
 
-Client support remains Windows-first, but the dedicated server can be prepared for Linux environments.
-
-Ubuntu 24.04 is a good target for production hosting. The current Linux path is best aligned with glibc-based systems such as Ubuntu rather than Alpine or Arch.
+Client support remains Windows-first. The dedicated server is built separately
+for Linux. The local test target is Ubuntu 26.04 x86_64; see the
+[native validation report](docs_native_validation_2026_10_19.md) for the precise
+build/runtime environments and remaining checks.
 
 ## Admin Dashboard
 
