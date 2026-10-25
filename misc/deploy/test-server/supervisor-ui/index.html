@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SkyMP · Serversteuerung</title><link rel="stylesheet" href="/supervisor-assets/app.css"><script src="/supervisor-assets/app.js" defer></script></head>
+<body><main><p class="brand">SKYMP SERVER</p><h1>Serversteuerung</h1><p>Die Verwaltung bleibt erreichbar, während der Game-Server gestoppt ist oder neu startet.</p><p id="status" role="status" aria-live="polite">Status wird geladen …</p><p id="error" role="alert"></p>
+<form id="login" hidden><h2>Mit deinem Betreiberkonto anmelden</h2><label for="user">Benutzername</label><input id="user" autocomplete="username" required maxlength="128"><label for="password">Passwort</label><input id="password" type="password" autocomplete="current-password" required maxlength="1024"><button type="submit">Anmelden</button></form>
+<section id="controls" hidden aria-label="Game-Server steuern"><button id="start" type="button">Game-Server starten</button><button id="restart" type="button">Game-Server neu starten</button><button id="logout" class="secondary" type="button">Abmelden</button><p class="muted">Nach dem Start öffnet sich das Admin-Dashboard. Nach einem Game-Server-Neustart kann eine erneute Anmeldung erforderlich sein.</p></section>
+</main></body></html>

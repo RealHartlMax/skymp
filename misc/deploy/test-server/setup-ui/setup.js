@@ -3,7 +3,19 @@
   const $ = id => document.getElementById(id);
   const steps = ['unlock', 'server', 'data', 'account', 'done'];
   let csrf, details, initialized = false;
-  const values = () => Object.fromEntries(new FormData($('server-form')));
+  const values = () => ({
+    ...Object.fromEntries(new FormData($('server-form'))),
+    launcher: {
+      steamApiKey: $('steamApiKey').value.trim(), authMode: $('authMode').value, master: $('master').value.trim(), serverUid: $('serverUid').value.trim(),
+      masterKey: $('masterKey').value, resourcesEnabled: $('resourcesEnabled').value === 'true',
+      resourceDirectory: $('resourceDirectory').value.trim(), runtimeSource: $('runtimeSource').value.trim(),
+    },
+  });
+  function authNote() {
+    const online = $('authMode').value === 'online';
+    $('serverUid').required = online;
+    $('masterKey').required = online && !details?.launcher?.hasMasterKey;
+  }
   const error = message => { $('error').textContent = message; };
   function show(step, focus = true) {
     error('');
@@ -64,12 +76,18 @@
       const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
       $('access').value = local ? 'local' : 'public';
       if (!local) $('publicHost').value = location.hostname;
-      initialized = true; accessNote();
+      for (const [name, value] of Object.entries(details.launcher)) {
+        if ($(name)) $(name).value = String(value);
+      }
+      $('steamApiKey').placeholder = details.launcher.hasSteamApiKey ? 'Vorhandenen Steam-Key beibehalten' : 'Steam Web API Key eingeben';
+      $('masterKey').placeholder = details.launcher.hasMasterKey ? 'Vorhandenen Schlüssel beibehalten' : 'Privaten Schlüssel eingeben';
+      initialized = true; accessNote(); authNote();
     }
     $('complete').textContent = details.startAfterSetup ? 'Einrichtung abschließen und Server starten' : 'Einrichtung abschließen';
     renderFiles(details.installation);
   }
   $('access').addEventListener('change', accessNote);
+  $('authMode').addEventListener('change', authNote);
   $('unlock-form').addEventListener('submit', event => {
     event.preventDefault();
     busy(event.submitter, async () => {
@@ -104,7 +122,7 @@
       if ($('password').value !== $('passwordConfirm').value) throw new Error('Die beiden Passwörter stimmen nicht überein.');
       const input = { ...values(), ...Object.fromEntries(new FormData($('account-form'))) };
       const result = await api('complete', input);
-      $('account-form').reset(); input.password = input.passwordConfirm = '';
+      $('account-form').reset(); input.password = input.passwordConfirm = ''; input.launcher.masterKey = ''; $('masterKey').value = '';
       $('dashboard-link').href = result.dashboard;
       $('done-connection').textContent = `Spielport: UDP ${result.port}. Dashboard: TCP ${result.uiPort}. ${result.access === 'public' ? 'Beide Ports in der VPS- und Provider-Firewall freigeben.' : ''}`;
       show('done');

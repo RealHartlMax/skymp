@@ -11,7 +11,9 @@ BSA-Archive automatisch an. Nach einer Aenderung der Pluginliste neu starten.
 Der Launcher fragt `GET /api/launcher/manifest` am HTTP-Port ab. Er prueft
 Dateigroesse und SHA-256, installiert fehlende Dateien und startet SKSE erst
 nach erfolgreicher Vorbereitung. Spieler brauchen keinen Nexus-/Vortex-Zugang.
-Die passende eigene Skyrim-/SKSE-Installation bleibt Voraussetzung.
+Die passende eigene Skyrim-Installation bleibt Voraussetzung. SKSE kann der
+aktuelle Launcher aus einem vollstaendigen versionierten Clientpaket beziehen;
+bei aelteren Paketen muss es passend vorinstalliert sein.
 
 Hier nur das fertig ausgewaehlte Modpaket veroeffentlichen, keine ZIP-/7z-
 Archive, Bethesda-Spieldateien, Admin-Zugaenge oder Serverkonfiguration.

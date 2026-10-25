@@ -78,6 +78,7 @@ const {
   AppErrorBoundary,
 } = require('../src/components/AppErrorBoundary/AppErrorBoundary.tsx');
 const AdminDashboard = require('../src/features/adminDashboard').default;
+const { performancePath, performanceValue } = require('../src/features/adminDashboard/ServerPerformancePanel.tsx');
 
 const run = (name, fn) => {
   try {
@@ -93,6 +94,63 @@ const render = (component) => renderToStaticMarkup(component);
 
 run('AdminDashboard initializes while hidden without crashing the app', () => {
   assert.equal(render(React.createElement(AdminDashboard)), '');
+});
+
+run('Server performance charts distinguish zero load from unavailable telemetry', () => {
+  const point = { at: 60000, players: 0, game: null, web: { cpuPercent: 0, rssBytes: 128 * 1048576, eventLoopMs: 20 }, ticks: { count: 0, averageMs: null, maxMs: 0 } };
+  assert.equal(performanceValue(point, 'players'), 0);
+  assert.equal(performanceValue(point, 'cpu'), null);
+  assert.equal(performanceValue(point, 'cpu', true), 0);
+  assert.equal(performanceValue(point, 'memory', true), 128);
+  assert.equal(performanceValue(point, 'tick'), null);
+});
+
+run('Server performance paths break at offline gaps and missing measurements', () => {
+  const point = at => ({ at, players: 2 });
+  const points = [point(0), point(60000), point(180000), { at: 240000, players: null }, point(300000)];
+  const path = performancePath(points, 'players', false, 0, 300000, 4);
+  assert.equal((path.match(/M/g) || []).length, 3);
+  assert.equal((path.match(/L/g) || []).length, 1);
+  assert(!path.includes('NaN'));
+  assert.equal(performancePath([point(300000)], 'players', false, 0, 300000, 4, 320), 'M294.00,128.00');
+});
+
+const loginProviders = require('../src/features/adminDashboard/loginProviders.ts');
+run('Login providers distinguish Worlds, Legacy, custom services and offline identities', () => {
+  assert.equal(loginProviders.getLoginProvider('https://api.skymp-worlds.net/', false), 'worlds');
+  for (const origin of ['https://gateway.skymp.net', 'https://cloud.skymp.net', 'https://skymp.net']) {
+    assert.equal(loginProviders.getLoginProvider(origin, false), 'legacy');
+  }
+  assert.equal(loginProviders.getLoginProvider('https://gateway.skymp.net.example.org', false), 'custom');
+  assert.equal(loginProviders.getLoginProvider('https://gateway.skymp.net', true), 'offline');
+});
+run('Switching login services cannot forward a previous service key or public ID', () => {
+  const current = { masterUrl: loginProviders.WORLDS_MASTER, masterKey: 'private-worlds-test-key', serverUid: 'worlds-id', offlineMode: false, customSetting: 'preserve' };
+  const legacy = loginProviders.selectLoginProvider(current, 'legacy');
+  assert.equal(legacy.masterUrl, loginProviders.LEGACY_MASTER);
+  assert.equal(legacy.masterKey, ''); assert.equal(legacy.serverUid, '');
+  assert.equal(legacy.customSetting, 'preserve');
+  assert.equal(loginProviders.changeLoginMaster(current, current.masterUrl + '/').masterKey, current.masterKey);
+  const offline = loginProviders.selectLoginProvider(current, 'offline');
+  assert.equal(offline.masterKey, current.masterKey); assert.equal(offline.offlineMode, true);
+  assert.equal(loginProviders.selectLoginProvider(offline, 'worlds').masterKey, current.masterKey);
+  assert.equal(loginProviders.selectLoginProvider(current, 'custom').masterKey, '');
+});
+run('Online login rejects incomplete or unsuitable services while allowing offline tests', () => {
+  const settings = { masterUrl: loginProviders.WORLDS_MASTER, masterKey: 'test-key', serverUid: 'test-id', offlineMode: false };
+  assert.equal(loginProviders.validateLoginSettings(settings), null);
+  assert.equal(loginProviders.validateLoginSettings({ ...settings, masterKey: '' }), 'missingKey');
+  assert.equal(loginProviders.validateLoginSettings({ ...settings, serverUid: '' }), 'missingServerId');
+  for (const masterUrl of ['https://user:secret@example.org', 'https://example.org/path', 'file:///tmp/service', 'https://example.org?token=secret']) {
+    assert.equal(loginProviders.validateLoginSettings({ ...settings, masterUrl }), 'invalidMaster');
+  }
+  assert.equal(loginProviders.validateLoginSettings({ ...settings, masterUrl: '', masterKey: '', offlineMode: true }), null);
+});
+run('Existing restricted account mode is preserved; open aliases stay open', () => {
+  assert.equal(loginProviders.normalizeJoinMode('adminOnly'), 'adminOnly');
+  assert.equal(loginProviders.normalizeJoinMode('discordRoles'), 'discordRoles');
+  assert.equal(loginProviders.normalizeJoinMode('open'), 'none');
+  assert.equal(loginProviders.normalizeJoinMode('none'), 'none');
 });
 
 run('pingClass maps ping buckets', () => {

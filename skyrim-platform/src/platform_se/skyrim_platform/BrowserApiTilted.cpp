@@ -48,11 +48,15 @@ Napi::Value BrowserApiTilted::SetFocused(const Napi::CallbackInfo& info)
   if (v != newFocus) {
     v = newFocus;
 
+    // Browser messages arrive on the JS thread; menu operations use the game task queue.
+    auto tasks = SKSE::GetTaskInterface();
+    if (!tasks) return info.Env().Undefined();
+    tasks->AddTask([newFocus] {
     auto ui = RE::UI::GetSingleton();
     auto msgQ = RE::UIMessageQueue::GetSingleton();
 
     if (!ui || !msgQ) {
-      return info.Env().Undefined();
+      return;
     }
 
     const bool alreadyOpen = ui->IsMenuOpen(RE::CursorMenu::MENU_NAME);
@@ -70,6 +74,7 @@ Napi::Value BrowserApiTilted::SetFocused(const Napi::CallbackInfo& info)
         g_cursorIsOpenByFocus = false;
       }
     }
+    });
   }
   return info.Env().Undefined();
 }

@@ -40,6 +40,7 @@ try {
   assert.equal(settings.listenHost, '0.0.0.0');
   assert.equal(settings.uiListenHost, '0.0.0.0');
   assert.equal(settings.adminUiMasterUser, 'owner');
+  assert.equal(settings.masterKey, '', 'Guest setup must not invent an unregistered master-server credential');
   assert.equal(settings.adminUiUsers.owner.role, 'admin');
   assert.equal(settings.adminUiUsers.moderator.role, 'moderator');
   assert.equal(settings.adminApi.rateLimit, 7);
@@ -53,6 +54,7 @@ try {
   assert(!JSON.stringify(settings).includes(input.password));
   assert(!fs.readFileSync(path.join(dir, 'VERBINDUNG.txt'), 'utf8').includes(input.password));
   assert(!fs.readFileSync(path.join(dir, 'skymp5-client-settings.example.txt'), 'utf8').includes(input.password));
+  assert(!fs.readFileSync(path.join(dir, 'skymp5-client-settings.example.txt'), 'utf8').includes('profileId'), 'Exported address examples must not recommend a client-selected identity');
   if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, 'data/admin-auth.json')).mode & 0o777, 0o600);
   const beforeSettings = fs.readFileSync(path.join(dir, 'server-settings.json'));
   const beforeAuth = fs.readFileSync(path.join(dir, 'data/admin-auth.json'));
@@ -80,6 +82,7 @@ try {
   assert.deepEqual(read(path.join(corrupt, 'data/admin-auth.json')), { user: 'keep' }); checks++;
   const cli = fixture('cli');
   fs.copyFileSync(path.resolve(__dirname, '../deploy/test-server/setup-server.cjs'), path.join(cli, 'setup-server.cjs'));
+  fs.copyFileSync(path.resolve(__dirname, '../deploy/test-server/launcher-connection.cjs'), path.join(cli, 'launcher-connection.cjs'));
   fs.writeFileSync(path.join(cli, 'build-manifest.json'), JSON.stringify({ nodeMinimum: 22, installationMode: 'first-run', platform: `${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}` }));
   assert(!fs.existsSync(path.join(cli, 'data/admin-auth.json')));
   fs.writeFileSync(path.join(cli, 'answers.json'), JSON.stringify(input), { mode: 0o600 });

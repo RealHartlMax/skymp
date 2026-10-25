@@ -22,7 +22,7 @@ inline RE::BSTEventSource<E>* GetEventSource()
 
 #ifdef ENABLE_SKYRIM_AE
 template <class T, class E>
-  requires std::same_as<T, RE::PlayerCharacter>
+  requires (std::same_as<T, RE::PlayerCharacter> && !SingletonSource<T, E> && !HasEvent<T>)
 inline RE::BSTEventSource<E>* GetEventSource()
 {
   return nullptr;

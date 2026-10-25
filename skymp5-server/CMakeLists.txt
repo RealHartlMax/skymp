@@ -296,6 +296,7 @@ message(STATUS "esm_prefix is '${esm_prefix}'")
 # Defaults for custom launcher/master deployments.
 # These can be overridden via -D on CMake configure.
 set(SKYMP_MASTER_URL "https://api.skymp-worlds.net" CACHE STRING "Master API base URL for server heartbeats and session APIs")
+set(SKYMP_RUNTIME_CATALOG_URL "https://update.skymp-worlds.net/client-runtime/catalog.json" CACHE STRING "External client/SKSE catalog offered to the launcher; empty disables the default offer")
 set(SKYMP_MASTER_HEARTBEAT_INTERVAL_MS "15000" CACHE STRING "Heartbeat interval in milliseconds (clamped by runtime to 10-30s)")
 set(SKYMP_DEFAULT_GAMEMODE "" CACHE STRING "Optional default gamemode sent in heartbeats")
 set(SKYMP_DEFAULT_COUNTRY_CODE "" CACHE STRING "Optional default ISO country code sent in heartbeats (e.g. DE)")
@@ -320,6 +321,7 @@ if(TARGET ${PROJECT_NAME})
       -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json
       -DOFFLINE_MODE=${OFFLINE_MODE}
       -DMASTER_URL=${SKYMP_MASTER_URL}
+      -DRUNTIME_CATALOG_URL=${SKYMP_RUNTIME_CATALOG_URL}
       -DMASTER_HEARTBEAT_INTERVAL_MS=${SKYMP_MASTER_HEARTBEAT_INTERVAL_MS}
       -DDEFAULT_GAMEMODE=${SKYMP_DEFAULT_GAMEMODE}
       -DDEFAULT_COUNTRY_CODE=${SKYMP_DEFAULT_COUNTRY_CODE}
@@ -337,6 +339,7 @@ if(TARGET ${PROJECT_NAME})
       -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json
       -DOFFLINE_MODE=${OFFLINE_MODE}
       -DMASTER_URL=${SKYMP_MASTER_URL}
+      -DRUNTIME_CATALOG_URL=${SKYMP_RUNTIME_CATALOG_URL}
       -DMASTER_HEARTBEAT_INTERVAL_MS=${SKYMP_MASTER_HEARTBEAT_INTERVAL_MS}
       -DDEFAULT_GAMEMODE=${SKYMP_DEFAULT_GAMEMODE}
       -DDEFAULT_COUNTRY_CODE=${SKYMP_DEFAULT_COUNTRY_CODE}

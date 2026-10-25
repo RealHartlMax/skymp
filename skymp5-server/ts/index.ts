@@ -1,4 +1,5 @@
 import * as chokidar from 'chokidar';
+import { createGamemodeReloader } from './gamemodeReload';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 
@@ -24,10 +25,12 @@ import * as scampNative from './scampNative';
 import * as ui from './ui';
 import { createScampServer } from './scampNative';
 import { Settings } from './settings';
+import { playerAccessPolicy } from './playerAccess';
 import { DiscordBanSystem } from './systems/discordBanSystem';
 import { Login } from './systems/login';
 import { MasterApiBalanceSystem } from './systems/masterApiBalanceSystem';
 import { MasterClient } from './systems/masterClient';
+import { recordGameTick, setPerformancePlayers } from './serverPerformance';
 import {
   MetricsSystem,
   tickDurationHistogram,
@@ -865,18 +868,12 @@ const setupGamemode = async (
   const absoluteGamemodePath = resolveExistingPath(gamemodePath);
   console.log(`Gamemode path is "${absoluteGamemodePath}"`);
 
-  if (!fs.existsSync(absoluteGamemodePath)) {
-    console.log(
-      `Error during loading a gamemode from "${absoluteGamemodePath}" - file or directory does not exist`,
-    );
-    return;
-  }
-
-  try {
-    requireUncached(absoluteGamemodePath, clear, server);
-  } catch (e) {
-    console.error(e);
-  }
+  const tryReload = createGamemodeReloader(
+    absoluteGamemodePath,
+    () => requireUncached(absoluteGamemodePath, clear, server),
+    (error) => console.error(error),
+  );
+  tryReload();
 
   await bootstrapPlugins(server, pluginOptions);
 
@@ -889,12 +886,8 @@ const setupGamemode = async (
   const numReloads = { n: 0 };
 
   const reloadGamemode = () => {
-    try {
-      requireUncached(absoluteGamemodePath, clear, server);
-      numReloads.n++;
-    } catch (e) {
-      console.error(e);
-    }
+    tryReload();
+    numReloads.n++;
   };
 
   const reloadGamemodeTimeout = function () {
@@ -997,7 +990,7 @@ const main = async () => {
       master,
       port,
       masterKey,
-      offlineMode,
+      offlineMode || playerAccessPolicy(settingsObject.allSettings || {}).mode === 'guest',
     ),
     new MarkerSystem(log),
     new TimeSystem(log, settingsObject.timeScale),
@@ -1025,6 +1018,7 @@ const main = async () => {
 
   let server: any;
   const connectedUsers = new Set<number>();
+  setPerformancePlayers(() => connectedUsers.size);
 
   try {
     server = createScampServer(settingsObject.allSettings);
@@ -1043,7 +1037,8 @@ const main = async () => {
       const endTimerHistogram = tickDurationHistogram.startTimer();
       const endTimerSummary = tickDurationSummary.startTimer();
       try {
-        server.tick();
+        const tickStarted = performance.now();
+        try { server.tick(); } finally { recordGameTick(performance.now() - tickStarted); }
         await new Promise((r) => setTimeout(r, 1));
       } catch (e) {
         console.error(`in server.tick:\n${e.stack}`);

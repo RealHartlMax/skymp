@@ -5,31 +5,90 @@ Diese Anleitung ergänzt den [Serverbetrieb](docs_running_a_server.md) für eine
 Build und Lasttests; eine belastbare Spielerzahl ergibt sich erst aus Messungen
 mit deinem Gamemode, deinen Plugins und der tatsächlichen CPU-Leistung.
 
-## Aktuelle Modpaket-Version vom 21. Oktober 2026
+Für Portregeln und Protokolle siehe [VPS-Ports und Prozesssteuerung](docs_vps_ports_and_process_control.md):
+direkter Test mit **7777/UDP** und **8080/TCP**, dauerhafter Webzugriff empfohlen
+über **443/TCP** mit TLS-Reverse-Proxy. Dort ist auch beschrieben, welche
+Verwaltung beim Stoppen des Game-Servers erreichbar bleibt.
 
-Die neue Version liegt unter `build/releases/2026-10-21-modsync/`:
-`skymp-server-modsync-2026-10-21-linux-x64.tar.gz` und
-`skymp-server-modsync-2026-10-21-windows-x64.zip`. Dazu gehört der separat gebaute
-Windows-Launcher. Die Browser-Ersteinrichtung bleibt enthalten; das neue Backend
-ergänzt `/api/launcher/manifest` mit Zielpfaden, Dateigrößen und SHA-256.
-Weitere Moddateien unter `client-resources/Data/` bereitstellen; eigene Plugins
-bleiben in `data/` und `loadOrder`. Siehe [Modpakete](docs_launcher_modpacks.md).
+## Aktueller Server-Testbuild vom 25. Oktober 2026
 
-Eine eingerichtete VPS-Installation kann nach Sicherung und Serverstopp nur die
-beiden Dateien unter `dist_back/` übernehmen. Die bisherigen nativen Module und
-das Dashboard sind unverändert. **`server-settings.json`, `data/` und `world/`
-behalten.** Die genaue Update-Anleitung liegt als `UPDATE-VPS.md` neben den
-Archiven. Windows-/Linux-Serverstart und die neue API wurden geprüft; ein echter
-Skyrim-/CEF-Spieltest steht weiter aus.
+Die aktuelle Revision r9 liegt unter `build/releases/2026-10-25-server-r9/`:
+`skymp-server-2026-10-25-r9-linux-x64-full.zip` für eine neue Installation und
+`skymp-server-2026-10-25-r9-linux-x64-update.zip` zum Ersetzen der Programmdateien
+eines bestehenden VPS. Das Update-ZIP lässt Konfiguration, Zugänge, `data/`
+einschließlich PEX-Skripten, Welt, Mods, Clientressourcen und eigenen Gamemode aus.
+Details und Entpackbefehl: [Update-Anleitung](docs_packaged_server_update.md).
+Beide ZIPs enthalten dieselben aktuellen Backends und dasselbe Dashboard.
 
-## Browser-Ersteinrichtung (eingeführt am 20. Oktober 2026)
+r8 ergänzt Auth-Policy v2 mit kompakter servergebundener Ticket-Kennung,
+HTTP 409 / `STEAM_POLICY_CHANGED` bei veralteter Launcher-Kennung und der
+Diagnose `STEAM_TICKET_AUDIENCE_MISMATCH`. Nach dem Dienstneustart im aktuellen
+Launcher frisch verbinden und ein neues Ticket abrufen.
+Enthalten bleibt die Steam-Fehlerdiagnose mit festen Codes und bei Ticketablehnung
+eine gekürzte, bereinigte Valve-Erklärung im Serverprotokoll. Beim Austausch
+den gesamten Starter einschließlich Dashboard neu starten; der HTTP-Login
+läuft im Webprozess. Die Ursache der bisherigen VPS-Ablehnung ist damit noch
+nicht bestätigt. Der neue Launcher kommt aus seinem eigenen Repository.
 
-Die ursprünglichen Installationspakete liegen unter `build/releases/2026-10-20-browser-setup/`:
-`skymp-server-browser-setup-2026-10-20-linux-x64.tar.gz` und
-`skymp-server-browser-setup-2026-10-20-windows-x64.zip`. Sie übernehmen die bereits
-gebauten nativen Module und denselben Backend-/Frontend-Stand der Testpakete;
-die neuen Launcher ergänzen einen gemeinsamen Browser-Einrichtungsassistenten.
-Das Manifest nennt den separaten Quell-Snapshot und die Herkunft der Laufzeitdateien.
+Ab r5 ist Steam für jeden Spielerlogin Pflicht. Den Steam Web API Key im
+Browser-Assistenten oder unter CFG/Zugriff & Discord eintragen, Zugangsart
+wählen und den Game-Server neu starten. Gastmodi benötigen kein Worlds-Konto.
+Launcher-EXE und Clientpaket ebenfalls aktualisieren; siehe
+[Steam und Legacy-Login](docs_ingame_login.md). Backend und Dashboard werden getrennt
+gebaut; enthalten sind Browser-PIN-Ersteinrichtung, Mod-API v2, Master-Heartbeat
+und die Launcher-Anbindung im Assistenten und Admin-Dashboard. Ab r4 läuft auch
+der [Discord-Bot](docs_discord_bot.md) unabhängig vom Spiel im Webserver.
+Die unveränderten
+nativen Plattformmodule stammen aus dem bisherigen geprüften Serverstand;
+ihre Herkunft ist im Manifest getrennt vom neuen Backend-/Frontend-Stand erfasst.
+
+Beide Archive wurden entpackt und mit echten Masterdateien auf PIN-Setup,
+Admin-Anmeldung, Dashboard, Launcher-Einstellungen, Moddownload und UDP-Bindung
+geprüft. Der neue Linux-Stand besteht zusätzlich den Starttest unter Ubuntu
+26.04.1 mit Node 22.22.1. Das ist eine lokale Containerprüfung, keine neue
+VPS-Abnahme oder Spielsitzung. `VALIDIERUNG.json` nennt den Umfang und die
+weiterhin teilweise offene historische native Windows-Suite.
+
+Für einen bestehenden Server nach Sicherung und Stopp Backend, Dashboard und
+Setup-Helfer gemäß `UPDATE-VPS.md` neben den neuen Archiven übernehmen.
+**Vorhandene Konfiguration, Admin-Zugänge, Daten, Mods und eigenen Gamemode
+behalten.** Nur `dist_back/` auszutauschen aktualisiert das Dashboard nicht.
+
+Revision r2 ergänzt die automatische Laufzeitprüfung beim Start: Eine fehlende
+oder zu alte Node-Version wird als private, per SHA-256 geprüfte Node-22-LTS-
+Laufzeit unter `.runtime/` installiert. Fehlende Ubuntu-/Debian-Systempakete
+werden gezielt mit root oder nichtinteraktivem sudo installiert. Es erfolgt
+kein vollständiges Betriebssystem-Upgrade und keine Änderung an globalem Node.
+Eine vorhandene private Laufzeit prüft täglich auf Updates derselben LTS-Reihe.
+Ab r3 läuft das vollständige Dashboard als eigener Prozess weiter, wenn der
+Game-Server gestoppt oder neu gestartet wird oder abstürzt. Anmeldung,
+Einstellungen, bisherige Logs und Moddownloads bleiben erhalten. Dashboard-PID
+und WebSockets bleiben bestehen; nur die Game-PID ändert sich. Die Oberfläche
+zeigt den Game-Zustand und bietet bei gestopptem Spiel Starten. Für diese Funktionen
+`start-test-server.sh` oder den Alias `launch_server.sh` verwenden.
+
+Das separate Launcher-Repository ist weiterhin für den Launcher maßgeblich:
+`local-builds/current/` enthält dessen Launcher, versioniertes Clientpaket und
+Webroot-ZIPs. Das neue Serverrelease enthält keine Launcher-EXE und ändert
+dessen bisherige Ausgaben nicht automatisch. Der Steam-Launcher und das
+aktualisierte Runtime-Paket werden getrennt zum r5-Server bereitgestellt.
+
+Die aktuelle Launcher-Ersteinrichtung benötigt das installierte Spiel; ein
+vollständiger Runtime-Katalog kann SKSE und Address Library bereitstellen.
+Neue Client-DLLs und eigenständige Adressdatenbank-Probes liegen vor, ein echter
+Skyrim-/CEF-Spieltest ist weiter offen. [Projektstand](docs_project_status.md),
+[Versionskatalog](docs_launcher_runtime_updates.md) und
+[SkyMP Worlds](docs_launcher_worlds.md) beschreiben die jeweiligen Grenzen.
+
+## Browser-Ersteinrichtung und Modpakete
+
+Browser-PIN-Einrichtung wurde am 20. Oktober eingeführt, die Mod-API am
+21. Oktober. Frühere lokale Buildordner werden nach der r5-Validierung
+entfernt. Die folgenden Schritte beziehen sich auf die aktuellen vollständigen
+r9-Pakete. Bestehende Server nach der [Update-Anleitung](docs_packaged_server_update.md)
+aktualisieren; nicht nur einzelne Backenddateien austauschen. Weitere Moddateien
+unter `client-resources/Data/` bereitstellen; eigene Plugins bleiben in `data/`
+und `loadOrder`. Siehe [Modpakete](docs_launcher_modpacks.md).
 
 Diese Pakete enthalten **keinen vorbereiteten Admin-Zugang**. In ein neues
 Verzeichnis entpacken, die fünf eigenen Masterdateien nach `data/` kopieren und
@@ -67,24 +126,22 @@ Es ist keine interaktive Terminal-Eingabe erforderlich, auch beim Dienststart;
 der Code steht dann im Dienstprotokoll. Nur die Einrichtung starten:
 `node setup-server.cjs`. HTTPS oder ein SSH-Tunnel schützt auch die Ersteinrichtung.
 
-Die älteren Archive mit Terminal-Assistent und die früheren Testpakete wurden
-auf Benutzerwunsch entfernt. Diese Bereinigung behielt den
-Ordner `2026-10-20-browser-setup/`; seine öffentlichen Referenz-Prüfnachweise
-stehen in `native-baseline-evidence.json`, die Bereinigung in `cleanup.json`.
+Die älteren lokalen Buildordner werden nach erfolgreicher r5-Prüfung auf
+Benutzerwunsch entfernt. Die native Basisqualifikation bleibt als
+`native-baseline-evidence.json` beim aktuellen Release erhalten; dessen
+`cleanup.json` protokolliert die Bereinigung.
 Eine bereits laufende VPS-Installation verwendet weiterhin ihre bestehenden
 Einstellungen und Zugangsdaten; die neuen Standarddateien nicht darüber entpacken.
 
 ## Neuinstallation auf Ubuntu
 
 Für den VPS zuerst `uname -m` prüfen: Dieses Linux-Paket benötigt `x86_64`.
-Node.js 22 oder neuer und die fünf eigenen Skyrim-Masterdateien werden benötigt.
+Die Startskripte richten fehlendes Node.js 22+ automatisch ein; die fünf eigenen Skyrim-Masterdateien werden benötigt.
 Die Masterdateien sind in den Archiven nicht enthalten. Unter Ubuntu 26.04:
 
 ```sh
-sudo apt-get update
-sudo apt-get install nodejs
 mkdir ~/skymp-browser-test
-tar -xzf skymp-server-modsync-2026-10-21-linux-x64.tar.gz -C ~/skymp-browser-test
+unzip skymp-server-2026-10-25-r9-linux-x64-full.zip -d ~/skymp-browser-test
 cd ~/skymp-browser-test
 # Skyrim.esm, Update.esm, Dawnguard.esm, HearthFires.esm und Dragonborn.esm nach data/ kopieren.
 sh ./start-test-server.sh

@@ -1,8 +1,7 @@
 diff --git a/include/RE/V/Variable.h b/include/RE/V/Variable.h
-index d1122c8f..ce808717 100644
 --- a/include/RE/V/Variable.h
 +++ b/include/RE/V/Variable.h
-@@ -89,6 +89,7 @@ namespace RE
+@@ -90,6 +90,7 @@ namespace RE
  			void Cleanup();
  			void Assign(const Variable& a_rhs);
  

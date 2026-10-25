@@ -1,5 +1,7 @@
 # ROADMAP Update Instructions
 
+> Historical implementation note. Checked on 22 October 2026: the six-stream integration and reconnect/HTTP fallback are already represented in [ROADMAP_FRONTEND.md](ROADMAP_FRONTEND.md). Old checklists and measurements below describe that earlier work; use [current project status](docs/docs_project_status.md) for active TODOs and validation limits.
+
 > **Status: ✅ Applied — 2026-05-17**  
 > All instructions in this file have been applied to `ROADMAP_FRONTEND.md`. The WebSocket row in the txAdmin Parity table is now `✅ Done` and a new "WebSocket Observability Checkpoint (2026-05-17)" section was added.  
 > This file is kept as a historical reference only.

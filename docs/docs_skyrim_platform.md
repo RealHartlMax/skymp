@@ -1,6 +1,10 @@
 # Skyrim Platform
 
-## **This information is for mod creators. For general details, please read the [README](https://github.com/skyrim-multiplayer/skymp/blob/main/skyrim-platform/README.md).**
+## **This information is for mod creators. For general details, please read the [local Skyrim Platform README](../skyrim-platform/README.md).**
+
+For the fork's current runtime/build status, see [project status](docs_project_status.md).
+An API reference or a successful client build does not establish full compatibility
+with a newer Skyrim runtime; the dated game acceptance remains separate.
 
 Skyrim Platform is a modding tool for Skyrim allowing writing scripts with JavaScript/TypeScript.
 

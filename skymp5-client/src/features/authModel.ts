@@ -11,6 +11,7 @@ export interface LocalAuthGameData {
 }
 
 export interface AuthGameData {
+  steamSession?: string;
   remote?: RemoteAuthGameData;
   local?: LocalAuthGameData;
 }

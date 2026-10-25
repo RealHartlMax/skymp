@@ -32,9 +32,7 @@ export class MasterApiBalanceSystem implements System {
     };
     ctx.gm.on('userAssignSession', listenerFn);
 
-    this.log(
-      `MasterApiBalanceSystem system assumed that ${this.masterKey} is our address on master`,
-    );
+    this.log('Master balance API initialized; private server credentials are not logged');
 
     // Effectively makes mp.getUserMasterApiBalance & mp.makeUserMasterApiPurchase a part of gamemode API
     (ctx.svr as any).getUserMasterApiBalance = async (

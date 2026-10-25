@@ -21,10 +21,7 @@ namespace CEFUtils {
 DX11RenderHandler::DX11RenderHandler(Renderer* apRenderer) noexcept
   : m_pRenderer(apRenderer)
 {
-  // So we need to lock this until we have the window dimension as a background
-  // CEF thread will attempt to get it before we have it
-  m_createLock.lock();
-  isCreateLock = true;
+  // The CEF view waits for dimensions using a condition variable.
 }
 
 DX11RenderHandler::~DX11RenderHandler() = default;
@@ -33,26 +30,31 @@ void DX11RenderHandler::Render(
   const ObtainTextsToDrawFunction& obtainTextsToDraw)
 {
   // We need contexts first
-  if (!m_pImmediateContext || !m_pContext) {
+  if (!m_pImmediateContext || !m_pSpriteBatch || !m_pStates) {
     Create();
 
-    if (!m_pImmediateContext || !m_pContext)
+    if (!m_pImmediateContext || !m_pSpriteBatch || !m_pStates)
       return;
   }
 
-  // First of all we flush our deferred context in case we have updated the
-  // texture
-  {
-    std::unique_lock<std::mutex> _(m_textureLock);
+  GetRenderTargetSize();
 
-    Microsoft::WRL::ComPtr<ID3D11CommandList> pCommandList;
-    const auto result = m_pContext->FinishCommandList(FALSE, &pCommandList);
-
-    if (result == S_OK && pCommandList) {
-      m_pImmediateContext->ExecuteCommandList(pCommandList.Get(), TRUE);
+  // CEF only supplies CPU pixels. All D3D work and recovery stay on this thread.
+  if (m_frames.HasFrame(m_width, m_height)) {
+    std::unique_lock<std::mutex> lock(m_textureLock);
+    if (!m_pTexture) CreateRenderTexture();
+    if (m_pTexture) {
+      D3D11_MAPPED_SUBRESOURCE mapped{};
+      if (SUCCEEDED(m_pImmediateContext->Map(m_pTexture.Get(), 0,
+                                             D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        m_frames.CopyTo(mapped.pData, mapped.RowPitch, m_width, m_height);
+        m_pImmediateContext->Unmap(m_pTexture.Get(), 0);
+      } else {
+        m_pTexture.Reset();
+        m_pTextureView.Reset();
+      }
     }
   }
-  GetRenderTargetSize();
 
   m_pSpriteBatch->Begin(DirectX::SpriteSortMode_Deferred,
                         m_pStates->NonPremultiplied());
@@ -197,9 +199,9 @@ void DX11RenderHandler::Create()
 void DX11RenderHandler::GetViewRect(CefRefPtr<CefBrowser> browser,
                                     CefRect& rect)
 {
-  std::scoped_lock _(m_createLock);
-
-  rect = CefRect(0, 0, m_width, m_height);
+  std::unique_lock lock(m_viewportLock);
+  m_viewportReady.wait_for(lock, std::chrono::seconds(1), [this] { return m_width && m_height; });
+  rect = CefRect(0, 0, m_width ? m_width : 1280, m_height ? m_height : 720);
 }
 
 void DX11RenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
@@ -207,34 +209,9 @@ void DX11RenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
                                 const RectList& dirtyRects, const void* buffer,
                                 int width, int height)
 {
-  if (type == PET_VIEW && m_width == width && m_height == height) {
-    std::unique_lock<std::mutex> _(m_textureLock);
-
-    if (!m_pTexture) {
-      CreateRenderTexture();
-    }
-
-    // Under MO2 for some reason, OnPaint called before context initialization
-    if (!m_pContext) {
-      return;
-    }
-
-    D3D11_MAPPED_SUBRESOURCE mappedResource;
-    const auto result = m_pContext->Map(
-      m_pTexture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-
-    if (SUCCEEDED(result)) {
-      const auto pDest = static_cast<uint8_t*>(mappedResource.pData);
-      std::memcpy(pDest, buffer, width * height * 4);
-      m_pContext->Unmap(m_pTexture.Get(), 0);
-    } else {
-      // We got no mapping, let's drop the context and reset the texture so
-      // that we attempt to create a new one during the next frame
-      m_pContext.Reset();
-      m_pTexture.Reset();
-      m_width = m_height = 0;
-    }
-  }
+  if (type != PET_VIEW) return;
+  try { m_frames.Store(buffer, width, height); }
+  catch (const std::exception& error) { spdlog::error("CEF frame dropped: {}", error.what()); }
 }
 
 void DX11RenderHandler::GetRenderTargetSize()
@@ -255,14 +232,12 @@ void DX11RenderHandler::GetRenderTargetSize()
       pSrcBuffer->GetDesc(&desc);
 
       if ((m_width != desc.Width || m_height != desc.Height) && m_pParent) {
-        m_width = desc.Width;
-        m_height = desc.Height;
-
-        if (isCreateLock) {
-          // We now know the size of the viewport, we can let CEF get it
-          m_createLock.unlock();
-          isCreateLock = false;
+        {
+          std::lock_guard lock(m_viewportLock);
+          m_width = desc.Width;
+          m_height = desc.Height;
         }
+        m_viewportReady.notify_all();
 
         {
           std::unique_lock<std::mutex> _(m_textureLock);

@@ -8,6 +8,11 @@ The endpoints below describe the older flat-file v1 API. They remain available
 for older launchers. The in-game `skymp5-client` does not automatically install
 mod files; installation belongs to the standalone launcher.
 
+Checked 22 October 2026: the current v1 disk scanner in `ui.ts` primarily lists
+`.esm` and `.pex`; it is not the publication surface for complete new modpacks.
+Use the v2 API for custom ESP/ESL/BSA and nested client assets. Legacy proposal
+checklists below are not the current desktop-launcher TODO list.
+
 ## Overview
 
 ```
@@ -44,7 +49,7 @@ Public, no authentication required. Returns the complete list of resources avail
   "generatedAt": "2026-04-25T12:00:00.000Z",
   "resources": [
     {
-      "name": "SweetPie.esp",
+      "name": "SweetPie.esm",
       "kind": "mod",
       "size": 204800,
       "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

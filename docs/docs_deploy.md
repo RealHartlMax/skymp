@@ -1,5 +1,11 @@
 # Deploy Server from GitHub
 
+This describes the repository's Docker/GitHub Actions deployment path, not the
+local browser-setup test archives or the separate PHP-webroot upload. Checked
+22 October 2026: use [VPS/browser setup](docs_linux_vps.md),
+[SkyMP Worlds](docs_launcher_worlds.md) and [current status](docs_project_status.md)
+for those paths. Workflow configuration is not evidence of a successful live deployment.
+
 A GitHub actions job is configured for deploying server from a git branch.
 This guide shows how to set it up.
 

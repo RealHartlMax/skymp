@@ -1,32 +1,25 @@
 #pragma once
-#include <BS_thread_pool.hpp>
 #include <cstdint>
+#include <functional>
+#include <future>
 #include <memory>
-#include <mutex>
 
 class ThreadPoolWrapper
 {
 public:
-  ThreadPoolWrapper(int32_t numThreads_ = 1)
-    : numThreads(numThreads_)
-  {
-  }
+  ThreadPoolWrapper(int32_t numThreads_ = 1);
+  ~ThreadPoolWrapper();
 
-  std::future<void> Push(const std::function<void()>& task)
-  {
-    {
-      std::lock_guard l(initMutex);
-      if (!pool) {
-        pool = std::make_unique<BS::light_thread_pool>(numThreads);
-      }
-    }
-    return pool->submit_task(task);
-  }
+  ThreadPoolWrapper(const ThreadPoolWrapper&) = delete;
+  ThreadPoolWrapper& operator=(const ThreadPoolWrapper&) = delete;
 
-  void PushAndWait(const std::function<void()>& task) { Push(task).wait(); }
+  std::future<void> Push(const std::function<void()>& task);
+  void PushAndWait(const std::function<void()>& task);
 
 private:
-  std::unique_ptr<BS::light_thread_pool> pool;
-  const int32_t numThreads;
-  std::mutex initMutex;
+  // BS::thread_pool changes layout between C++20 and C++23. Keep its types and
+  // inline template definitions in one translation unit; consumers use both
+  // language modes in the native client.
+  struct Impl;
+  std::unique_ptr<Impl> pImpl;
 };

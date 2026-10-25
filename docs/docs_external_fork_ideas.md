@@ -1,5 +1,7 @@
 # External Fork Ideas
 
+> Planning/research document. Reviewed 22 October 2026; proposals and external-fork examples are not automatically implemented in this checkout. See [current project status](docs_project_status.md) and the main roadmap for verified completion.
+
 This document collects interesting ideas, features, and improvements found in public forks of the skymp repository. It is intended as a reference for future development inspiration and potential cherry-picks.
 
 **Last scan:** 2026-05-03  

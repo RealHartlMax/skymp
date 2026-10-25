@@ -2,7 +2,27 @@
 
 Skyrim Multiplayer publishes ready-to-use pre-built server packages on GitHub Releases. **You do not need to download or build the repository to run your own server.**
 
-## Quick Start with Pre-built Releases (recommended)
+## Current fork test packages and browser setup
+
+Checked against the local checkout on **22 October 2026**. The fork's paired
+Linux/Windows test archives are in `build/releases/2026-10-21-modsync/`.
+They include mod API v2 and browser first-run setup with a random four-digit
+terminal PIN and a self-chosen admin account. They contain no pre-created login
+and no Bethesda master files. Install Node.js 22+ separately and use
+`start-test-server.sh` / `start-test-server.cmd` from those packages.
+
+See [Linux/VPS and browser setup](docs_linux_vps.md),
+[current status](docs_project_status.md) and [mod publication](docs_launcher_modpacks.md).
+For an existing installation, preserve `server-settings.json`, `data/`, `world/`
+and custom published files; the release's `UPDATE-VPS.md` describes the backend-only
+update. The later SkyMP Worlds heartbeat update has its own guide:
+[launcher and online master](docs_launcher_worlds.md).
+
+The source-build/release launchers below (`launch_server.*`) use a different
+bootstrap path. Do not assume that an upstream download contains this fork's
+local browser-setup and launcher integration changes.
+
+## Source-build and upstream release package conventions
 
 Pre-built packages are published at:
 
@@ -73,7 +93,9 @@ If you want to contribute code or need a custom build, follow [docs_cmake_workfl
 
 ### Windows
 
-The server requires `Windows 8.1` / `Windows Server 2012` or higher. It may still launch on older operating systems, but correct work isn't guaranteed.
+Use 64-bit Windows with support for the Node.js version required by your
+package. The current fork test archives require Node.js 22 or newer. The local
+Windows startup checks do not establish support for older Windows releases.
 
 You obviously need to have 64-bit Windows version since the server is 64-bit program.
 
@@ -94,7 +116,7 @@ Für einen eigenen Linux-VPS gibt es zusätzlich die Anleitung
 Frontend-Paketierung und systemd-Beispiel für 12 vCores / 24 GB RAM.
 
 Linux server support includes native source builds. The paired local test packages
-for Ubuntu 26.04 x86_64 and Windows x64, with their own launchers and test credentials,
+targeting Ubuntu 26.04 x86_64 and Windows x64, with browser-created owner accounts,
 are described in [Linux VPS build and operation](docs_linux_vps.md).
 
 If your build completed successfully, the server launcher will be generated as `build/dist/server/launch_server.sh`. A convenience launcher is also generated as `build/launch_server.sh`.
@@ -114,6 +136,50 @@ build/runtime environments and remaining checks.
 
 The admin dashboard is available at `http://<host>:<uiPort>/admin`.
 
+The secure owner credential store is `<dataDir>/admin-auth.json`. Browser-setup
+packages create it through the PIN wizard. Dashboard permissions and user/Discord
+assignments use `adminUiUsers`; game access is separately controlled by
+[`joinAccess`](docs_server_configuration_reference.md#joinaccess).
+
+### Admin session API
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /api/admin/session/login` | JSON `{ "user": "owner", "password": "..." }`; success sets the session cookie; invalid credentials return 401 |
+| `GET /api/admin/session` | Current `authenticated`, `user`, `idleTimeoutMs`, `remainingMs`; absent/expired session returns 401 |
+| `POST /api/admin/session/touch` | Renews an authenticated session after dashboard interaction; expired sessions return 401 |
+| `POST /api/admin/session/logout` | Removes the server-side session and clears its cookie |
+
+Sessions use the `skymp_admin_session` cookie (`HttpOnly`, `SameSite=Lax`, path `/`)
+and expire after **10 minutes of inactivity**. The dashboard sends activity
+updates; unattended monitoring/polling should not be treated as a user interaction.
+Session state is in memory, so restarting the server requires a new login while
+the owner's stored password survives. Legacy plaintext bootstrap settings may be
+migrated into the scrypt store; a configured owner is not overwritten by first-run setup.
+
+Behind a reverse proxy, forward `Host`, `X-Forwarded-Proto` and the relevant
+cookie headers consistently and use the externally configured HTTPS origin.
+`uiListenHost` controls binding; `adminApi.externalUrl` only controls generated URLs.
+See [Discord OAuth](docs_admin_discord_oauth.md) for the optional separate admin
+OAuth flow; its live callback acceptance is not implied by a local password-login test.
+
+The October 23 r2 test packages include a process manager in
+`start-test-server.sh` / `start-test-server.bat` (also `launch_server.sh` /
+`launch_server.bat`). These starters bootstrap a missing/old Node runtime and
+enable Stop/Restart without external commands. Stopping the game retains an
+owner management page at `/admin`, where it can be started again. The stopped
+management page uses the existing owner account; it does not create credentials.
+The private Node 22 LTS download is SHA-256 checked, checked for updates daily,
+and retained if an update fails. The bundled backend requires no npm install.
+See [Linux VPS](docs_linux_vps.md) and the package's `README-TEST.md`.
+
+Directly invoking the backend bypasses the included manager. In that mode,
+Stop/Restart require an explicitly configured external supervisor. The legacy
+generic CMake launchers described above remain separate from the r2 test-package
+starters. Changing the HTTP listen address or port requires restarting the whole
+starter, rather than only the game process. Server-control POST requests require
+an authorized session and same-origin JSON.
+
 ## Server Logs
 
 Server output is written both to console and to rotating log files in `logs/` next to the server process.
@@ -123,13 +189,6 @@ Server output is written both to console and to rotating log files in `logs/` ne
 - Safety cap: only the newest 30 log files are kept at startup
 
 When client-side movement telemetry is enabled, the server also writes periodic structured records as lines starting with `[MovementDebug]` containing JSON payloads (`profileId`, movement interval, extrapolation, correction counters, etc.).
-
-- `uiPort` is taken from `server-settings.json` (if omitted, it falls back to `port`).
-- The page uses an in-app login form (not browser Basic Auth popup).
-- Credentials are validated against configured admin credentials (secure setup flow), with legacy `adminUiAuth` / `metricsAuth` fallback behavior where applicable.
-- Session timeout is 10 minutes of inactivity for dashboard interactions.
-- `adminApi.externalUrl` can be left empty so the server auto-detects the external URL from `Host` and `X-Forwarded-Proto` headers.
-- Stop/Restart actions in the Admin dashboard are only enabled when a server supervisor is explicitly configured.
 
 ### Runtime Readiness API (international support)
 
@@ -149,7 +208,10 @@ It validates common first-start requirements such as:
 
 ## Configuration
 
-Once you build the server, you should be able to launch it. But default config values are only usable to verify that server works. After launching the server you will see a server called `My Server` in the master list: https://skymp.io/api/servers.
+Default configuration is a starting point for a local test. Public visibility
+depends on `offlineMode`, the configured master, the registered server identity
+and accepted heartbeats. See [SkyMP Worlds](docs_launcher_worlds.md) for the
+current PHP master integration; starting an offline package does not register it.
 
 To make your server reachable from outside your local machine/network, configure bind/listen settings and open required ports in your firewall/router.
 

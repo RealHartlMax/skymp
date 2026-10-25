@@ -21,6 +21,7 @@ for (const name of settings.loadOrder) {
 for (const name of ['scam_native.node', 'dist_back/skymp5-server.js', 'ui/build.js', 'data/scripts']) {
   if (!fs.existsSync(path.join(root, name))) throw new Error(`Paketdatei fehlt: ${name}`);
 }
+if (manifest.dashboardIndependent && !fs.existsSync(path.join(root, 'dist_back/skymp5-admin.js'))) throw new Error('Paketdatei fehlt: dist_back/skymp5-admin.js');
 const native = require(path.join(root, 'scam_native.node'));
 if (typeof native.ScampServer !== 'function') throw new Error('Native Server-Erweiterung ist unvollstaendig.');
 console.log(`SkyMP ${manifest.buildId}: ${manifest.platform}, Node ${process.versions.node}, ${settings.loadOrder.length} Masterdateien bereit.`);

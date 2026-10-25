@@ -1,5 +1,11 @@
 # Roadmap
 
+Status audit: **22 October 2026**. [Current project status](docs/docs_project_status.md)
+records implementation, local test evidence and remaining acceptance separately.
+Browser setup, launcher mod sync and versioned client packages are implemented;
+actual Skyrim/CEF gameplay and live rollout remain open.
+
+
 Welcome to the roadmap of the project! You can see synchronizations here, but there probably would also be non-sync and even non-code parts in the future.
 
 # Build & Release Automation
@@ -10,6 +16,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | Semantic server versioning        | Active       | `.github/workflows/running_server_files.yml` derives the next release version from commit messages (`fix`/`feat`/`major`/`breaking`/`!`). |
 | Release gating + changelog        | Active       | Server releases are skipped when no trigger commit exists; release notes still include grouped commit history since the last release tag. |
 | Deploy notifications              | Active       | Deploy workflows post status to Discord using DEPLOY_STATUS_WEBHOOK secret.                                   |
+| Persistent Discord game monitor   | Implemented  | r4 dashboard owns the bot; game lifecycle notifications, login logs, warnings and ban-role IPC are implemented. Mocked Discord integration tests cover process continuity; real Discord delivery remains open. See `docs/docs_discord_bot.md`. |
 | Installer trigger                 | Active       | Pushes to main trigger a repository_dispatch to installer repo via .github/workflows/trigger-installer.yml.   |
 | Installer trigger (manual run)    | Active       | The installer trigger workflow also supports `workflow_dispatch` for manual execution from GitHub Actions UI. |
 | Installer repository target       | Configurable | The target repository is read from repository variable INSTALLER_REPOSITORY (format owner/repo).              |
@@ -19,7 +26,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 
 | Area                                                      | Status           | Notes                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cross-platform dedicated server hosting (Windows + Linux) | Active direction | Long-term hosting target is parity for dedicated server operation on both Windows and Linux. Client/runtime specifics may differ, but server hosting must remain a first-class scenario on both platforms.                                                     |
+| Cross-platform dedicated server hosting (Windows + Linux) | Test packages validated | Paired native test packages passed browser setup, HTTP/admin login, UDP and mod publication on Windows/Linux. Production/load acceptance and the existing Windows native-suite failure remain open.                                                     |
 | Linux dedicated server source-build path                  | Active           | Linux server builds, launch scripts and CI variants exist; current support is strongest on Ubuntu/glibc-based environments and still needs production hardening for fully standardized VPS hosting.                                                            |
 | Windows dedicated server path                             | Active           | Windows remains a supported server-hosting platform with native launcher support and existing operational workflows.                                                                                                                                           |
 | Cross-platform supervisor integration                     | Partial          | A shared `supervisor` configuration model now exists for dedicated server control. Admin stop/restart is enabled only when explicit supervisor commands are configured. Remaining work is OS-specific operator setup and optional supervisor auto-detection.   |
@@ -27,7 +34,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | Admin dashboard auth routing                              | Active           | `/admin` serves the new React-based admin UI with in-app login and session timeout; `/admin/` normalizes to `/admin`; `/admin-app` redirects to `/admin`.                                                                                                      |
 | Admin dashboard auth UX                                   | Active           | Browser HTTP Basic popup was replaced by a custom login form (`/api/admin/session/login`, `/logout`, `/touch`), with 10-minute inactivity timeout based on dashboard click activity.                                                                           |
 | Windows launcher self-restart safety                      | Active           | `launch_server.bat` now auto-detects and terminates stale `dist_back/skymp5-server.js` processes before starting a new instance.                                                                                                                               |
-| Runtime dependency bootstrap in packaged launchers        | Active           | Packaged `launch_server.bat` / `launch_server.sh` now verify Node.js availability and install missing runtime npm dependencies on first start when possible.                                                                                                    |
+| Runtime dependency bootstrap in packaged launchers        | Active           | The r2 test packages install a missing/old Node runtime privately with SHA-256 verification, retain it on failed updates, and check native runtime requirements. The backend already bundles its npm dependencies.                                                                                                    |
 | Admin resources inventory                                 | Active           | `GET /api/admin/resources` lists Skyrim-relevant discovered resources from server disk and loadOrder context (`.esm` and `.pex`).                                                                                                                              |
 | Server settings editor API                                | Active           | `GET/POST /api/admin/cfg/server-settings` supports load + save in Admin CFG panel.                                                                                                                                                                             |
 | Access/Discord config validation                          | Active           | Admin CFG structured Access/Discord form now validates required fields and Discord ID formats before save.                                                                                                                                                     |
@@ -42,7 +49,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | Visual announcement toast                                 | Active           | Announcements are displayed client-side as a Skyrim-styled HUD overlay (fade-in from top, auto-dismiss after configurable duration). Implemented via `announcementToast` custom packet; CSS animation injected via SkyrimPlatform browser API.                                                                                                                                                                                         |
 | Character nickname display toggle                         | Active           | Server-controlled toggle (`showCharacterNicknames` in `server-settings.json`) shows or hides player character names rendered above actors via SkyrimPlatform `createText`. Configurable from Admin Dashboard CFG tab (General section). Broadcast to all clients on connect; client-side F1 toggle is locked when server has set an explicit value.                                                                                    |
 | Zone handover via loading screens                         | Proposed         | Technical roadmap for zone transfer, worker routing and optional overflow sharding is documented in `docs/docs_zone_handover_roadmap.md`. Keeps shared-by-default MMORPG behavior while enabling scalability.                                                                                             |
-| Sidebar quick actions — Start / Stop / Restart Server     | Active           | Backend control runs through configured supervisor commands (`supervisor.stopCommand` / `supervisor.restartCommand` in `server-settings.json`). Supervisor section is now configurable directly in the Admin Dashboard CFG → General tab (enable toggle + command fields). Buttons activate automatically after saving and reloading once supervisor is enabled with non-empty commands. Works with PM2, systemd, NSSM or any shell command. |
+| Sidebar quick actions — Start / Stop / Restart Server     | Active           | r3 keeps the full dashboard in its own process: settings, logs, downloads, sessions and WebSockets survive game stop/restart/crash. Only the owned game PID changes; Start is available while stopped. Runtime player actions require a running game. Direct backend starts retain legacy external supervisor support. |
 
 # Synchronization
 
@@ -166,34 +173,34 @@ This backlog is derived from a repository-wide audit for runtime stubs/dummy pat
 
 | ID | Type | Scope | Why it matters | Code references | Acceptance criteria |
 | --- | --- | --- | --- | --- | --- |
-| AUD-BLK-001 | Runtime stub removal | Replace hardcoded Papyrus cell stub return path with real implementation or explicit safe failure contract | Stubbed behavior can silently diverge from expected game logic | `skymp5-server/cpp/server_guest_lib/script_classes/PapyrusCell.cpp` | No unconditional `// stub` return in runtime path; covered by unit/integration test for the affected native |
-| AUD-BLK-002 | Property binding completeness | Implement missing `mp.get/mp.set` property bindings or gate them behind explicit capability checks | Current hard throw (`not implemented`) can break production flows unexpectedly | `skymp5-server/cpp/addon/property_bindings/PropertyBinding.cpp`, `skymp5-server/cpp/addon/property_bindings/PosBinding.cpp`, `skymp5-server/cpp/addon/property_bindings/AngleBinding.cpp` | Unsupported properties fail with deterministic API error; supported properties are end-to-end tested |
-| AUD-BLK-003 | WorldState assert hardening | Remove/replace `assert(false)` runtime path and define explicit fallback/error handling | Assert in runtime code can terminate process under real traffic/data | `skymp5-server/cpp/server_guest_lib/WorldState.cpp` | No unconditional assert in user-reachable path; error handling is logged and non-fatal |
-| AUD-BLK-004 | Deferred load parity | Implement loading for dead/disabled references or explicitly disable with documented behavior flag | Incomplete load path can cause world-state inconsistency after restart/load | `skymp5-server/cpp/server_guest_lib/WorldState.cpp` | Behavior is deterministic and documented; regression test covers dead/disabled references |
+| AUD-BLK-001 — Open | Runtime stub removal | Replace hardcoded Papyrus cell stub return path with real implementation or explicit safe failure contract | Stubbed behavior can silently diverge from expected game logic | `skymp5-server/cpp/server_guest_lib/script_classes/PapyrusCell.cpp` | No unconditional `// stub` return in runtime path; covered by unit/integration test for the affected native |
+| AUD-BLK-002 — Open | Property binding completeness | Implement missing `mp.get/mp.set` property bindings or gate them behind explicit capability checks | Current hard throw (`not implemented`) can break production flows unexpectedly | `skymp5-server/cpp/addon/property_bindings/PropertyBinding.cpp`, `skymp5-server/cpp/addon/property_bindings/PosBinding.cpp`, `skymp5-server/cpp/addon/property_bindings/AngleBinding.cpp` | Unsupported properties fail with deterministic API error; supported properties are end-to-end tested |
+| AUD-BLK-003 — Open | WorldState assert hardening | Remove/replace `assert(false)` runtime path and define explicit fallback/error handling | Assert in runtime code can terminate process under real traffic/data | `skymp5-server/cpp/server_guest_lib/WorldState.cpp` | No unconditional assert in user-reachable path; error handling is logged and non-fatal |
+| AUD-BLK-004 — Open | Deferred load parity | Implement loading for dead/disabled references or explicitly disable with documented behavior flag | Incomplete load path can cause world-state inconsistency after restart/load | `skymp5-server/cpp/server_guest_lib/WorldState.cpp` | Behavior is deterministic and documented; regression test covers dead/disabled references |
 
 ## Bucket B: Production Risk / Technical Debt in Live Paths (P1)
 
 | ID | Type | Scope | Why it matters | Code references | Acceptance criteria |
 | --- | --- | --- | --- | --- | --- |
-| AUD-RSK-001 | Login flow rework | Replace known login hack path with explicit, testable flow | Auth/login path is critical and currently self-marked as temporary hack | `skymp5-server/ts/systems/login.ts` | Hack comment path removed; login scenarios covered by automated tests (success/fail/edge) |
-| AUD-RSK-002 | ObjectReference hack policy | Replace hardcoded script-filter hacks with configurable server policy | Hardcoded rules create hidden behavior and brittle mod compatibility | `skymp5-server/cpp/server_guest_lib/MpObjectReference.cpp` | Policy is controlled via server settings/API and documented; default remains backward compatible |
-| AUD-RSK-003 | Client legacy compatibility hack cleanup | Remove old movement compatibility hack once minimum supported plugin/version is enforced | Legacy fallback complicates sync/debugging and can mask real protocol issues | `skymp5-client/src/sync/movementApply.ts` | Compatibility gate is versioned; legacy branch removed or isolated behind feature flag |
-| AUD-RSK-004 | Not-implemented event paths | Resolve blocked event handlers that currently return `Not implemented` outcomes | Runtime “not implemented” in event flow leads to inconsistent behavior for operators | `skymp5-server/cpp/server_guest_lib/gamemode_events/UpdateAppearanceAttemptEvent.cpp`, `skymp5-server/cpp/server_guest_lib/gamemode_events/UpdateEquipmentAttemptEvent.cpp` | Events have implemented behavior or explicit disabled policy with clear user-facing diagnostics |
+| AUD-RSK-001 — Open | Login flow rework | Replace known login hack path with explicit, testable flow | Auth/login path is critical and currently self-marked as temporary hack | `skymp5-server/ts/systems/login.ts` | Hack comment path removed; login scenarios covered by automated tests (success/fail/edge) |
+| AUD-RSK-002 — Open | ObjectReference hack policy | Replace hardcoded script-filter hacks with configurable server policy | Hardcoded rules create hidden behavior and brittle mod compatibility | `skymp5-server/cpp/server_guest_lib/MpObjectReference.cpp` | Policy is controlled via server settings/API and documented; default remains backward compatible |
+| AUD-RSK-003 — Open | Client legacy compatibility hack cleanup | Remove old movement compatibility hack once minimum supported plugin/version is enforced | Legacy fallback complicates sync/debugging and can mask real protocol issues | `skymp5-client/src/sync/movementApply.ts` | Compatibility gate is versioned; legacy branch removed or isolated behind feature flag |
+| AUD-RSK-004 — Open | Not-implemented event paths | Resolve blocked event handlers that currently return `Not implemented` outcomes | Runtime “not implemented” in event flow leads to inconsistent behavior for operators | `skymp5-server/cpp/server_guest_lib/gamemode_events/UpdateAppearanceAttemptEvent.cpp`, `skymp5-server/cpp/server_guest_lib/gamemode_events/UpdateEquipmentAttemptEvent.cpp` | Events have implemented behavior or explicit disabled policy with clear user-facing diagnostics |
 
 ## Bucket C: Documentation / Roadmap Gaps (P1)
 
 | ID | Type | Scope | Why it matters | Code references | Acceptance criteria |
 | --- | --- | --- | --- | --- | --- |
-| AUD-DOC-001 | Config docs parity | Document `joinAccess` modes/settings in server configuration reference + operator examples | Feature is implemented in auth/admin path but currently hard to discover for operators | `skymp5-server/ts/systems/login.ts`, `skymp5-server/ts/ui.ts`, `cmake/scripts/generate_server_settings.cmake` | `docs/docs_server_configuration_reference.md` includes full schema, examples, and failure modes |
-| AUD-DOC-002 | Discord bot settings docs parity | Document `discordBot` settings lifecycle and interaction with join/access flows | Active settings surface exists in server/admin but lacks dedicated operator documentation | `skymp5-server/ts/ui.ts`, `cmake/scripts/generate_server_settings.cmake` | Docs include required/optional fields, security notes, and admin UI mapping |
-| AUD-DOC-003 | Nickname toggle docs parity | Add `showCharacterNicknames` to configuration reference and cross-link from roadmap notes | Feature appears in roadmap/implementation but not in main config reference | `skymp5-server/ts/index.ts`, `skymp5-server/ts/ui.ts` | Config reference includes flag semantics, defaults, and client behavior impacts |
-| AUD-DOC-004 | Admin session API docs | Document session endpoints and inactivity behavior used by admin UI auth UX | Improves operability for self-hosters/reverse-proxy setups and support diagnostics | `skymp5-server/ts/ui.ts` | Running/server docs include `/api/admin/session/login`, `/logout`, `/touch`, cookie/session timeout behavior |
+| AUD-DOC-001 — Done | Config docs parity | Documented all joinAccess modes, identifier arrays, examples and rejection cases in server configuration reference | Feature is implemented in auth/admin path but currently hard to discover for operators | `skymp5-server/ts/systems/login.ts`, `skymp5-server/ts/ui.ts`, `cmake/scripts/generate_server_settings.cmake` | `docs/docs_server_configuration_reference.md` includes full schema, examples, and failure modes |
+| AUD-DOC-002 — Done | Discord bot settings docs parity | Documented discordBot fields, dashboard mapping, discordAuth.guilds distinction, startup lifecycle and limits | Active settings surface exists in server/admin but lacks dedicated operator documentation | `skymp5-server/ts/ui.ts`, `cmake/scripts/generate_server_settings.cmake` | Docs include required/optional fields, security notes, and admin UI mapping |
+| AUD-DOC-003 — Done | Nickname toggle docs parity | Documented default, CFG broadcast and server precedence for showCharacterNicknames | Feature appears in roadmap/implementation but not in main config reference | `skymp5-server/ts/index.ts`, `skymp5-server/ts/ui.ts` | Config reference includes flag semantics, defaults, and client behavior impacts |
+| AUD-DOC-004 — Done | Admin session API docs | Documented login/logout/session/touch, HttpOnly cookie, 10-minute idle expiry and restart behavior | Improves operability for self-hosters/reverse-proxy setups and support diagnostics | `skymp5-server/ts/ui.ts` | Running/server docs include `/api/admin/session/login`, `/logout`, `/touch`, cookie/session timeout behavior |
 
 ## Suggested execution order
 
 1. `AUD-BLK-003`, `AUD-BLK-002`, `AUD-BLK-001`, `AUD-BLK-004`
 2. `AUD-RSK-001`, `AUD-RSK-002`, `AUD-RSK-004`, `AUD-RSK-003`
-3. `AUD-DOC-001`, `AUD-DOC-002`, `AUD-DOC-003`, `AUD-DOC-004`
+3. Documentation items `AUD-DOC-001`–`AUD-DOC-004` are completed as of 22 October; maintain parity when behavior changes.
 
 ## Notes
 
@@ -208,33 +215,33 @@ This backlog focuses specifically on taking current mod/plugin support from oper
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| MODPLUG-001 | Plugin sandboxing baseline | Add execution policy for process plugins (explicit allowlist for executable commands, optional cwd guard, env scrub) | Process plugins can run arbitrary host commands; production risk is high without guardrails | Non-allowlisted commands are rejected with explicit startup error; behavior documented for operators |
-| MODPLUG-002 | Plugin health and crash lifecycle | Add per-plugin health state (`starting/running/failed/stopped`) and restart strategy (`never/on-failure`) | Operators currently rely on logs only; no deterministic crash lifecycle contract | Admin API exposes health state per plugin; failed plugin transitions are visible and test-covered |
-| MODPLUG-003 | Discovery-state integrity | Validate and auto-repair `Plugins/.discovery-state.json` corruption/mismatch at boot | Corrupt state file can block or mis-sequence plugin activation | Boot succeeds with deterministic repair path and warning logs; no silent plugin activation changes |
+| MODPLUG-001 — Open | Plugin sandboxing baseline | Add execution policy for process plugins (explicit allowlist for executable commands, optional cwd guard, env scrub) | Process plugins can run arbitrary host commands; production risk is high without guardrails | Non-allowlisted commands are rejected with explicit startup error; behavior documented for operators |
+| MODPLUG-002 — Open | Plugin health and crash lifecycle | Add per-plugin health state (`starting/running/failed/stopped`) and restart strategy (`never/on-failure`) | Operators currently rely on logs only; no deterministic crash lifecycle contract | Admin API exposes health state per plugin; failed plugin transitions are visible and test-covered |
+| MODPLUG-003 — Open | Discovery-state integrity | Validate and auto-repair `Plugins/.discovery-state.json` corruption/mismatch at boot | Corrupt state file can block or mis-sequence plugin activation | Boot succeeds with deterministic repair path and warning logs; no silent plugin activation changes |
 
 ## P1 - Mod Distribution End-to-End (Server -> Client)
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| MODPLUG-004 | Client manifest sync | Implement client fetch/compare/download flow for `/api/resources/manifest` + `/api/resources/download/:name` | Server-side API exists, but full client auto-sync is still planned | On connect, missing/changed resources are downloaded, hash-verified, cached, and loaded before world entry |
-| MODPLUG-005 | Download resume/retry | Add resumable and retry-safe resource download with bounded backoff and integrity checks | Large mod files need robust transfer under unstable networks | Interrupted downloads recover without corrupted cache; max retry policy is configurable |
-| MODPLUG-006 | Versioned cache layout | Introduce stable cache namespace (`server + resource hash/version`) with safe eviction policy | Prevent stale or cross-server cache pollution | Cache hit/miss behavior is deterministic; stale resources are pruned without touching valid entries |
+| MODPLUG-004 — Done (launcher preparation) | Client manifest sync | Standalone launcher fetches v2 manifest, validates paths/sizes/SHA-256, caches and installs before SKSE; v1 remains a compatibility fallback | Implemented in skymp-client-launcher/launcher/src-tauri/src/connection.rs; game launch is a separate acceptance boundary | Preparation/cache/repair/update/restore tests pass; actual world entry remains open |
+| MODPLUG-005 — Partial | Download resume/retry | Finished verified cache files are reused; server supports Range; launcher partial-file resume and configurable retry/backoff remain open | Large mod files need robust transfer under unstable networks | Interrupted downloads recover without corrupted cache; max retry policy is configurable |
+| MODPLUG-006 — Partial | Versioned cache layout | Server/resource-hash cache namespace implemented; automatic eviction and disk limits remain open | Prevent stale or cross-server cache pollution | Cache hit/miss behavior is deterministic; stale resources are pruned without touching valid entries |
 
 ## P1 - Dependency & Load-Order Guarantees
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| MODPLUG-007 | Resource dependency metadata | Extend manifest with dependency declarations and optional constraints | Needed for predictable mod/script load behavior across servers | Manifest includes `dependsOn`/`version` fields; resolver validates and reports dependency errors clearly |
-| MODPLUG-008 | Client-side dependency resolver | Resolve and enforce topological load order from manifest metadata | Hash-only sync is not enough when resources require strict ordering | Resolver produces deterministic order or explicit failure with actionable diagnostics |
-| MODPLUG-009 | Plugin dependency model | Add plugin-level `dependsOn` and compatibility checks (version bounds) in `plugin.json` | Startup order today is partly operator-managed; dependency drift can break boot | Boot blocks incompatible graph with precise reason; compatible graph starts deterministically |
+| MODPLUG-007 — Open | Resource dependency metadata | Extend manifest with dependency declarations and optional constraints | Needed for predictable mod/script load behavior across servers | Manifest includes `dependsOn`/`version` fields; resolver validates and reports dependency errors clearly |
+| MODPLUG-008 — Open | Client-side dependency resolver | Resolve and enforce topological load order from manifest metadata | Hash-only sync is not enough when resources require strict ordering | Resolver produces deterministic order or explicit failure with actionable diagnostics |
+| MODPLUG-009 — Open | Plugin dependency model | Add plugin-level `dependsOn` and compatibility checks (version bounds) in `plugin.json` | Startup order today is partly operator-managed; dependency drift can break boot | Boot blocks incompatible graph with precise reason; compatible graph starts deterministically |
 
 ## P2 - Operator UX and Observability
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| MODPLUG-010 | Admin resource diagnostics panel | Add dashboard panel for manifest/resources status, missing files, hash mismatch, and refresh controls | Reduces SSH/log dependency for routine ops | Admin UI shows per-resource status with one-click refresh and error details |
-| MODPLUG-011 | Plugin control plane API | Add enable/disable/restart plugin endpoints with capability checks and audit logs | Operators need safe runtime control without manual file edits/restarts | API actions are permission-gated, audited, and reflected in live plugin state |
-| MODPLUG-012 | Distribution telemetry | Add metrics for manifest latency, download success/failure, bytes transferred, cache hit ratio | Needed to tune rollout and detect regressions early | Metrics exposed in existing telemetry pipeline and visible in admin/Prometheus flows |
+| MODPLUG-010 — Partial | Admin resource diagnostics panel | Admin resource inventory is implemented; publication diagnostics, complete hash comparison and corrupt/missing-file UX remain open | Reduces SSH/log dependency for routine ops | Admin UI shows per-resource status with one-click refresh and error details |
+| MODPLUG-011 — Open | Plugin control plane API | Add enable/disable/restart plugin endpoints with capability checks and audit logs | Operators need safe runtime control without manual file edits/restarts | API actions are permission-gated, audited, and reflected in live plugin state |
+| MODPLUG-012 — Open | Distribution telemetry | Add metrics for manifest latency, download success/failure, bytes transferred, cache hit ratio | Needed to tune rollout and detect regressions early | Metrics exposed in existing telemetry pipeline and visible in admin/Prometheus flows |
 
 ## Recommended rollout order
 
@@ -279,8 +286,8 @@ Before implementation, establish the contract:
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| VOICE-API-SPEC-001 | Voice Activity API specification | Formalize VAD interface contract in JSON schema or TypeScript types. Document provider adapter pattern with example (YACA-TS reference impl). | Multiple voice providers need clear integration path; ambiguity leads to custom hacks. | Interface spec published in `docs/docs_voice_api.md` with OpenAPI/TypeScript examples; YACA-TS is first reference implementation. |
-| VOICE-VAD-MNG-001 | Server Voice Activity Manager | Implement abstracted VAD receiver in gamemode (C++ or TS plugin). Routes voice state updates from any provider to proximity-aware client broadcasts. | Core server-side logic is decoupled from provider; enables third-party voice solutions without server modification. | Manager accepts provider-agnostic state updates; broadcasts only to proximity-filtered clients; state merging/conflict resolution is deterministic. |
+| VOICE-API-SPEC-001 — Done (TypeScript contract/docs) | Voice Activity API specification | Formalize VAD interface contract in JSON schema or TypeScript types. Document provider adapter pattern with example (YACA-TS reference impl). | Multiple voice providers need clear integration path; ambiguity leads to custom hacks. | Interface spec published in `docs/docs_voice_api.md` with OpenAPI/TypeScript examples; YACA-TS is first reference implementation. |
+| VOICE-VAD-MNG-001 — Partial | Server Voice Activity Manager | Implement abstracted VAD receiver in gamemode (C++ or TS plugin). Routes voice state updates from any provider to proximity-aware client broadcasts. | Core server-side logic is decoupled from provider; enables third-party voice solutions without server modification. | Manager accepts provider-agnostic state updates; broadcasts only to proximity-filtered clients; state merging/conflict resolution is deterministic. |
 
 **VOICE-API-SPEC-001 Implementation Status** ✅ (Completed May 2026):
 - `skymp5-server/ts/voiceActivityApi.ts`: Full TypeScript interface spec (VoiceActivityState, IVoiceProviderAdapter, IVoiceActivityManager, VoiceActivityConfig)
@@ -292,34 +299,27 @@ Before implementation, establish the contract:
 
 **Next (VOICE-VAD-MNG-001 & VOICE-LIP-001)**: Adapter-specific edge-case handling and animation timing validation.
 
-| VOICE-LIP-001 | Client-side lip-sync animation sync | On receiving speaker state, client plays IdleDialogueLock while `isSpeaking=true`; resumes idle/locomotion when false. | Gives immediate visual feedback that voice communication is active and synchronized across players. | Clients in proximity see consistent lock/unlock animation on remote players matching voice state; no animation race conditions. |
-| VOICE-PROX-001 | Proximity distance enforcement | Server respects voice range config (tiers or continuous) and only sends VAD updates to clients within range. | Bandwidth efficiency; privacy; matches voice privacy model to visual feedback. | Clients outside range do not receive VAD updates; dynamically recalculate on player move; no broadcast storm. |
+| VOICE-LIP-001 — Partial | Client-side lip-sync animation sync | On receiving speaker state, client plays IdleDialogueLock while `isSpeaking=true`; resumes idle/locomotion when false. | Gives immediate visual feedback that voice communication is active and synchronized across players. | Clients in proximity see consistent lock/unlock animation on remote players matching voice state; no animation race conditions. |
+| VOICE-PROX-001 — Partial | Proximity distance enforcement | Server respects voice range config (tiers or continuous) and only sends VAD updates to clients within range. | Bandwidth efficiency; privacy; matches voice privacy model to visual feedback. | Clients outside range do not receive VAD updates; dynamically recalculate on player move; no broadcast storm. |
 
 ## P1 - Provider Implementations & Adapters
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| VOICE-YACA-IMPL-001 | YACA-TS TeamSpeak adapter | Extend YacaBridgeQuest.psc to call Voice Activity Manager API. Map YACA plugin state → standard VAD interface. | First reference implementation; validates API design; unblocks YACA-based servers. | YacaBridgeQuest sends properly formatted state updates; server confirms receipt; lipsync animations play correctly. |
-| VOICE-DISCORD-IMPL-001 | Discord-bot voice adapter (optional) | Create TypeScript plugin or server hook for Discord voice bot integration (bot presence in VC → broadcast to server). | Supports Discord-first servers; shows API is provider-agnostic. | Server receives Discord voice state; clients render lipsync correctly; no YACA dependency. |
-| VOICE-CUSTOM-IMPL-001 | Custom VoIP adapter template | Publish adapter starter template/docs for operators implementing proprietary voice backends. | Enables third-party voice solutions without core server changes. | Template includes example implementation, validation checklist, and diagnostic tooling. |
+| VOICE-YACA-IMPL-001 — Open | YACA-TS TeamSpeak adapter | Extend YacaBridgeQuest.psc to call Voice Activity Manager API. Map YACA plugin state → standard VAD interface. | First reference implementation; validates API design; unblocks YACA-based servers. | YacaBridgeQuest sends properly formatted state updates; server confirms receipt; lipsync animations play correctly. |
+| VOICE-DISCORD-IMPL-001 — Open | Discord-bot voice adapter (optional) | Create TypeScript plugin or server hook for Discord voice bot integration (bot presence in VC → broadcast to server). | Supports Discord-first servers; shows API is provider-agnostic. | Server receives Discord voice state; clients render lipsync correctly; no YACA dependency. |
+| VOICE-CUSTOM-IMPL-001 — Open | Custom VoIP adapter template | Publish adapter starter template/docs for operators implementing proprietary voice backends. | Enables third-party voice solutions without core server changes. | Template includes example implementation, validation checklist, and diagnostic tooling. |
 
 ## P1 - Admin & Diagnostics
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| VOICE-MON-001 | Voice activity metrics & health | Extend plugin health monitoring to track VAD relay uptime, speaker count, voice-range distribution, provider breakdown. | Operators need visibility into voice pipeline health; diagnostics for voice desync complaints; provider-specific troubleshooting. | Admin API exposes `voiceActivity.runtimeStatus`, active speaker count, provider distribution, last event timestamp per provider. |
-| VOICE-ADM-001 | Admin panel for voice diagnostics | Add dashboard panel to show active speakers, voice range histogram, latency, provider health breakdown, and relay diagnostics. | Operators can quickly validate voice setup without SSH/logs; identify provider-specific issues. | Panel updates in real-time; one-click range recalibration and per-provider status toggles for troubleshooting. |
+| VOICE-MON-001 — Partial | Voice activity metrics & health | Extend plugin health monitoring to track VAD relay uptime, speaker count, voice-range distribution, provider breakdown. | Operators need visibility into voice pipeline health; diagnostics for voice desync complaints; provider-specific troubleshooting. | Admin API exposes `voiceActivity.runtimeStatus`, active speaker count, provider distribution, last event timestamp per provider. |
+| VOICE-ADM-001 — Open | Admin panel for voice diagnostics | Add dashboard panel to show active speakers, voice range histogram, latency, provider health breakdown, and relay diagnostics. | Operators can quickly validate voice setup without SSH/logs; identify provider-specific issues. | Panel updates in real-time; one-click range recalibration and per-provider status toggles for troubleshooting. |
 
 ## P2 - Advanced Features (Post-MVP)
 
 | ID | Area | Scope | Why | Acceptance criteria |
-| --- | --- | --- | --- | --- |
-| VOICE-DYN-001 | Dynamic voice range adjustment | Allow server to change voice range tiers per player or per-zone via admin API (e.g., smaller range in loud tavern). | Servers may want to vary communication model by region/scenario. | API supports `setVoiceRange(actorId, distanceTier)` with broadcast; clients update their range and recompute proximity. |
-| VOICE-EFFECT-001 | Voice effect integration (filters, reverb) | Optional: apply audio filters based on NPC race/environment (e.g., muffled underwater speech). | Immersive but lower priority; requires audio pipeline coordination with voice providers. | Filters are optional server-side configuration; adapters apply during voice playback if supported. |
-| VOICE-FALLBACK-001 | Fallback lipsync for silent audio | Generate synthetic lipsync from head-tracking or NPC dialogue state when voice audio is unavailable. | Improves immersion when voice provider is offline or voice is muted. | Server can trigger "silent speaking" animation based on gesture/action; different animation pool than voice-triggered. |
-| --- | --- | --- | --- | --- |
-| VOICE-DYN-001 | Dynamic voice range adjustment | Allow server to change voice range tiers per player or per-zone via admin API (e.g., smaller range in loud tavern). | Servers may want to vary communication model by region/scenario | API supports `setVoiceRange(actorId, distanceTier)` with broadcast; clients update their range and recompute proximity |
-| VOICE-EFFECT-001 | Voice effect integration (filters, reverb) | Optional: apply audio filters based on NPC race/environment (e.g., muffled underwater speech). | Immersive but lower priority; requires audio pipeline coordination with YACA plugin | Filters are optional server-side configuration; client applies during voice playback |
 
 ## Recommended rollout order
 
@@ -336,4 +336,4 @@ Before implementation, establish the contract:
 - **Player inactivity**: If speaker stops transmitting, server clears `isSpeaking=false` after configured timeout (e.g., 1 second) to prevent animation stutter.
 - **Multiplayer race conditions**: VAD updates are processed in-order on client; animation state is authoritative on speaker authority (local client), observed on remote clients.
 - **Future extensibility**: If voice providers add native audio streaming, effect pipeline can be extended without VAD API changes.
-- **Documentation**: `docs/docs_voice_api.md` will define the full TypeScript interface, OpenAPI spec, and adapter implementation guide.
+- **Documentation**: `voiceActivityApi.ts` and `docs/docs_voice_api.md` already define the TypeScript contract and adapter guide. Provider/gameplay acceptance and any additional OpenAPI artifact remain separate work.

@@ -1,3 +1,4 @@
+#include <RE/M/MenuEventHandlerEx.h>
 #include "DevApi.h"
 #include "FileUtils.h"
 #include "InvalidArgumentException.h"
@@ -190,7 +191,7 @@ Napi::Value DevApi::BlockPapyrusEvents(const Napi::CallbackInfo& info)
 }
 
 namespace {
-class WrapperScreenShotEventHandler : public RE::MenuEventHandler
+class WrapperScreenShotEventHandler : public RE::MenuEventHandlerEx
 {
 public:
   WrapperScreenShotEventHandler(RE::MenuEventHandler* originalHandler_)
@@ -229,9 +230,9 @@ void DevApi::DisableCtrlPrtScnHotkey()
   auto mc = RE::MenuControls::GetSingleton();
 
   RE::MenuEventHandler* originalHandler =
-    (RE::MenuEventHandler*)mc->screenshotHandler.get();
-  RE::MenuEventHandler* handler =
-    (RE::MenuEventHandler*)new WrapperScreenShotEventHandler(originalHandler);
+    (RE::MenuEventHandler*)mc->screenshotHandler;
+  auto* wrapper = new WrapperScreenShotEventHandler(originalHandler);
+  RE::MenuEventHandler* handler = wrapper->Handler();
 
   mc->RemoveHandler(originalHandler);
   mc->AddHandler(handler);

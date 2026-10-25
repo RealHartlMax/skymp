@@ -3,6 +3,7 @@
 #include "ConsoleApi.h"
 #include "ExceptionPrinter.h"
 #include "NullPointerException.h"
+#include "game/PlayerTintList.h"
 
 #include <RE/B/BSPointerHandle.h>
 #include <RE/N/NiPoint3.h>
@@ -459,19 +460,20 @@ void TESModPlatform::ResizeHeadpartsArray(IVM* vm, StackID stackId,
 void TESModPlatform::ResizeTintsArray(IVM* vm, StackID stackId,
                                       RE::StaticFunctionTag*, int32_t newSize)
 {
-  auto pc = RE::PlayerCharacter::GetSingleton();
-  if (!pc) {
+  auto tints = SkyrimPlatformRuntime::GetPlayerTintList(
+    RE::PlayerCharacter::GetSingleton());
+  if (!tints) {
     return;
   }
 
-  auto prevSize = pc->GetTintList()->size();
+  auto prevSize = tints->size();
 
   if (newSize < 0 || newSize > 1024 || newSize == prevSize) {
     return;
   }
 
-  pc->GetTintList()->resize(newSize);
-  for (auto& mask : *pc->GetTintList()) {
+  tints->resize(newSize);
+  for (auto& mask : *tints) {
     mask = (RE::TintMask*)new ::TintMask;
   }
 }
@@ -490,8 +492,12 @@ void TESModPlatform::ClearTintMasks(IVM* vm, StackID stackId,
                                     RE::Actor* targetActor)
 {
   if (!targetActor) {
-    auto pc = RE::PlayerCharacter::GetSingleton();
-    return pc->GetTintList()->clear();
+    auto tints = SkyrimPlatformRuntime::GetPlayerTintList(
+      RE::PlayerCharacter::GetSingleton());
+    if (tints) {
+      tints->clear();
+    }
+    return;
   }
 
   if (targetActor->formID < 0xff000000) {
@@ -510,6 +516,14 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
                                   RE::Actor* targetActor, int32_t type,
                                   uint32_t argb, RE::BSFixedString texturePath)
 {
+  // Resolve before allocating. The singleton may be unavailable during a load.
+  auto playerTints = targetActor ? nullptr :
+    SkyrimPlatformRuntime::GetPlayerTintList(
+      RE::PlayerCharacter::GetSingleton());
+  if (!targetActor && !playerTints) {
+    return;
+  }
+
   auto newTm = RE::malloc<::TintMask>();
   if (!newTm)
     return;
@@ -537,7 +551,7 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
   newTm->tintType = type;
 
   if (targetActor == nullptr) {
-    auto targetArray = RE::PlayerCharacter::GetSingleton()->GetTintList();
+    auto targetArray = playerTints;
     auto n = targetArray->size();
     targetArray->resize(1 + n);
     if (targetArray->size() == 1 + n) {
@@ -933,7 +947,7 @@ void TESModPlatform::Update()
   }
 
   auto vm = RE::SkyrimVM::GetSingleton();
-  if (!vm || !vm->impl) {
+  if (!vm || !vm->GetVMRuntimeData().impl) {
     return console->Print("VM was nullptr");
   }
 
@@ -950,7 +964,7 @@ void TESModPlatform::Update()
     // dependencies (like Actor.pex) is missing
     FixedString className("TESModPlatform");
     FixedString funcName("Add");
-    vm->impl->DispatchStaticCall(className, funcName, &args, functor);
+    vm->GetVMRuntimeData().impl->DispatchStaticCall(className, funcName, &args, functor);
   } catch (std::exception& e) {
     // We are not interested in crashing the game thread, so just printing
     static std::once_flag flag;

@@ -1120,7 +1120,7 @@ EventResult EventHandler::ProcessEvent(
     return EventResult::kContinue;
   }
 
-  uint32_t questId = event->questId;
+  uint32_t questId = event->formID;
 
   SkyrimPlatform::GetSingleton()->AddUpdateTask([questId](Napi::Env env) {
     auto obj = Napi::Object::New(env);

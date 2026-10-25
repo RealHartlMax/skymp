@@ -1,0 +1,81 @@
+.server-performance {
+  --perf-line: #35cba7;
+  --perf-secondary: #e5b967;
+  --perf-text: #e6edf0;
+  --perf-muted: #a3b7c0;
+  margin-bottom: 28px;
+  color: var(--perf-text);
+  min-width: 0;
+  &__heading, &__controls, &__card > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  &__heading { margin-bottom: 18px; flex-wrap: wrap; }
+  h3, h4, p { margin: 0; }
+  h3 { font-size: 23px; line-height: 1.25; }
+  h4 { font-size: 15px; line-height: 1.4; }
+  &__heading p { color: var(--perf-muted); font-size: 13px; margin-top: 6px; max-width: 620px; line-height: 1.5; }
+  &__controls { flex-wrap: wrap; gap: 8px; }
+  select, button { font: inherit; font-size: 13px; min-height: 36px; border: 1px solid #36494f; color: var(--perf-text); background: #17252b; border-radius: 7px; padding: 7px 12px; max-width: 100%; }
+  button:not(:disabled) { cursor: pointer; background: #174b40; border-color: #287c67; }
+  button:disabled { opacity: .5; }
+  select:focus-visible, button:focus-visible, &__chart:focus-visible { outline: 2px solid var(--perf-line); outline-offset: 4px; }
+  &__mode, &__state { font-size: 11px; border-radius: 20px; padding: 6px 10px; background: #263238; color: var(--perf-muted); white-space: nowrap; }
+  &__mode.is-live, &__state.is-online { background: #143d33; color: #65e0bb; }
+  &__mode.is-error { color: #ffd39b; background: #4d3320; }
+  &__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+  &__summary article, &__card { background: #1c252b; border: 1px solid #303d43; border-radius: 12px; }
+  &__summary article { padding: 18px 20px; }
+  &__summary article > span { display: block; color: var(--perf-muted); font-size: 12px; line-height: 1.5; }
+  &__summary strong { display: block; font-size: 30px; font-weight: 650; margin: 6px 0; color: #65e0bb; }
+  &__summary small { font-size: 17px; font-weight: 400; }
+  &__summary p { color: var(--perf-muted); font-size: 11px; line-height: 1.5; }
+  &__top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+  &__card { padding: 18px 20px; min-width: 0; }
+  &__card > header { margin-bottom: 16px; align-items: flex-start; }
+  &__caption { color: var(--perf-muted); font-size: 12px; line-height: 1.6; }
+  &__player-line { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #303d43; color: var(--perf-muted); font-size: 13px; }
+  &__player-line strong { font-size: 28px; color: var(--perf-text); }
+  &__runtime { margin: 14px 0; width: 100%; border-collapse: collapse; table-layout: fixed; }
+  &__runtime th, &__runtime td { font-size: 13px; padding: 9px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+  &__runtime th { font-weight: 400; color: var(--perf-muted); }
+  &__runtime tbody th { text-align: left; }
+  &__runtime thead th { font-size: 11px; border-bottom: 1px solid #303d43; }
+  &__help { color: var(--perf-muted); font-size: 11px; line-height: 1.6; margin-top: 12px !important; }
+  &__notice { border-left: 3px solid #e5b967; background: #312e25; color: #ead4a7; padding: 10px 12px; font-size: 12px; line-height: 1.6; margin: 10px 0 !important; }
+  &__histogram { display: grid; gap: 7px; }
+  &__histogram-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 62px; align-items: center; gap: 10px; font-size: 11px; min-height: 15px; }
+  &__histogram-row > span { color: var(--perf-muted); }
+  &__histogram-row > strong { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+  &__track { height: 9px; background: #28353b; border-radius: 3px; overflow: hidden; }
+  &__track > span { display: block; height: 100%; background: var(--perf-line); border-radius: inherit; min-width: 0; }
+  &__track > .is-medium { background: var(--perf-secondary); }
+  &__track > .is-slow { background: #e58e8e; }
+  &__chart-card header { flex-wrap: wrap; }
+  &__chart-card header p { margin-top: 5px; }
+  &__legend { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; font-size: 12px; color: var(--perf-muted); }
+  &__legend span::before { display: inline-block; content: ''; width: 16px; height: 3px; margin-right: 6px; background: var(--perf-line); vertical-align: middle; }
+  &__legend span + span::before { background: var(--perf-secondary); }
+  &__legend small { margin-left: auto; font-size: 11px; }
+  &__chart { width: 100%; height: 270px; display: block; cursor: crosshair; margin-top: 8px; overflow: visible; }
+  &__chart text { fill: var(--perf-muted); font: 11px sans-serif; }
+  &__grid-line { stroke: #35434a; stroke-width: 1; stroke-dasharray: 3 6; }
+  &__series { stroke: var(--perf-line); fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+  &__series--secondary { stroke: var(--perf-secondary); stroke-width: 1.5; }
+  &__marker { fill: var(--perf-line); }
+  &__marker--secondary { fill: var(--perf-secondary); }
+  &__cursor { stroke: #dbe8ea; stroke-width: 1; stroke-dasharray: 4 3; }
+  &__plot { position: relative; }
+  &__empty-label { position: absolute; left: 54px; right: 26px; top: 32%; text-align: center; font-size: 14px; color: var(--perf-muted); line-height: 1.5; pointer-events: none; }
+  &__empty { padding: 28px; text-align: center; color: var(--perf-muted); }
+  &__sr-only { position: absolute; height: 1px; width: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  @media (max-width: 1200px) { &__top { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) {
+    &__summary { grid-template-columns: 1fr; gap: 9px; }
+    &__summary article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 12px 14px; }
+    &__summary strong { font-size: 25px; grid-column: 2; grid-row: 1 / 3; margin-left: 12px; }
+    &__summary p { grid-column: 1; }
+    &__card { padding: 15px 12px; }
+    &__histogram-row { grid-template-columns: 75px minmax(0, 1fr) 53px; gap: 6px; }
+    &__chart { min-height: 150px; }
+    &__heading h3 { font-size: 20px; }
+    &__controls { width: 100%; }
+  }
+}

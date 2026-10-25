@@ -1,6 +1,17 @@
 import * as crypto from 'crypto';
+const launcherConnection = require('../../misc/deploy/test-server/launcher-connection.cjs');
 import { renderAdminLoginPage } from './adminLoginPage';
 import { registerLauncherResources } from './launcherResources';
+import { registerModLoadOrder } from './modLoadOrder';
+import { registerServerAssets } from './serverAssets';
+import { registerPlayerAccess, validatePlayerAccess, getSteamPlayerInfo } from './playerAccess';
+import { getManagedGameState, isDashboardRuntime, isManagedRuntime, notifyManagedSettingsChanged, onManagedMessage, publishAdminSession, publishManagedReady, publishManagedUpdate, publishDiscordNotification, removeManagedSession, requestManagedControl } from './managedRuntime';
+import { normalizeDiscordSettings, resolveDiscordSettings, validateDiscordSettings } from './discordConfig';
+import { discordStatusDefaults } from './discordStatus';
+import type { DiscordBotSettings } from './discordConfig';
+import type { DashboardDiscordBot } from './discordBot';
+import { isGameRequest, proxyGameRequest } from './dashboardGameProxy';
+import { getServerPerformance, initializeServerPerformance } from './serverPerformance';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as koaBody from 'koa-body';
@@ -41,6 +52,7 @@ import {
   broadcastEvent,
   broadcastHistoryEntry,
   broadcastRespawnUpdate,
+  broadcastAdminUpdate,
 } from './adminWebSocket';
 
 const Koa = require('koa');
@@ -49,6 +61,10 @@ const Router = require('koa-router');
 const auth = require('koa-basic-auth');
 
 let gScampServer: any = null;
+let managedGameStatus: any = null;
+let managedPlayers: any[] = [];
+let dashboardDiscordBot: DashboardDiscordBot | null = null;
+export const setDashboardDiscordBot = (bot: DashboardDiscordBot): void => { dashboardDiscordBot = bot; };
 
 let metricsAuth: { user: string; password: string } | null = null;
 let adminAuth: { user: string; password: string } | null = null;
@@ -106,11 +122,16 @@ const serverLogBuffers: Record<ServerLogLevel, string> = {
 };
 
 let liveConsoleClients: Set<WebSocket> = new Set();
+const liveConsoleRequests = new WeakMap<WebSocket, http.IncomingMessage>();
 
 const broadcastLiveConsoleLog = (entry: ServerLogEntry): void => {
   if (liveConsoleClients.size === 0) return;
   const msg = JSON.stringify({ type: 'serverLog', entry });
   for (const ws of liveConsoleClients) {
+    const request = liveConsoleRequests.get(ws);
+    if (!request || !authorizeAdminWebSocket(request)) {
+      ws.close(1008, 'Admin session expired'); liveConsoleClients.delete(ws); continue;
+    }
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);
     }
@@ -473,7 +494,8 @@ const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
   const launchServerBat = path.join(cwd, 'launch_server.bat');
   const launchServerSh = path.join(cwd, 'launch_server.sh');
   const hasLauncher =
-    fs.existsSync(launchServerBat) || fs.existsSync(launchServerSh);
+    fs.existsSync(launchServerBat) || fs.existsSync(launchServerSh) ||
+    fs.existsSync(path.join(cwd, 'start-test-server.cmd')) || fs.existsSync(path.join(cwd, 'start-test-server.sh'));
   checks.push(
     hasLauncher
       ? {
@@ -486,7 +508,7 @@ const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
           id: 'launcher',
           level: 'error',
           code: 'launcher_missing',
-          message: 'No launch_server script was found in the server directory.',
+          message: 'No supported server starter was found in the server directory.',
         },
   );
 
@@ -526,7 +548,9 @@ const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
         },
   );
 
-  const nodeVersion = getCommandVersion('node');
+  const nodeVersion = process.version;
+  let bundledDependencies = false;
+  try { bundledDependencies = JSON.parse(fs.readFileSync(path.join(cwd, 'build-manifest.json'), 'utf8')).runtimeDependenciesBundled === true; } catch { /* Older packages use node_modules. */ }
   checks.push(
     nodeVersion
       ? {
@@ -544,7 +568,7 @@ const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
         },
   );
 
-  const npmVersion = getCommandVersion('npm');
+  const npmVersion = bundledDependencies ? 'not required (bundled backend)' : getCommandVersion('npm');
   checks.push(
     npmVersion
       ? {
@@ -562,14 +586,14 @@ const buildRuntimeReadinessReport = (): RuntimeReadinessReport => {
         },
   );
 
-  const hasNodeModules = fs.existsSync(path.join(cwd, 'node_modules'));
+  const hasNodeModules = bundledDependencies || fs.existsSync(path.join(cwd, 'node_modules'));
   checks.push(
     hasNodeModules
       ? {
           id: 'nodeModules',
           level: 'ok',
-          code: 'node_modules_found',
-          message: 'node_modules directory is present.',
+          code: bundledDependencies ? 'runtime_dependencies_bundled' : 'node_modules_found',
+          message: bundledDependencies ? 'Runtime dependencies are included in the backend bundle; npm install is not required.' : 'node_modules directory is present.',
         }
       : {
           id: 'nodeModules',
@@ -831,13 +855,6 @@ interface JoinAccessSettings {
   approvedLicenses: string[];
   approvedDiscordIds: string[];
   discordRoleIds: string[];
-}
-
-interface DiscordBotSettings {
-  enabled: boolean;
-  token: string;
-  guildId: string;
-  warningsChannelId: string;
 }
 
 interface SupervisorSettings {
@@ -1685,6 +1702,7 @@ const DEFAULT_DISCORD_BOT: DiscordBotSettings = {
   enabled: false,
   token: '',
   guildId: '',
+  statusChannelId: '',
   warningsChannelId: '',
 };
 
@@ -1986,38 +2004,10 @@ const ensureJoinAccessSettingsInObject = (
   return normalized;
 };
 
-const sanitizeDiscordBotSettings = (
-  value: Record<string, unknown> | undefined,
-  discordAuth: Record<string, unknown> | undefined,
-): DiscordBotSettings => {
-  const tokenFromAuth = String(discordAuth?.botToken || '').trim();
-  const guildFromAuth = String(discordAuth?.guildId || '').trim();
-  const warningsFromAuth = String(discordAuth?.eventLogChannelId || '').trim();
-
-  return {
-    enabled: Boolean(value?.enabled),
-    token: String(value?.token || tokenFromAuth),
-    guildId: String(value?.guildId || guildFromAuth),
-    warningsChannelId: String(value?.warningsChannelId || warningsFromAuth),
-  };
-};
-
 const ensureDiscordBotSettingsInObject = (
   settingsObj: Record<string, unknown>,
 ): DiscordBotSettings => {
-  const current = settingsObj.discordBot as Record<string, unknown> | undefined;
-  const discordAuth = settingsObj.discordAuth as
-    | Record<string, unknown>
-    | undefined;
-  const normalized = sanitizeDiscordBotSettings(current, discordAuth);
-  settingsObj.discordBot = normalized;
-  settingsObj.discordAuth = {
-    ...(discordAuth || {}),
-    botToken: normalized.token,
-    guildId: normalized.guildId,
-    eventLogChannelId: normalized.warningsChannelId,
-  };
-  return normalized;
+  return normalizeDiscordSettings(settingsObj);
 };
 
 const sanitizeSupervisorSettings = (
@@ -2063,6 +2053,7 @@ const getSupervisorSettings = (settings: Settings): SupervisorSettings => {
 };
 
 const isServerControlAvailable = (settings: Settings): boolean => {
+  if (isManagedRuntime()) return true;
   const supervisor = getSupervisorSettings(settings);
   return (
     supervisor.enabled &&
@@ -2085,11 +2076,9 @@ const writeServerSettingsJson = (
   settingsObj: Record<string, unknown>,
 ): void => {
   const settingsPath = getServerSettingsPath();
-  fs.writeFileSync(
-    settingsPath,
-    JSON.stringify(settingsObj, null, 2) + '\n',
-    'utf8',
-  );
+  launcherConnection.write(settingsPath, settingsObj);
+  void dashboardDiscordBot?.configure(settingsObj);
+  notifyManagedSettingsChanged();
 };
 
 const clearLegacyAdminUiAuthInServerSettings = (): boolean => {
@@ -2320,6 +2309,7 @@ const cleanupExpiredAdminSessions = (): void => {
   adminSessions.forEach((session, id) => {
     if (now - session.lastActivityAt > ADMIN_SESSION_IDLE_MS) {
       adminSessions.delete(id);
+      removeManagedSession(id);
     }
   });
 };
@@ -2335,6 +2325,7 @@ const createAdminSession = (user: string) => {
     lastActivityAt: now,
   };
   adminSessions.set(id, session);
+  publishAdminSession(session);
   return session;
 };
 
@@ -2346,13 +2337,15 @@ const getAdminSessionFromCtx = (ctx: any) => {
   if (!session) return null;
   if (Date.now() - session.lastActivityAt > ADMIN_SESSION_IDLE_MS) {
     adminSessions.delete(id);
+    removeManagedSession(id);
     return null;
   }
   return session;
 };
 
-const touchAdminSession = (session: { lastActivityAt: number }): void => {
+const touchAdminSession = (session: { id: string; user: string; lastActivityAt: number }): void => {
   session.lastActivityAt = Date.now();
+  publishAdminSession(session);
 };
 
 const setAdminSessionCookie = (ctx: any, sessionId: string): void => {
@@ -2487,16 +2480,88 @@ const ensureAdminCapability = (
   return false;
 };
 
+const getAdminStatus = (settings: Settings) => {
+  const managed = isDashboardRuntime() ? getManagedGameState() : null;
+  const running = !managed || managed.state === 'running';
+  return {
+    name: settings.name,
+    master: settings.master,
+    online: running ? (managed ? managedGameStatus?.online || 0 : getOnlinePlayerIds().length) : 0,
+    maxPlayers: managedGameStatus?.maxPlayers ?? settings.maxPlayers,
+    port: managedGameStatus?.port ?? settings.port,
+    itemPickupMode: settings.itemPickupMode,
+    uptimeSec: running ? Math.max(0, Math.floor((Date.now() - (managed?.startedAt ?? processStartedAt)) / 1000)) : 0,
+    gameState: managed?.state || 'running',
+    gamePid: managed?.pid ?? (managed ? null : process.pid),
+    dashboardPid: managed ? process.pid : null,
+    dashboardUptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
+    lastGameExit: managed?.lastExit || null,
+    discordBot: dashboardDiscordBot?.getStatus() || null,
+  };
+};
+
 const createApp = (settings: Settings, getOriginPort: () => number) => {
   const dataDir: string = settings.dataDir ?? './data';
   loadStoredAdminAuth(dataDir);
   loadModerationState(dataDir);
   loadPlayerStats(dataDir);
   loadHistory(dataDir);
-  addEnvironmentChange('server-start', 'Server started');
+  if (!isDashboardRuntime()) addEnvironmentChange('server-start', 'Server started');
+
+  if (isManagedRuntime()) {
+    const reloadSettings = () => {
+      try {
+        const parsed = readServerSettingsJson();
+        settings.allSettings = parsed;
+        if (isDashboardRuntime()) {
+          for (const key of ['name', 'master', 'port', 'maxPlayers', 'itemPickupMode', 'loadOrder'] as const) {
+            if (parsed[key] !== undefined) (settings as any)[key] = parsed[key];
+          }
+        }
+      } catch (error) { console.error('[Admin] Could not reload settings:', error); }
+    };
+    onManagedMessage(message => {
+      if (message?.type === 'skymp:session' && /^[a-f0-9]{48}$/.test(message.id) && typeof message.user === 'string' && Number.isFinite(message.lastActivityAt)) {
+        adminSessions.set(message.id, { id: message.id, user: message.user, createdAt: message.lastActivityAt, lastActivityAt: message.lastActivityAt });
+      } else if (message?.type === 'skymp:logout') adminSessions.delete(message.id);
+      else if (message?.type === 'skymp:settings-changed') reloadSettings();
+      else if (isDashboardRuntime() && message?.type === 'skymp:game-log') {
+        pushServerLogChunk(message.level === 'error' ? 'error' : 'info', String(message.text || ''));
+      } else if (isDashboardRuntime() && message?.type === 'skymp:update') {
+        if (message.updateType === 'status') managedGameStatus = message.data;
+        else if (message.updateType === 'players') managedPlayers = message.data?.players || [];
+        else if (message.updateType === 'log' && message.data?.entry) {
+          adminLog.push(message.data.entry); if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
+        }
+        else if (message.updateType === 'plugin') updatePluginRuntimeStatus(message.data.name, message.data.status, message.data.options);
+        // Status/players are emitted by this dashboard with process state attached.
+        if (!['status', 'players'].includes(message.updateType)) broadcastAdminUpdate(message.updateType, message.data);
+      } else if (isDashboardRuntime() && message?.type === 'skymp:game-state') {
+        if (message.value.state !== 'running') { managedGameStatus = null; managedPlayers = []; }
+        if (['stopped', 'crashed'].includes(message.value.state)) {
+          loadModerationState(dataDir); loadPlayerStats(dataDir); loadHistory(dataDir);
+          for (const entry of pluginRuntimeStatuses.values()) { entry.status = 'stopped'; delete entry.pid; }
+        }
+        broadcastStatusUpdate(getAdminStatus(settings));
+        broadcastPlayersUpdate(managedPlayers);
+      }
+    });
+    if (!isDashboardRuntime()) process.on('SIGTERM', () => {
+      const now = Date.now();
+      for (const stats of adminPlayerStats.values()) {
+        if (stats.activeSessionStartedAt) stats.totalPlayMs += Math.max(0, now - stats.activeSessionStartedAt);
+        stats.activeSessionStartedAt = null;
+      }
+      savePlayerStats(dataDir, true);
+    });
+  }
 
   const app = new Koa();
   app.use(koaBody.default({ multipart: true }));
+  if (isDashboardRuntime()) app.use(async (ctx: any, next: any) => {
+    if (ctx.path.startsWith('/rpc/')) { await proxyGameRequest(ctx); return; }
+    await next();
+  });
 
   // Middleware to auto-detect external URL from Host header
   app.use(async (ctx: any, next: any) => {
@@ -3474,6 +3539,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const session = getAdminSessionFromCtx(ctx);
       if (session) {
         adminSessions.delete(session.id);
+        removeManagedSession(session.id);
       }
       clearAdminSessionCookie(ctx);
       ctx.body = { ok: true };
@@ -3694,6 +3760,14 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     router.use('/api/admin', async (ctx: any, next: any) => {
+      if (isManagedRuntime()) {
+        // Permission/config changes apply without restarting the persistent dashboard.
+        const parsed = readServerSettingsJson();
+        settings.allSettings = parsed;
+        if (isDashboardRuntime()) for (const key of ['name', 'master', 'port', 'maxPlayers', 'itemPickupMode', 'loadOrder'] as const) {
+          if (parsed[key] !== undefined) (settings as any)[key] = parsed[key];
+        }
+      }
       if (
         ctx.path.startsWith('/api/admin/session/') ||
         ctx.path.startsWith('/api/admin/setup/')
@@ -3720,16 +3794,29 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       ctx.body = { ok: false, error: 'unauthorized' };
     });
 
+    if (isDashboardRuntime()) router.use('/api/admin', async (ctx: any, next: any) => {
+      if (isGameRequest(ctx.method, ctx.path)) {
+        if (getManagedGameState().state === 'running' || ctx.method !== 'GET') {
+          await proxyGameRequest(ctx); return;
+        }
+      }
+      await next();
+    });
+
+    launcherConnection.register(router, {
+      file: getServerSettingsPath,
+      authorize: (ctx: any): boolean => {
+        const { role } = getAdminContext(settings, ctx);
+        if (role !== 'admin') {
+          ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return false;
+        }
+        return true;
+      },
+      onSaved: () => { notifyManagedSettingsChanged(); addAdminLog('console', 'Launcher connection saved.'); },
+    });
+
     router.get('/api/admin/status', (ctx: any) => {
-      ctx.body = {
-        name: settings.name,
-        master: settings.master,
-        online: getOnlinePlayerIds().length,
-        maxPlayers: settings.maxPlayers,
-        port: settings.port,
-        itemPickupMode: settings.itemPickupMode,
-        uptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
-      };
+      ctx.body = getAdminStatus(settings);
     });
 
     router.get('/api/admin/update-status', async (ctx: any) => {
@@ -3775,15 +3862,30 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
-    router.post('/api/admin/server/control', (ctx: any) => {
+    router.post('/api/admin/server/control', async (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+      let sameOrigin = false;
+      try { const origin = new URL(ctx.get('origin')); sameOrigin = ['http:', 'https:'].includes(origin.protocol) && origin.host === ctx.host; } catch {}
+      if (!sameOrigin || ctx.get('content-type').split(';')[0].trim() !== 'application/json' || !['', 'same-origin', 'none'].includes(ctx.get('sec-fetch-site'))) {
+        ctx.status = 403;
+        ctx.body = { ok: false, error: 'Server control requires same-origin JSON.' };
+        return;
+      }
 
       const action = String(ctx.request.body?.action ?? '')
         .trim()
         .toLowerCase();
-      if (action !== 'stop' && action !== 'restart') {
+      if (action !== 'stop' && action !== 'restart' && !(isManagedRuntime() && action === 'start')) {
         ctx.status = 400;
         ctx.body = { ok: false, error: 'invalid action' };
+        return;
+      }
+
+      if (isManagedRuntime()) {
+        const result = await requestManagedControl(action as 'start' | 'stop' | 'restart');
+        if (!result.ok) { ctx.status = 409; ctx.body = result; return; }
+        addAdminLog('console', `Server ${action} requested through packaged process manager`);
+        ctx.body = { ok: true, action, queued: true, via: 'packaged-supervisor', independentDashboard: isDashboardRuntime() };
         return;
       }
 
@@ -3840,6 +3942,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ...capabilities,
         serverControlAvailable:
           capabilities.canConsole && isServerControlAvailable(settings),
+        serverControlMode: isManagedRuntime() ? 'packaged' : 'external',
+        independentDashboard: isDashboardRuntime(),
       };
     });
 
@@ -4029,6 +4133,12 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
+      const accessError = validatePlayerAccess(parsed);
+      if (accessError) { ctx.status = 400; ctx.body = { ok: false, error: accessError }; return; }
+      ensureDiscordBotSettingsInObject(parsed);
+      const discordError = validateDiscordSettings(parsed);
+      if (discordError) { ctx.status = 400; ctx.body = { ok: false, error: discordError }; return; }
+
       // Ensure master admin is preserved
       try {
         const masterUser = resolveMasterAdminUserFromSettingsObject(
@@ -4172,7 +4282,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     router.get('/api/admin/players', (ctx: any) => {
-      updatePlayerStatsSnapshot(dataDir);
+      if (!isDashboardRuntime()) updatePlayerStatsSnapshot(dataDir);
       const now = Date.now();
 
       const playersByUserId = new Map<number, any>();
@@ -4191,6 +4301,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           userId,
           actorId,
           online: true,
+          ...getSteamPlayerInfo(gScampServer, userId),
           actorName: actorId
             ? safeCall(() => gScampServer.getActorName(actorId), '') ||
               stats?.lastDisplayName ||
@@ -4514,6 +4625,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         author: warnAuthor,
       });
       saveHistory(dataDir);
+      const notification = { kind: 'warning' as const, content: `${settings.name}: ${warnPlayerName} (userId=${userId}) — ${reason || message} [${warnAuthor}]` };
+      if (isManagedRuntime() && !isDashboardRuntime()) publishDiscordNotification(notification);
+      else dashboardDiscordBot?.notify(notification);
       ctx.body = { ok: true, userId };
     });
 
@@ -4647,6 +4761,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       );
     });
 
+    registerModLoadOrder(router, {
+      read: readServerSettingsJson,
+      write: (value) => { writeServerSettingsJson(value); settings.allSettings = value; },
+      authorize: (ctx, write) => {
+        if (!ensureAdminCapability(settings, ctx, write ? 'canConsole' : 'canViewLogs')) return false;
+        if (write && getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return false; }
+        return true;
+      },
+    });
+
     router.get('/api/admin/resources', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
@@ -4684,8 +4808,49 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
+    router.get('/api/admin/discord/settings', (ctx: any) => {
+      if (getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return; }
+      ctx.set('Cache-Control', 'no-store');
+      try {
+        const parsed = readServerSettingsJson();
+        const publicHost = typeof (parsed.publicHost || parsed.externalHost) === 'string' ? String(parsed.publicHost || parsed.externalHost).trim().slice(0, 255) : '';
+        ctx.body = { ok: true, discordBot: resolveDiscordSettings(parsed).bot,
+          defaults: discordStatusDefaults((parsed.localeRouting as any)?.defaultLanguage),
+          serverAddress: publicHost ? `${publicHost.includes(':') ? `[${publicHost}]` : publicHost}:${Number(parsed.port) || 7777}` : '—' };
+      } catch { ctx.status = 500; ctx.body = { ok: false, error: 'Discord settings could not be loaded.' }; }
+    });
+    router.post('/api/admin/discord/settings', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+      if (getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return; }
+      let sameOrigin = false;
+      try { const origin = new URL(ctx.get('origin')); sameOrigin = ['http:', 'https:'].includes(origin.protocol) && origin.host === ctx.host; } catch {}
+      if (!sameOrigin || ctx.get('content-type').split(';')[0].trim() !== 'application/json' || !['', 'same-origin', 'none'].includes(ctx.get('sec-fetch-site'))) {
+        ctx.status = 403; ctx.body = { ok: false, error: 'Discord settings require same-origin JSON.' }; return;
+      }
+      ctx.set('Cache-Control', 'no-store');
+      const input = ctx.request.body?.discordBot;
+      const fields = ['enabled', 'token', 'guildId', 'statusChannelId', 'warningsChannelId', 'statusEmbedEnabled', 'statusEmbed', 'statusConfig'];
+      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !fields.includes(key)) || JSON.stringify(input).length > 32768 ||
+        ['enabled', 'statusEmbedEnabled'].some(key => input[key] !== undefined && typeof input[key] !== 'boolean') ||
+        ['token', 'guildId', 'statusChannelId', 'warningsChannelId'].some(key => input[key] !== undefined && typeof input[key] !== 'string')) {
+        ctx.status = 400; ctx.body = { ok: false, error: 'Invalid Discord settings.' }; return;
+      }
+      try {
+        const parsed = readServerSettingsJson();
+        parsed.discordBot = { ...resolveDiscordSettings(parsed).bot, ...input };
+        const error = validateDiscordSettings(parsed);
+        if (error) { ctx.status = 400; ctx.body = { ok: false, error }; return; }
+        const bot = normalizeDiscordSettings(parsed);
+        writeServerSettingsJson(parsed); settings.allSettings = parsed;
+        addAdminLog('console', `Updated Discord settings (enabled=${bot.enabled}, statusEmbed=${bot.statusEmbedEnabled === true})`);
+        ctx.body = { ok: true, discordBot: bot, restartRequired: false };
+      } catch { ctx.status = 500; ctx.body = { ok: false, error: 'Discord settings could not be saved.' }; }
+    });
+
     router.get('/api/admin/cfg/server-settings', (ctx: any) => {
-      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      if (getAdminContext(settings, ctx).role !== 'admin') {
+        ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return;
+      }
 
       try {
         const parsed = readServerSettingsJson();
@@ -4738,6 +4903,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         return;
       }
 
+      const accessError = validatePlayerAccess(parsed);
+      if (accessError) { ctx.status = 400; ctx.body = { ok: false, error: accessError }; return; }
       const localeRouting = ensureLocaleRoutingSettingsInObject(parsed);
       const joinAccess = ensureJoinAccessSettingsInObject(parsed);
       const discordBot = ensureDiscordBotSettingsInObject(parsed);
@@ -4745,6 +4912,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const showCharacterNicknames = ensureNicknameVisibilitySettingInObject(
         parsed,
       );
+
+      const discordError = validateDiscordSettings(parsed);
+      if (discordError) { ctx.status = 400; ctx.body = { ok: false, error: discordError }; return; }
 
       try {
         writeServerSettingsJson(parsed);
@@ -4786,6 +4956,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         discordBot: {
           enabled: discordBot.enabled,
           guildId: discordBot.guildId,
+          statusChannelId: discordBot.statusChannelId,
           warningsChannelId: discordBot.warningsChannelId,
           hasToken: discordBot.token.trim().length > 0,
         },
@@ -5069,6 +5240,15 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       };
     });
 
+    router.get('/api/admin/server-performance', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      const minutes = Number(ctx.query?.minutes);
+      ctx.set('Cache-Control', 'no-store');
+      const performance = getServerPerformance();
+      if (!performance) { ctx.status = 503; ctx.body = { error: 'Performance service unavailable' }; return; }
+      ctx.body = performance.view(Number.isFinite(minutes) && minutes > 0 ? minutes : 1440);
+    });
+
     router.get('/api/admin/frontend-metrics', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
 
@@ -5329,6 +5509,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       );
     }
     router.get('/metrics', async (ctx: any) => {
+      if (isDashboardRuntime() && getManagedGameState().state === 'running') { await proxyGameRequest(ctx); return; }
       ctx.set('Content-Type', register.contentType);
       ctx.body = await getAggregatedMetrics(gScampServer);
     });
@@ -5343,14 +5524,26 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
   // ---------------------------------------------------------------------------
   // Path-preserving launcher downloads; the in-game client does not install mods.
-  const launcherConfig = settings.allSettings?.launcherResources as
-    { directory?: string; enabled?: boolean; runtimeSource?: string } | undefined;
-  registerLauncherResources(router, {
-    dataDir,
-    loadOrder: settings.loadOrder,
-    directory: launcherConfig?.directory,
-    enabled: launcherConfig?.enabled,
-    runtimeSource: launcherConfig?.runtimeSource,
+  registerServerAssets(router);
+  registerPlayerAccess(router, {
+    settings: () => readServerSettingsJson(),
+    authorize: (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return false;
+      if (getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return false; }
+      return true;
+    },
+  });
+  registerLauncherResources(router, () => {
+    const parsed = isDashboardRuntime() ? readServerSettingsJson() : settings.allSettings;
+    const launcherConfig = parsed?.launcherResources as
+      { directory?: string; enabled?: boolean; runtimeSource?: string } | undefined;
+    return {
+      dataDir,
+      loadOrder: Array.isArray(parsed?.loadOrder) ? parsed.loadOrder as string[] : settings.loadOrder,
+      directory: launcherConfig?.directory,
+      enabled: launcherConfig?.enabled,
+      runtimeSource: launcherConfig?.runtimeSource,
+    };
   });
 
   // Public Resource Distribution API (legacy flat-file contract)
@@ -5477,9 +5670,28 @@ export const pushServerLogChunk = (
   pushServerLogChunkInternal(level, chunk);
 };
 
+const authorizeAdminWebSocket = (request: http.IncomingMessage): boolean => {
+  try {
+    if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) return false;
+    const cookies = String(request.headers.cookie || '').split(';').map(part => part.trim());
+    const ctx: any = { headers: request.headers, state: {}, cookies: { get: (name: string) => cookies.find(part => part.startsWith(name + '='))?.slice(name.length + 1) } };
+    const user = getAdminSessionFromCtx(ctx)?.user || getValidBasicAdminUser(ctx);
+    if (!user) return false;
+    ctx.state.adminUser = user;
+    return getAdminContext(activeWebSocketSettings!, ctx).capabilities.canViewLogs;
+  } catch { return false; }
+};
+let activeWebSocketSettings: Settings | null = null;
+
 export const setupLiveConsoleWebSocket = (server: http.Server): void => {
-  const wss = new WebSocketServer({ server, path: '/ws/live-console' });
-  wss.on('connection', (ws) => {
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (request, socket, head) => {
+    if (new URL(request.url || '/', 'http://localhost').pathname !== '/ws/live-console') return;
+    if (!authorizeAdminWebSocket(request)) { socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); return; }
+    wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws, request));
+  });
+  wss.on('connection', (ws, request) => {
+    liveConsoleRequests.set(ws, request);
     liveConsoleClients.add(ws);
     // Send recent log history on connect
     const history = serverLog.slice(-200);
@@ -5529,6 +5741,7 @@ export const updatePluginRuntimeStatus = (
   }
 
   pluginRuntimeStatuses.set(normalizedName, next);
+  publishManagedUpdate('plugin', { name: normalizedName, status, options });
 };
 
 const getLanIpv4Addresses = (): string[] => {
@@ -5569,6 +5782,7 @@ const logDashboardUrls = (uiPort: number, uiListenHost: string): void => {
 };
 
 export const main = (settings: Settings): void => {
+  initializeServerPerformance(settings.allSettings || {});
   metricsAuthParse(settings);
   adminAuthParse(settings);
   const devServerPort = 1234;
@@ -5581,12 +5795,16 @@ export const main = (settings: Settings): void => {
       ? Math.floor(configuredUiPort)
       : settings.port;
 
-  Axios({
+  const managed = isManagedRuntime();
+  const listenPort = managed ? 0 : uiPort;
+  const listenHost = managed ? '127.0.0.1' : uiListenHost;
+
+  (managed ? Promise.reject(new Error('Packaged supervisor uses the production UI')) : Axios({
     method: 'get',
     url: `http://localhost:${devServerPort}`,
     timeout: LOCAL_PROBE_TIMEOUT_MS,
     maxContentLength: MAX_REQUEST_BODY_BYTES,
-  })
+  }))
     .then(() => {
       console.log(`UI dev server has been detected on port ${devServerPort}`);
 
@@ -5622,20 +5840,15 @@ export const main = (settings: Settings): void => {
       const app = createApp(settings, () => uiPort);
       console.log(`Server resources folder is listening on ${uiPort}`);
       const server = http.createServer(app.callback());
-      server.listen(uiPort, uiListenHost, () => {
+      server.listen(listenPort, listenHost, () => {
+        if (managed) publishManagedReady((server.address() as AddressInfo).port);
+        activeWebSocketSettings = settings;
         setupLiveConsoleWebSocket(server);
-        setupAdminWebSocket(server);
+        setupAdminWebSocket(server, authorizeAdminWebSocket);
         startAdminUpdateBroadcasts(
-          () => ({
-            name: settings.name,
-            master: settings.master,
-            online: getOnlinePlayerIds().length,
-            maxPlayers: settings.maxPlayers,
-            port: settings.port,
-            itemPickupMode: settings.itemPickupMode,
-            uptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
-          }),
+          () => getAdminStatus(settings),
           () => {
+            if (isDashboardRuntime() && getManagedGameState().state === 'running') return managedPlayers;
             const now = Date.now();
             const playersByUserId = new Map<number, any>();
             getOnlinePlayerIds().forEach((userId) => {
@@ -5651,6 +5864,7 @@ export const main = (settings: Settings): void => {
                 userId,
                 actorId,
                 online: true,
+                ...getSteamPlayerInfo(gScampServer, userId),
                 actorName: actorId
                   ? safeCall(() => gScampServer.getActorName(actorId), '') ||
                     stats?.lastDisplayName ||

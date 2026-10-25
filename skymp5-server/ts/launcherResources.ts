@@ -156,6 +156,8 @@ export class LauncherResourceStore {
         if (!entry.isFile()) fail('Client resources must be regular files.');
         // Sources/readmes are not installed, and must not expose unrelated files.
         if (/\.(?:psc|md)$/i.test(entry.name)) continue;
+        // Uploaded but disabled plugins stay available in the dashboard, outside the active modpack.
+        if (resourceKind(next) === 'mod' && !names.has(path.posix.basename(next).toLowerCase())) continue;
         add({ root: this.directory, relative: next, target: next });
       }
     };
@@ -252,8 +254,17 @@ export class LauncherResourceStore {
   }
 }
 
-export function registerLauncherResources(router: any, options: { dataDir: string; loadOrder: string[]; directory?: string; enabled?: boolean; runtimeSource?: string }): LauncherResourceStore {
-  const store = new LauncherResourceStore(options);
+type LauncherResourceOptions = { dataDir: string; loadOrder: string[]; directory?: string; enabled?: boolean; runtimeSource?: string };
+
+export function registerLauncherResources(router: any, options: LauncherResourceOptions | (() => LauncherResourceOptions)): LauncherResourceStore {
+  const readOptions = () => typeof options === 'function' ? options() : options;
+  let currentOptions = JSON.stringify(readOptions());
+  let store = new LauncherResourceStore(JSON.parse(currentOptions));
+  const currentStore = () => {
+    const next = JSON.stringify(readOptions());
+    if (next !== currentOptions) { store = new LauncherResourceStore(JSON.parse(next)); currentOptions = next; }
+    return store;
+  };
   const handler = (action: (ctx: any) => Promise<void>) => async (ctx: any) => {
     try { await action(ctx); }
     catch (error) {
@@ -262,7 +273,7 @@ export function registerLauncherResources(router: any, options: { dataDir: strin
       ctx.body = { error: error instanceof ResourceError ? error.message : 'Client resources could not be read. Check the publication directory and server log.' };
     }
   };
-  router.get('/api/launcher/manifest', handler(async ctx => { ctx.set('Cache-Control', 'no-store'); ctx.body = await store.manifest(); }));
-  router.get('/api/launcher/files/:id', handler(ctx => store.download(String(ctx.params.id), ctx)));
+  router.get('/api/launcher/manifest', handler(async ctx => { ctx.set('Cache-Control', 'no-store'); ctx.body = await currentStore().manifest(); }));
+  router.get('/api/launcher/files/:id', handler(ctx => currentStore().download(String(ctx.params.id), ctx)));
   return store;
 }

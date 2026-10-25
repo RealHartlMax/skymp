@@ -6,6 +6,7 @@
 
 import * as http from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
+import { isDashboardRuntime, isManagedRuntime, publishManagedUpdate } from './managedRuntime';
 
 // Types
 export interface AdminUpdateMessage {
@@ -16,12 +17,14 @@ export interface AdminUpdateMessage {
 
 // Client tracking
 let adminUpdateClients: Set<WebSocket> = new Set();
+const clientAuthorizers = new WeakMap<WebSocket, () => boolean>();
 let statusBroadcastInterval: NodeJS.Timeout | null = null;
 
 /**
  * Broadcast an admin update to all connected clients
  */
 export const broadcastAdminUpdate = (type: string, data: any): void => {
+  publishManagedUpdate(type, data);
   if (adminUpdateClients.size === 0) return;
 
   const message: AdminUpdateMessage = {
@@ -34,6 +37,9 @@ export const broadcastAdminUpdate = (type: string, data: any): void => {
   const deadClients: WebSocket[] = [];
 
   for (const ws of adminUpdateClients) {
+    if (clientAuthorizers.has(ws) && !clientAuthorizers.get(ws)!()) {
+      ws.close(1008, 'Admin session expired'); deadClients.push(ws); continue;
+    }
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(payload);
     } else {
@@ -90,11 +96,17 @@ export const broadcastRespawnUpdate = (respawnStatus: any[]): void => {
 /**
  * Setup admin updates WebSocket server
  */
-export const setupAdminWebSocket = (server: http.Server): void => {
-  const wss = new WebSocketServer({ server, path: '/ws/admin-updates' });
+export const setupAdminWebSocket = (server: http.Server, authorize?: (request: http.IncomingMessage) => boolean): void => {
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (request, socket, head) => {
+    if (new URL(request.url || '/', 'http://localhost').pathname !== '/ws/admin-updates') return;
+    if (authorize && !authorize(request)) { socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); return; }
+    wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws, request));
+  });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, request) => {
     adminUpdateClients.add(ws);
+    if (authorize) clientAuthorizers.set(ws, () => authorize(request));
 
     // Send initial empty state on connect (client will fetch via HTTP if needed)
     ws.send(
@@ -126,7 +138,7 @@ export const startAdminUpdateBroadcasts = (
   // Broadcast status+players every 200ms if there are clients
   // 200ms interval gives ~100ms avg latency vs ~500ms at 1000ms interval
   statusBroadcastInterval = setInterval(() => {
-    if (adminUpdateClients.size === 0) return;
+    if (adminUpdateClients.size === 0 && !(isManagedRuntime() && !isDashboardRuntime())) return;
 
     try {
       const status = getStatus();

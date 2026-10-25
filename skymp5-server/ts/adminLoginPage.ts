@@ -1,3 +1,5 @@
+import { passwordFieldsScript } from './passwordFields';
+
 interface AdminLoginPageOptions {
   adminUser: string;
   externalUrl: string;
@@ -115,6 +117,16 @@ export function renderAdminLoginPage({
     }
     .login-error { min-height: 18px; color: var(--danger); font-size: 13px; }
     .login-note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+  
+.password-field { display:block; position:relative; min-width:0; width:100%; }
+.password-field > input { width:100%; padding-right:52px; }
+.password-toggle { position:absolute; right:3px; top:50%; transform:translateY(-50%); width:40px; min-height:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; padding:7px; border:0; border-radius:6px; background:transparent; color:#a7b4bc; cursor:pointer; }
+.password-toggle:hover { background:#c7a87518; color:#c7a875; }
+.password-toggle svg { width:22px; height:22px; pointer-events:none; }
+.launcher-fields { border:1px solid var(--line); border-radius:8px; padding:20px; margin:22px 0; min-width:0; }
+.launcher-fields legend { color:var(--brand); padding:0 8px; }
+.launcher-fields a { color:var(--brand); }
+
   </style>
 </head>
 <body>
@@ -143,6 +155,7 @@ export function renderAdminLoginPage({
       <p class="login-note" id="login-note">Sicherheitsregel: Nach 10 Minuten ohne Mausklick auf dieser Seite wirst du automatisch ausgeloggt.</p>
     </form>
   </main>
+  <script>${passwordFieldsScript}</script>
   <script>
     const form = document.getElementById('login-form');
     const userInput = document.getElementById('login-user');

@@ -2,6 +2,10 @@
 
 This roadmap translates key architectural concepts and best practices from FiveM (citizenfx/fivem) into actionable tasks for SkyMP, focusing on stability, performance, player synchronization, and resource/mod download automation.
 
+Status checked **22 October 2026**. See [current project status](docs/docs_project_status.md)
+for implementation/test evidence. Pre-game file synchronization is implemented in
+the separate desktop launcher; actual Skyrim/CEF/gameplay acceptance remains open.
+
 ---
 
 ## Completed & Implemented Patterns
@@ -28,17 +32,24 @@ This roadmap translates key architectural concepts and best practices from FiveM
 - **Benefit:** Avoids startup collisions and peer init failures caused by orphaned background node instances
 - **Related Files:** `skymp5-server/CMakeLists.txt`, `build/dist/server/launch_server.bat`
 
+### Independent Web Administration (r3)
+
+- **Implementation:** Packaged starters own separate dashboard and game processes.
+- **Behavior:** Game stop/restart/crash preserves the complete dashboard, settings, logs, launcher downloads, authentication and WebSocket connections. The dashboard can start the game again.
+- **Boundary:** Live player actions require a running game. Whole-service termination still ends both owned processes. Public ports remain UDP 7777 plus one HTTP(S) TCP listener.
+- **Evidence:** `misc/tests/test_dashboard_runtime.cjs`, platform package reports and the visible-browser report in the r3 release.
+
 ---
 
 ## 1. Resource Distribution API (Phase 1 - Done)
 
 **Goal:** Public HTTP endpoints so clients can fetch the server's resource manifest and download individual files, forming the foundation for FiveM-style auto-download.
 
-- **Status:** Implemented -- `GET /api/resources/manifest` and `GET /api/resources/download/:name` in `skymp5-server/ts/ui.ts`
-- **Manifest response:** JSON with `version`, `generatedAt`, and per-resource `name/kind/size/sha256 hash`
-- **Download endpoint:** Streams the file after path-traversal validation; sets `X-Resource-Hash` header
-- **Security:** Path restricted to known resource roots (`dataDir`, `./scripts`, `./data`, `./skymp5-gamemode`)
-- **See:** `docs/docs_resource_auto_download.md` for full architecture
+- **Status:** Done. Current `GET /api/launcher/manifest` and `GET|HEAD /api/launcher/files/:id` are implemented in `launcherResources.ts` and registered by `ui.ts`. The flat v1 endpoints remain for older launchers.
+- **Manifest:** Full destination paths, sizes, SHA-256, total size, revision, load order, local game requirements and optional runtime source.
+- **Download:** Opaque IDs, streaming, ETag, hash/size headers and single byte ranges.
+- **Publication:** Explicit `client-resources/Data/` plus custom server plugins/archives. Private files, Bethesda masters, runtime code and unsafe paths are excluded from mod publication.
+- **See:** [current mod packages](docs/docs_launcher_modpacks.md) and [legacy v1 API](docs/docs_resource_auto_download.md).
 
 ---
 
@@ -46,19 +57,26 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 **Goal:** Wire the manifest data into the admin dashboard with a dedicated panel: show per-resource hash, size, kind; highlight missing or corrupt files; allow manual refresh.
 
+- **Status:** Partial. The resource inventory and refresh exist. A complete publication-specific missing/corrupt/hash diagnostics panel is still open; the public API's validation errors do not replace that UI.
+
 - **Effort:** Medium
 - **Risk:** Low (isolated, non-intrusive)
 - **Affected Files:** skymp5-front admin dashboard, `ui.ts`
 
 ---
 
-## 3. Client-Side Resource Sync (Phase 2)
+## 3. Launcher Resource Sync (Phase 2 — Done for preparation)
 
-**Goal:** On connect, the client fetches `/api/resources/manifest`, compares hashes with its local cache (`dataDir/cache/resources/`), downloads missing or changed files, and loads them before entering the world.
+**Implemented:** Before SKSE starts, the standalone launcher fetches v2, checks
+sizes/SHA-256/local game files, downloads changed resources into a per-server
+cache and installs complete packages with original-file backup and restoration.
+Nested textures, meshes, scripts and other assets retain their paths. A failed
+publication or download prevents activation/start. Runtime catalogs can supply
+the matching client/SKSE/Address Library package.
 
-- **Effort:** High
-- **Risk:** Medium (requires changes in `skymp5-client`)
-- **Affected Files:** `skymp5-client/src/services/services/remoteServer.ts`, cache manager, resource loader
+- **Code:** `skymp-client-launcher/launcher/src-tauri/src/connection.rs` and `runtime_version.rs`.
+- **Evidence:** 25 current Rust tests, six runtime-publishing checks, and the existing real Node/Rust install/cache/repair/update/restore contract test.
+- **Remaining:** Actual Skyrim/CEF/world-entry acceptance, partial-file resume and configurable retry/backoff. No in-game mod installer is required for this phase.
 
 ---
 
@@ -66,9 +84,11 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 **Goal:** Extend the manifest with explicit dependency declarations, semantic versioning, and load-order constraints. Enables operators to declare `"requires": ["Skyrim.esm"]` style rules.
 
+- **Status:** Partial. Explicit load order, local base-game checks, content revisions and package validation are implemented. Dependency graphs, mod semantic-version constraints and automatic dependency resolution remain open.
+
 - **Effort:** Medium
 - **Risk:** Medium (touches resource loading)
-- **Affected Files:** `manifestGen.ts`, dataDir, resource loader scripts
+- **Affected Files:** `launcherResources.ts`, `data/manifest.json`, launcher `connection.rs`; future dependency resolver
 
 ---
 
@@ -94,11 +114,11 @@ This roadmap translates key architectural concepts and best practices from FiveM
 
 ## Prioritization & Next Steps
 
-1. **Phase 1 done** -- Public manifest + download endpoints live in `ui.ts`; see `docs/docs_resource_auto_download.md`
-2. **Next** -- Admin dashboard panel for resource diagnostics (item 2, low risk)
-3. **Phase 2** -- Client-side manifest fetch, cache, and download on connect (item 3)
-4. **Phase 3** -- Dependency declarations and load-order in manifest (item 4)
-5. **Later** -- State Bag System and Entity Relevancy/Ownership
+1. **Done:** Phase 1 API and Phase 2 launcher preparation/installation.
+2. **Next acceptance:** Compatible native client, actual Skyrim/CEF connection and operator-hosted package on the VPS.
+3. **Open:** Complete resource-diagnostics UI, resumable downloads and cache eviction.
+4. **Phase 3 partial:** Keep published load order; add dependency/version declarations and a resolver.
+5. **Later:** State Bags and additional entity relevancy/ownership improvements.
 
 ---
 

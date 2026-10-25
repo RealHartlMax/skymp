@@ -1,5 +1,7 @@
 # Zone Handover and Instance Routing Roadmap
 
+> Planning/research document. Reviewed 22 October 2026; proposals and external-fork examples are not automatically implemented in this checkout. See [current project status](docs_project_status.md) and the main roadmap for verified completion.
+
 This document proposes a production-oriented handover workflow for location transitions (cities, interiors, dungeons) that happen behind Skyrim loading screens.
 
 Goal:

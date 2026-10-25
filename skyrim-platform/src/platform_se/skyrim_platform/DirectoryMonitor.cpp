@@ -1,4 +1,5 @@
 #include "DirectoryMonitor.h"
+#include <spdlog/spdlog.h>
 
 namespace {
 bool WaitForNextUpdate(DWORD* outErrorCode, std::filesystem::path dir)
@@ -45,9 +46,9 @@ void DirectoryMonitor::ThrowOnceIfHasError()
     pImpl->thrown = true;
     if (pImpl->errorCode == ERROR_FILE_NOT_FOUND ||
         pImpl->errorCode == ERROR_PATH_NOT_FOUND) {
-      throw std::runtime_error(
-        fmt::format("Dir {} not found (it's ok, SkyrimPlatform still works)",
-                    pImpl->dir.string()));
+      // Optional development folders may be absent in a packaged client.
+      // Do not turn this recoverable watcher condition into a JS/game error.
+      spdlog::warn("Plugin watch folder is currently absent: {}", pImpl->dir.string());
     } else {
       throw std::runtime_error(
         fmt::format("DirectoryMonitor({}) failed with code {}",

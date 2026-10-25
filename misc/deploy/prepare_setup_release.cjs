@@ -48,8 +48,18 @@ const windows = path.resolve(options['windows-package']);
 const linuxManifest = checkPackage(linux, 'linux-x64');
 const windowsManifest = checkPackage(windows, 'windows-x64');
 const backend = options.backend ? path.resolve(options.backend) : undefined;
-if (backend) for (const name of ['skymp5-server.js', 'skymp5-server.js.map']) assert(fs.statSync(path.join(backend, name)).isFile(), `Missing rebuilt backend: ${name}`);
+if (backend) for (const name of ['skymp5-server.js', 'skymp5-server.js.map', 'skymp5-admin.js', 'skymp5-admin.js.map']) assert(fs.statSync(path.join(backend, name)).isFile(), `Missing rebuilt backend: ${name}`);
+const frontend = options.frontend ? path.resolve(options.frontend) : undefined;
+if (frontend) for (const name of ['index.html', 'build.js']) assert(fs.statSync(path.join(frontend, name)).isFile(), `Missing rebuilt frontend: ${name}`);
 assert.equal(linuxManifest.sourceFingerprint, windowsManifest.sourceFingerprint);
+let nativeBaselineCheck;
+if (options['native-baseline-commit']) {
+  const paths = ['skymp5-server/cpp', 'libespm', 'papyrus-vm', 'serialization', 'savefile', 'viet', 'skymp5-functions-lib', 'skymp5-scripts', 'vcpkg.json', 'vcpkg-configuration.json', 'overlay_triplets'];
+  const changed = run('git', ['--no-optional-locks', 'diff', options['native-baseline-commit'], '--name-only', '--', ...paths]).trim();
+  const added = run('git', ['--no-optional-locks', 'ls-files', '--others', '--exclude-standard', '--', ...paths]).trim();
+  assert(!changed && !added, `Native server inputs changed; rebuild both native modules before release: ${changed}\n${added}`);
+  nativeBaselineCheck = { commit: options['native-baseline-commit'], paths, changedFiles: [], newFiles: [], note: 'Native server code/inputs unchanged; reuse qualified platform modules. Client-only CommonLib changes are outside these server targets.' };
+}
 for (const file of linuxManifest.files.filter(file => /^(ui\/|dist_back\/|data\/scripts\/|gamemode\.js$)/.test(file.path))) {
   assert.equal(hash(path.join(windows, file.path)), file.sha256, `Cross-platform runtime mismatch: ${file.path}`);
 }
@@ -95,6 +105,9 @@ function copySource(name) {
 }
 const dirty = run('git', ['--no-optional-locks', 'ls-files', '-z', '--modified', '--others', '--exclude-standard']).split('\0').filter(name => allowed.has(name));
 for (const name of new Set(dirty)) copySource(name);
+// git archive normalizes committed text, while the Windows worktree may use
+// CRLF. Preserve exact bytes for every template copied into the runtime package.
+for (const name of files.filter(name => name.startsWith('misc/deploy/test-server/'))) copySource(name);
 for (const name of files) {
   if (name.startsWith('skymp5-front/dist/') || !fs.existsSync(path.join(sourceTree, name)) || fs.lstatSync(path.join(sourceTree, name)).isSymbolicLink()) copySource(name);
 }
@@ -117,8 +130,9 @@ const metadata = {
   runtimeSourceFingerprint: backend ? hash(temporarySource) : linuxManifest.runtimeSourceFingerprint || linuxManifest.sourceFingerprint,
   nativeBuildId: linuxManifest.nativeBuildId || linuxManifest.runtimeBuildId || linuxManifest.buildId,
   nativeSourceFingerprint: linuxManifest.nativeSourceFingerprint || linuxManifest.runtimeSourceFingerprint || linuxManifest.sourceFingerprint,
-  frontendBuildId: linuxManifest.frontendBuildId || linuxManifest.runtimeBuildId || linuxManifest.buildId,
-  frontendSourceFingerprint: linuxManifest.frontendSourceFingerprint || linuxManifest.runtimeSourceFingerprint || linuxManifest.sourceFingerprint,
+  frontendBuildId: frontend ? buildId : linuxManifest.frontendBuildId || linuxManifest.runtimeBuildId || linuxManifest.buildId,
+  frontendSourceFingerprint: frontend ? hash(temporarySource) : linuxManifest.frontendSourceFingerprint || linuxManifest.runtimeSourceFingerprint || linuxManifest.sourceFingerprint,
+  ...(nativeBaselineCheck ? { nativeBaselineCheck } : {}),
   sourceSnapshotNote: 'Git HEAD plus current modified/untracked files and production frontend; private directories excluded. Qualification results are recorded separately.',
 };
 const metadataFile = path.join(output, 'build-metadata.json');
@@ -127,11 +141,11 @@ const archives = [];
 for (const [platform, source] of [['linux-x64', linux], ['windows-x64', windows]]) {
   const target = path.join(temporary, platform);
   console.log(`Packaging ${platform}`);
-  for (const name of ['setup-server.cjs', 'setup-web.cjs', 'setup-ui/setup.html', 'setup-ui/setup.js', 'setup-ui/setup.css', 'check-install.cjs', 'README.md', 'client-resources/README.md', platform === 'linux-x64' ? 'start-test-server.sh' : 'start-test-server.cmd']) {
-    const relative = 'misc/deploy/test-server/' + name;
+  const templates = files.filter(name => name.startsWith('misc/deploy/test-server/'));
+  for (const relative of templates) {
     assert.equal(hash(path.join(root, relative)), hash(path.join(sourceTree, relative)), `Source changed during packaging: ${relative}`);
   }
-  run(process.execPath, [path.join(__dirname, 'package_test_server.cjs'), '--mode', 'first-run', '--platform', platform, '--source', source, '--scripts', path.join(source, 'data/scripts'), '--output', target, '--metadata', metadataFile, ...(backend ? ['--backend', backend] : [])]);
+  run(process.execPath, [path.join(__dirname, 'package_test_server.cjs'), '--mode', 'first-run', '--platform', platform, '--source', source, '--scripts', path.join(source, 'data/scripts'), '--output', target, '--metadata', metadataFile, ...(backend ? ['--backend', backend] : []), ...(frontend ? ['--frontend', frontend] : [])]);
   const name = buildId + '-' + platform + (platform === 'linux-x64' ? '.tar.gz' : '.zip');
   const archive = path.join(temporary, name);
   if (platform === 'linux-x64') tarGzip(target, archive);

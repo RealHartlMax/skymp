@@ -1,6 +1,7 @@
 #include "ExceptionPrinter.h"
 #include "ConsoleApi.h"
 #include "IConsolePrinter.h"
+#include <spdlog/spdlog.h>
 
 // ConsoleApi.cpp
 extern std::shared_ptr<IConsolePrinter> g_printer;
@@ -20,8 +21,15 @@ const char* ExceptionPrinter::RemoveMultiplePrefixes(const char* str,
 
 void ExceptionPrinter::Print(const std::exception& e)
 {
-  auto what = RemoveMultiplePrefixes(e.what(), "Error: ");
-  ExceptionPrinter(ConsoleApi::GetExceptionPrefix()).PrintException(what);
+  const std::string message = RemoveMultiplePrefixes(e.what(), "Error: ");
+  const std::string prefix = ConsoleApi::GetExceptionPrefix();
+  spdlog::error("Platform script error: {}", message);
+  // Script callbacks run on the JS worker; Skyrim console calls belong to the game thread.
+  if (auto tasks = SKSE::GetTaskInterface()) {
+    tasks->AddTask([message, prefix] {
+      ExceptionPrinter(prefix.c_str()).PrintException(message.c_str());
+    });
+  }
 }
 
 ExceptionPrinter::ExceptionPrinter(const char* exceptionPrefix_)
@@ -34,7 +42,7 @@ void ExceptionPrinter::PrintException(const char* what)
   std::string tmp;
 
   auto console = RE::ConsoleLog::GetSingleton();
-  if (!console) {
+  if (!console || !g_printer) {
     return;
   }
 

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>SkyMP · Ersteinrichtung</title>
   <link rel="stylesheet" href="/setup.css">
+  <script src="/password-fields.js" defer></script>
   <script src="/setup.js" defer></script>
 </head>
 <body>
@@ -54,6 +55,18 @@
         </select>
         <div id="public-host-wrap"><label for="publicHost">Öffentliche IPv4-Adresse oder Domain</label><input id="publicHost" name="publicHost" placeholder="z. B. 87.106.58.116" autocomplete="off" maxlength="253" aria-describedby="host-hint"><p class="hint" id="host-hint">Ohne http://, Port oder Pfad. Diese Adresse verwenden deine Testspieler.</p></div>
         <p class="notice" id="access-note"></p>
+        <fieldset class="launcher-fields">
+          <legend>Launcher-Anbindung</legend>
+          <p class="muted">Registriere den Server in <a href="https://manage.skymp-worlds.net/" target="_blank" rel="noreferrer">SkyMP Worlds</a> und trage die dort angezeigten Werte hier ein. Der Server speichert die Konfiguration automatisch.</p>
+          <label for="authMode">Spielerzugang</label><select id="authMode"><option value="guestOpen">Open · ohne Ingame-Login</option><option value="guestApproval">Open · Freigabe im Dashboard</option><option value="online">Open · mit Ingame-Login</option><option value="offline">Bestehender Offline-Testmodus · Steam bleibt Pflicht</option></select>
+          <label for="steamApiKey">Steam Web API Key</label><input id="steamApiKey" type="password" maxlength="32" autocomplete="new-password" spellcheck="false" aria-describedby="steam-hint"><p class="hint" id="steam-hint">Der Launcher liefert ein Steam-Ticket; der Server prüft damit die SteamID bei Valve. Die SteamID ist für jeden Login Pflicht. Ohne API-Key können keine Spieler beitreten. Ein vorhandener Schlüssel bleibt bei leerem Feld erhalten. <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noreferrer">API-Key bei Steam erstellen</a>.</p>
+          <label for="master">Anmeldeserver / Master-URL</label><input id="master" type="url" maxlength="2048" required value="https://api.skymp-worlds.net">
+          <label for="serverUid">Öffentliche Server-ID</label><input id="serverUid" maxlength="128" pattern="[a-zA-Z0-9_\-]{3,128}" autocomplete="off" placeholder="srv_…">
+          <label for="masterKey">Privater Serverschlüssel</label><input id="masterKey" type="password" maxlength="128" autocomplete="off" aria-describedby="master-key-hint"><p class="hint" id="master-key-hint">Aus dem zentralen Dashboard. Ein vorhandener Schlüssel bleibt erhalten, wenn dieses Feld leer bleibt. Er wird niemals an Spieler weitergegeben.</p>
+          <label for="resourcesEnabled">Mod-Synchronisation</label><select id="resourcesEnabled"><option value="true">Aktiviert</option><option value="false">Deaktiviert</option></select>
+          <label for="resourceDirectory">Mod-Verzeichnis auf dem Server</label><input id="resourceDirectory" maxlength="240" value="./client-resources" required>
+          <label for="runtimeSource">Clientpaket / Versionskatalog</label><input id="runtimeSource" type="url" maxlength="2048" value="https://update.skymp-worlds.net/client-runtime/catalog.json" aria-describedby="runtime-hint"><p class="hint" id="runtime-hint">Ein Versionskatalog stellt das passende Clientpaket einschließlich SKSE bereit. Leer: kein Clientpaket über diesen Server vorgeben.</p>
+        </fieldset>
         <div class="actions"><button type="submit">Weiter zu den Spieldaten</button></div>
       </form>
     </section>

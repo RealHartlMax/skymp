@@ -6,6 +6,14 @@ import React, {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LauncherConnectionPanel } from './LauncherConnectionPanel';
+import { AccessSettingsPanel } from './AccessSettingsPanel';
+import { DiscordSettingsPanel } from './DiscordSettingsPanel';
+import type { DiscordSettingsValue } from './DiscordSettingsPanel';
+import { PlayerAccessList } from './PlayerAccessList';
+import { ServerPerformancePanel } from './ServerPerformancePanel';
+import { ModLoadOrderPanel } from './ModLoadOrderPanel';
+import { normalizeJoinMode, validateLoginSettings, WORLDS_MASTER } from './loginProviders';
 
 import {
   detectLanguage,
@@ -18,6 +26,7 @@ import { handleTabNavigation } from '../../utils/tabNavigation';
 import { DownedPlayerEntry, RespawnPanel } from './RespawnPanel';
 import { ITEM_CATALOG, ITEM_CATEGORIES, ItemCategory } from './itemCatalog';
 import './styles.scss';
+import './dashboardRefinements.scss';
 import {
   filterAdminPlayers,
   formatAdminPos,
@@ -63,6 +72,13 @@ interface AdminStatus {
   port: number;
   itemPickupMode?: 'allow' | 'minigame' | 'block-all';
   uptimeSec: number;
+  gameState?: 'starting' | 'running' | 'stopping' | 'stopped' | 'crashed';
+  gamePid?: number | null;
+  dashboardPid?: number | null;
+  discordBot?: {
+    state: 'disabled' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+    lastError: string | null;
+  } | null;
 }
 
 interface AdminUpdateStatus {
@@ -109,6 +125,8 @@ interface AdminPlayer {
   actorId: number;
   online?: boolean;
   actorName: string;
+  playerName?: string;
+  steamId?: string;
   ip: string;
   pos: PlayerPos | number[];
   firstJoinedAt?: number | null;
@@ -286,7 +304,7 @@ interface AdminCapabilities {
 }
 
 interface JoinAccessForm {
-  mode: 'none' | 'approvedLicense' | 'discordMember' | 'discordRoles';
+  mode: 'none' | 'adminOnly' | 'approvedLicense' | 'discordMember' | 'discordRoles';
   rejectionMessage: string;
   approvedLicenses: string;
   approvedDiscordIds: string;
@@ -297,6 +315,7 @@ interface DiscordBotForm {
   enabled: boolean;
   token: string;
   guildId: string;
+  statusChannelId: string;
   warningsChannelId: string;
 }
 
@@ -334,11 +353,14 @@ interface NpcDefaultSettingsForm {
 
 interface CfgFormState {
   serverName: string;
+  gamemodePath: string;
   masterUrl: string;
+  serverUid: string;
   masterKey: string;
   port: number;
   maxPlayers: number;
   offlineMode: boolean;
+  playerAccess: { mode: 'guest' | 'account'; approvalRequired: boolean; steamApiKey: string; steamAppId: number };
   itemPickupMode: 'allow' | 'minigame' | 'block-all';
   defaultLanguage: string;
   showCharacterNicknames: boolean;
@@ -395,7 +417,7 @@ interface TopbarAdminFormState {
   discordId: string;
 }
 
-type CfgEditorTab = 'general' | 'access' | 'inventory' | 'json';
+type CfgEditorTab = 'general' | 'access' | 'discord' | 'inventory' | 'json';
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canKick: true,
@@ -520,11 +542,14 @@ interface PersistedAdminDashboardState {
 
 const DEFAULT_CFG_FORM: CfgFormState = {
   serverName: '',
-  masterUrl: 'https://gateway.skymp.net',
+  gamemodePath: './gamemode.js',
+  masterUrl: WORLDS_MASTER,
+  serverUid: '',
   masterKey: '',
   port: 7777,
   maxPlayers: 100,
   offlineMode: false,
+  playerAccess: { mode: 'guest', approvalRequired: false, steamApiKey: '', steamAppId: 489830 },
   itemPickupMode: 'allow',
   defaultLanguage: 'en',
   showCharacterNicknames: true,
@@ -557,6 +582,7 @@ const DEFAULT_CFG_FORM: CfgFormState = {
     enabled: false,
     token: '',
     guildId: '',
+    statusChannelId: '',
     warningsChannelId: '',
   },
   starterInventory: [],
@@ -578,7 +604,7 @@ const normalizeMasterUrl = (value: unknown): string => {
   ) {
     return 'https://api.skymp-worlds.net';
   }
-  return 'https://gateway.skymp.net';
+  return /^https?:\/\//.test(normalized) ? normalized : 'https://api.skymp-worlds.net';
 };
 
 const parseCommaList = (value: string): string[] =>
@@ -697,6 +723,11 @@ const AdminDashboard = () => {
   const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [serverControlAvailable, setServerControlAvailable] = useState(false);
+  const [independentDashboard, setIndependentDashboard] = useState(false);
+  const [quickActionConfirm, setQuickActionConfirm] = useState<'stop' | 'restart' | 'kick-all' | null>(null);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [announcementText, setAnnouncementText] = useState('');
+  const [announcementError, setAnnouncementError] = useState('');
   const [menuDebugEnabled] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -870,7 +901,7 @@ const AdminDashboard = () => {
   const [playerInventory, setPlayerInventory] =
     useState<AdminPlayerInventorySnapshot | null>(null);
   const [sidebarActionSending, setSidebarActionSending] = useState<
-    'kick-all' | 'announcement' | 'server-stop' | 'server-restart' | null
+    'kick-all' | 'announcement' | 'server-start' | 'server-stop' | 'server-restart' | null
   >(null);
   const [muteDurationMinutes, setMuteDurationMinutes] = useState(10);
   const [moderationReason, setModerationReason] = useState('');
@@ -1202,6 +1233,7 @@ const AdminDashboard = () => {
       setAdminRole(asRole(payload?.role));
       setAdminUser(typeof payload?.user === 'string' ? payload.user : '');
       setServerControlAvailable(Boolean(payload?.serverControlAvailable));
+      setIndependentDashboard(Boolean(payload?.independentDashboard));
       setCapabilities({
         canKick:
           typeof payload?.canKick === 'boolean'
@@ -1582,7 +1614,9 @@ const AdminDashboard = () => {
 
     return {
       serverName: String(parsed.name || ''),
+      gamemodePath: String(parsed.gamemodePath || DEFAULT_CFG_FORM.gamemodePath),
       masterUrl: normalizeMasterUrl(parsed.master),
+      serverUid: String(parsed.serverUid || ''),
       masterKey: String(parsed.masterKey || ''),
       port: Number.isFinite(Number(parsed.port))
         ? Math.max(1, Math.floor(Number(parsed.port)))
@@ -1591,6 +1625,12 @@ const AdminDashboard = () => {
         ? Math.max(1, Math.floor(Number(parsed.maxPlayers)))
         : 100,
       offlineMode: Boolean(parsed.offlineMode),
+      playerAccess: {
+        mode: (parsed.playerAccess as any)?.mode === 'guest' || parsed.offlineMode === true ? 'guest' : 'account',
+        approvalRequired: (parsed.playerAccess as any)?.approvalRequired === true,
+        steamApiKey: String((parsed.playerAccess as any)?.steamApiKey ?? parsed.steam_webApiKey ?? ''),
+        steamAppId: Number((parsed.playerAccess as any)?.steamAppId || 489830),
+      },
       itemPickupMode: (['allow', 'minigame', 'block-all'].includes(
         String(parsed.itemPickupMode),
       )
@@ -1641,14 +1681,7 @@ const AdminDashboard = () => {
             : Boolean(npcDefaultSettingsRaw.allowCreature),
       },
       joinAccess: {
-        mode: ([
-          'none',
-          'approvedLicense',
-          'discordMember',
-          'discordRoles',
-        ].includes(String(joinAccessRaw.mode))
-          ? String(joinAccessRaw.mode)
-          : 'none') as JoinAccessForm['mode'],
+        mode: normalizeJoinMode(joinAccessRaw.mode),
         rejectionMessage: String(
           joinAccessRaw.rejectionMessage ||
             DEFAULT_CFG_FORM.joinAccess.rejectionMessage,
@@ -1667,6 +1700,7 @@ const AdminDashboard = () => {
         enabled: Boolean(discordBotRaw.enabled),
         token: String(discordBotRaw.token || ''),
         guildId: String(discordBotRaw.guildId || ''),
+        statusChannelId: String(discordBotRaw.statusChannelId || ''),
         warningsChannelId: String(discordBotRaw.warningsChannelId || ''),
       },
       supervisorEnabled: Boolean(
@@ -1901,14 +1935,17 @@ const AdminDashboard = () => {
       const parsed = JSON.parse(rawJsonText) as Record<string, unknown>;
       parsed.name =
         form.serverName.trim() || parsed.name || DEFAULT_CFG_FORM.serverName;
+      parsed.gamemodePath = form.gamemodePath.trim() || DEFAULT_CFG_FORM.gamemodePath;
       parsed.master = normalizeMasterUrl(form.masterUrl);
       parsed.masterKey = form.masterKey.trim();
+      parsed.serverUid = form.serverUid.trim();
       parsed.port = Math.max(1, Math.floor(Number(form.port) || 7777));
       parsed.maxPlayers = Math.max(
         1,
         Math.floor(Number(form.maxPlayers) || 100),
       );
-      parsed.offlineMode = Boolean(form.offlineMode);
+      parsed.offlineMode = form.playerAccess.mode === 'guest' ? false : Boolean(form.offlineMode);
+      parsed.playerAccess = { ...(parsed.playerAccess as Record<string, unknown> || {}), ...form.playerAccess };
       parsed.itemPickupMode = form.itemPickupMode;
       parsed.showCharacterNicknames = Boolean(form.showCharacterNicknames);
 
@@ -1959,7 +1996,7 @@ const AdminDashboard = () => {
       parsed.npcSettings = npcSettings;
 
       parsed.joinAccess = {
-        mode: form.joinAccess.mode,
+        mode: form.joinAccess.mode === 'none' ? 'open' : form.joinAccess.mode,
         rejectionMessage:
           form.joinAccess.rejectionMessage.trim() ||
           DEFAULT_CFG_FORM.joinAccess.rejectionMessage,
@@ -1969,19 +2006,12 @@ const AdminDashboard = () => {
       };
 
       parsed.discordBot = {
+        ...(parsed.discordBot && typeof parsed.discordBot === 'object' ? parsed.discordBot : {}),
         enabled: form.discordBot.enabled,
         token: form.discordBot.token.trim(),
         guildId: form.discordBot.guildId.trim(),
+        statusChannelId: form.discordBot.statusChannelId.trim(),
         warningsChannelId: form.discordBot.warningsChannelId.trim(),
-      };
-
-      parsed.discordAuth = {
-        ...(parsed.discordAuth && typeof parsed.discordAuth === 'object'
-          ? (parsed.discordAuth as Record<string, unknown>)
-          : {}),
-        botToken: form.discordBot.token.trim(),
-        guildId: form.discordBot.guildId.trim(),
-        eventLogChannelId: form.discordBot.warningsChannelId.trim(),
       };
 
       parsed.starterInventory = {
@@ -2081,6 +2111,14 @@ const AdminDashboard = () => {
     }
   }, [mapJsonToCfgForm, t]);
 
+  const syncSavedDiscord = useCallback((value: DiscordSettingsValue) => {
+    setCfgForm(previous => ({ ...previous, discordBot: { enabled: value.enabled, token: value.token, guildId: value.guildId, statusChannelId: value.statusChannelId, warningsChannelId: value.warningsChannelId } }));
+    setCfgEditorText(previous => {
+      try { const parsed = JSON.parse(previous); parsed.discordBot = value; return JSON.stringify(parsed, null, 2); }
+      catch { return previous; }
+    });
+  }, []);
+
   const formatCfgEditor = useCallback(() => {
     try {
       const parsed = JSON.parse(cfgEditorText);
@@ -2093,97 +2131,19 @@ const AdminDashboard = () => {
     }
   }, [cfgEditorText, mapJsonToCfgForm, t]);
 
-  const applyAccessDiscordToCfgEditor = useCallback(() => {
-    try {
-      const parsed = JSON.parse(cfgEditorText);
-      const next =
-        parsed && typeof parsed === 'object'
-          ? (parsed as Record<string, unknown>)
-          : {};
-
-      const normalizeJoinMode = (
-        value: unknown,
-      ): 'none' | 'approvedLicense' | 'discordMember' | 'discordRoles' => {
-        const mode = String(value || '').trim();
-        if (
-          mode === 'approvedLicense' ||
-          mode === 'discordMember' ||
-          mode === 'discordRoles'
-        )
-          return mode;
-        return 'none';
-      };
-
-      const asStringArray = (value: unknown): string[] => {
-        if (!Array.isArray(value)) return [];
-        return value
-          .map((item) => String(item || '').trim())
-          .filter((item) => item.length > 0);
-      };
-
-      const joinAccessRaw =
-        next.joinAccess && typeof next.joinAccess === 'object'
-          ? (next.joinAccess as Record<string, unknown>)
-          : {};
-      const discordBotRaw =
-        next.discordBot && typeof next.discordBot === 'object'
-          ? (next.discordBot as Record<string, unknown>)
-          : {};
-      const discordAuthRaw =
-        next.discordAuth && typeof next.discordAuth === 'object'
-          ? (next.discordAuth as Record<string, unknown>)
-          : {};
-
-      const joinAccess = {
-        mode: normalizeJoinMode(joinAccessRaw.mode),
-        rejectionMessage: String(
-          joinAccessRaw.rejectionMessage ||
-            'Access denied. Please contact server staff for whitelist approval.',
-        ),
-        approvedLicenses: asStringArray(joinAccessRaw.approvedLicenses),
-        approvedDiscordIds: asStringArray(joinAccessRaw.approvedDiscordIds),
-        discordRoleIds: asStringArray(joinAccessRaw.discordRoleIds),
-      };
-
-      const discordBot = {
-        enabled: Boolean(discordBotRaw.enabled),
-        token: String(discordBotRaw.token || discordAuthRaw.botToken || ''),
-        guildId: String(discordBotRaw.guildId || discordAuthRaw.guildId || ''),
-        warningsChannelId: String(
-          discordBotRaw.warningsChannelId ||
-            discordAuthRaw.eventLogChannelId ||
-            '',
-        ),
-      };
-
-      next.joinAccess = joinAccess;
-      next.discordBot = discordBot;
-      next.discordAuth = {
-        ...discordAuthRaw,
-        botToken: discordBot.token,
-        guildId: discordBot.guildId,
-        eventLogChannelId: discordBot.warningsChannelId,
-      };
-
-      const normalized = JSON.stringify(next, null, 2);
-      setCfgEditorText(normalized);
-      setCfgForm(mapJsonToCfgForm(normalized));
-      setCfgEditorStatus(t('adminDashboard.accessApplied'));
-      return normalized;
-    } catch {
-      setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
-      return null;
-    }
-  }, [cfgEditorText, mapJsonToCfgForm, t]);
-
   const saveCfgEditor = useCallback(
     async (preparedJson?: string) => {
       let normalized: string;
       try {
-        normalized = mergeCfgFormIntoJson(
-          preparedJson ?? cfgEditorText,
-          cfgForm,
-        );
+        normalized = cfgEditorTab === 'json'
+          ? JSON.stringify(JSON.parse(preparedJson ?? cfgEditorText), null, 2)
+          : mergeCfgFormIntoJson(preparedJson ?? cfgEditorText, cfgForm);
+        const loginError = validateLoginSettings(mapJsonToCfgForm(normalized));
+        if (loginError) {
+          setCfgEditorTab('access');
+          setCfgEditorStatus(t('adminDashboard.loginError_' + loginError));
+          return;
+        }
       } catch {
         setCfgEditorStatus(t('adminDashboard.cfgInvalidJson'));
         return;
@@ -2209,7 +2169,7 @@ const AdminDashboard = () => {
           }
           return;
         }
-        const nextLanguage = detectLanguage(cfgForm.defaultLanguage);
+        const nextLanguage = detectLanguage(mapJsonToCfgForm(normalized).defaultLanguage);
         setCfgEditorText(normalized);
         setCfgForm(mapJsonToCfgForm(normalized));
         persistRuntimeLanguage(nextLanguage);
@@ -2225,7 +2185,7 @@ const AdminDashboard = () => {
         setCfgEditorSaving(false);
       }
     },
-    [cfgEditorText, cfgForm, i18n, mapJsonToCfgForm, mergeCfgFormIntoJson, t],
+    [cfgEditorText, cfgForm, cfgEditorTab, i18n, mapJsonToCfgForm, mergeCfgFormIntoJson, t],
   );
 
   const revivePlayer = useCallback(
@@ -2480,12 +2440,6 @@ const AdminDashboard = () => {
 
   const kickAllPlayers = async () => {
     if (!capabilities.canKick || players.length === 0) return;
-    if (
-      !window.confirm(
-        `${t('adminDashboard.kickAllConfirm')} (${players.length})?`,
-      )
-    )
-      return;
 
     if (!isValidModerationReason(moderationReason)) {
       setStatusMsg(
@@ -2519,7 +2473,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const runServerControl = async (action: 'stop' | 'restart') => {
+  const runServerControl = async (action: 'start' | 'stop' | 'restart') => {
     if (!capabilities.canConsole) {
       setStatusMsg(t('adminDashboard.noPermission'));
       return;
@@ -2534,15 +2488,8 @@ const AdminDashboard = () => {
       return;
     }
 
-    const confirmMessage =
-      action === 'stop'
-        ? t('adminDashboard.stopServer')
-        : t('adminDashboard.restartServer');
-
-    if (!window.confirm(`${confirmMessage}?`)) return;
-
     setSidebarActionSending(
-      action === 'stop' ? 'server-stop' : 'server-restart',
+      action === 'start' ? 'server-start' : action === 'stop' ? 'server-stop' : 'server-restart',
     );
     try {
       const res = await fetch('/api/admin/server/control', {
@@ -2575,10 +2522,15 @@ const AdminDashboard = () => {
       }
 
       setStatusMsg(
-        action === 'stop'
+        action === 'start' ? t('adminDashboard.startServer') : action === 'stop'
           ? t('adminDashboard.stopServer')
           : t('adminDashboard.restartServer'),
       );
+      const payload = await res.json().catch(() => null);
+      if (payload?.via === 'packaged-supervisor' && !payload?.independentDashboard) {
+        window.setTimeout(() => window.location.assign('/admin'), 800);
+      }
+      if (payload?.independentDashboard) await fetchData();
     } catch {
       setStatusMsg(t('adminDashboard.apiError'));
     } finally {
@@ -2588,12 +2540,12 @@ const AdminDashboard = () => {
 
   const sendAnnouncement = async () => {
     if (!capabilities.canMessage) return;
-    const message =
-      window.prompt(t('adminDashboard.announcementPrompt'))?.trim() ?? '';
+    const message = announcementText.trim();
     if (!message) return;
+    setAnnouncementError('');
 
     if (!isValidModerationReason(moderationReason)) {
-      setStatusMsg(
+      setAnnouncementError(
         t('adminDashboard.reasonTooLong', {
           max: MAX_MODERATION_REASON_LENGTH,
           defaultValue: 'Reason is too long (max {{max}} characters).',
@@ -2615,9 +2567,13 @@ const AdminDashboard = () => {
       setForbiddenAwareStatus(res, t('adminDashboard.announcementSent'));
       if (res.ok) {
         setModerationReason('');
+        setAnnouncementText('');
+        setAnnouncementOpen(false);
+      } else {
+        setAnnouncementError(t(res.status === 403 ? 'adminDashboard.noPermission' : 'adminDashboard.apiError'));
       }
     } catch {
-      setStatusMsg(t('adminDashboard.apiError'));
+      setAnnouncementError(t('adminDashboard.apiError'));
     } finally {
       setSidebarActionSending(null);
     }
@@ -2770,6 +2726,10 @@ const AdminDashboard = () => {
         port: data.port || status.port,
         itemPickupMode: data.itemPickupMode || status.itemPickupMode,
         uptimeSec: data.uptimeSec !== undefined ? data.uptimeSec : status.uptimeSec,
+        gameState: data.gameState ?? status.gameState,
+        gamePid: data.gamePid,
+        dashboardPid: data.dashboardPid,
+        discordBot: data.discordBot,
       });
     }
     setLastUpdated(new Date().toLocaleTimeString());
@@ -3097,6 +3057,16 @@ const AdminDashboard = () => {
   }, [hide, show]);
 
   useEffect(() => {
+    const openDiscordLink = () => {
+      if (window.location.hash !== '#discord') return;
+      setActiveMenuSurface('sidebar'); setActiveTab('cfg'); setCfgEditorTab('discord');
+      window.dispatchEvent(new Event('showAdminDashboard'));
+    };
+    openDiscordLink(); window.addEventListener('hashchange', openDiscordLink);
+    return () => window.removeEventListener('hashchange', openDiscordLink);
+  }, []);
+
+  useEffect(() => {
     window.dispatchEvent(
       new CustomEvent('adminDashboardVisibility', { detail: { visible } }),
     );
@@ -3420,7 +3390,7 @@ const AdminDashboard = () => {
     }
 
     return source.filter((player) => {
-      const name = String(player.actorName || '').toLowerCase();
+      const name = [player.actorName, player.playerName, player.steamId].filter(Boolean).join(' ').toLowerCase();
       return name.includes(needle);
     });
   }, [
@@ -3897,6 +3867,9 @@ const AdminDashboard = () => {
       : t('adminDashboard.sidebarSectionSubtitle', {
           defaultValue: 'Sidebar Section',
         });
+  const gameTransitioning = independentDashboard && ['starting', 'stopping'].includes(status?.gameState || '');
+  const gameCanStart = independentDashboard && ['stopped', 'crashed'].includes(status?.gameState || '');
+  const gameUnavailable = independentDashboard && status?.gameState !== 'running';
   const playerRatio =
     status && status.maxPlayers > 0 ? status.online / status.maxPlayers : 0;
   const summaryCards = [
@@ -4004,6 +3977,9 @@ const AdminDashboard = () => {
     <ModalDialog
       className="admin-overlay"
       aria-label={t('adminDashboard.title')}
+      onEscapeKeyDown={event => {
+        if ((event.target as Element)?.closest?.('.server-performance__chart')) event.preventDefault();
+      }}
       onClose={() => {
         if (systemDropdownOpen) {
           setSystemDropdownOpen(false);
@@ -4272,15 +4248,15 @@ const AdminDashboard = () => {
               </div>
               <div className="admin-dashboard__sidebar-status-row">
                 <span className="admin-dashboard__sidebar-status-key">
-                  {t('adminDashboard.online')}
+                  {t(independentDashboard ? 'adminDashboard.gameProcess' : 'adminDashboard.online')}
                 </span>
                 <span
                   className={`admin-dashboard__sidebar-pill${
-                    status ? ' admin-dashboard__sidebar-pill--online' : ''
+                    status && !gameUnavailable ? ' admin-dashboard__sidebar-pill--online' : ''
                   }`}
                 >
                   {status
-                    ? t('adminDashboard.online')
+                    ? t(independentDashboard && status.gameState ? `adminDashboard.gameState_${status.gameState}` : 'adminDashboard.online')
                     : t('adminDashboard.loading')}
                 </span>
               </div>
@@ -4314,6 +4290,11 @@ const AdminDashboard = () => {
               <div className="admin-dashboard__sidebar-section-title">
                 {t('adminDashboard.sidebarActionsTitle')}
               </div>
+              {independentDashboard && status?.gameState && (
+                <p role="status" data-testid="admin-game-state">
+                  {t('adminDashboard.gameProcess')}: {t(`adminDashboard.gameState_${status.gameState}`)}
+                </p>
+              )}
               <div className="admin-dashboard__sidebar-actions-grid">
                 <button
                   type="button"
@@ -4321,10 +4302,11 @@ const AdminDashboard = () => {
                   disabled={
                     !capabilities.canConsole ||
                     !serverControlAvailable ||
+                    gameTransitioning ||
                     sidebarActionSending !== null
                   }
                   onClick={() => {
-                    void runServerControl('stop');
+                    if (gameCanStart) void runServerControl('start'); else setQuickActionConfirm('stop');
                   }}
                   title={
                     !serverControlAvailable
@@ -4335,11 +4317,9 @@ const AdminDashboard = () => {
                       : undefined
                   }
                 >
-                  {sidebarActionSending === 'server-stop'
+                  {sidebarActionSending === 'server-stop' || sidebarActionSending === 'server-start'
                     ? t('adminDashboard.loading')
-                    : status
-                    ? t('adminDashboard.stopServer')
-                    : t('adminDashboard.startServer')}
+                    : t(gameCanStart ? 'adminDashboard.startServer' : 'adminDashboard.stopServer')}
                 </button>
                 <button
                   type="button"
@@ -4347,10 +4327,11 @@ const AdminDashboard = () => {
                   disabled={
                     !capabilities.canConsole ||
                     !serverControlAvailable ||
+                    gameUnavailable ||
                     sidebarActionSending !== null
                   }
                   onClick={() => {
-                    void runServerControl('restart');
+                    setQuickActionConfirm('restart');
                   }}
                   title={
                     !serverControlAvailable
@@ -4370,11 +4351,12 @@ const AdminDashboard = () => {
                   className="admin-dashboard__sidebar-action"
                   disabled={
                     !capabilities.canKick ||
+                    gameUnavailable ||
                     players.length === 0 ||
                     sidebarActionSending !== null
                   }
                   onClick={() => {
-                    void kickAllPlayers();
+                    setQuickActionConfirm('kick-all');
                   }}
                 >
                   {sidebarActionSending === 'kick-all'
@@ -4385,15 +4367,19 @@ const AdminDashboard = () => {
                   type="button"
                   className="admin-dashboard__sidebar-action"
                   disabled={
-                    !capabilities.canMessage || sidebarActionSending !== null
+                    !capabilities.canMessage || gameUnavailable || sidebarActionSending !== null
                   }
                   onClick={() => {
-                    void sendAnnouncement();
+                    setAnnouncementError('');
+                    setAnnouncementOpen(true);
                   }}
                 >
                   {sidebarActionSending === 'announcement'
                     ? t('adminDashboard.loading')
                     : t('adminDashboard.sendAnnouncement')}
+                </button>
+                <button type="button" className="admin-dashboard__sidebar-action admin-dashboard__sidebar-action--secondary" onClick={() => { void fetchData(); void fetchCapabilities(); }}>
+                  {t('adminDashboard.refresh')}
                 </button>
                 <button
                   type="button"
@@ -4405,9 +4391,38 @@ const AdminDashboard = () => {
               </div>
               <div className="admin-dashboard__sidebar-action-hint">
                 {t('adminDashboard.sidebarActionHint')}
+                {!capabilities.canConsole && <p>{t('adminDashboard.noPermission')}</p>}
+                {capabilities.canConsole && !serverControlAvailable && <p>{t('adminDashboard.serverControlUnavailable')}</p>}
+                {gameUnavailable && <p>{t('adminDashboard.dashboardRemainsAvailable')}</p>}
+                {players.length === 0 && <p>{t('adminDashboard.quickActionsNoPlayers', { defaultValue: 'No players are online. Kicking players becomes available when someone connects.' })}</p>}
               </div>
             </div>
           </aside>
+
+          {quickActionConfirm && (
+            <ModalDialog className="admin-dashboard__quick-dialog" onClose={() => setQuickActionConfirm(null)} aria-labelledby="quick-action-title">
+              <h2 id="quick-action-title">{t(quickActionConfirm === 'kick-all' ? 'adminDashboard.kickAllConfirm' : quickActionConfirm === 'stop' ? 'adminDashboard.stopServer' : 'adminDashboard.restartServer')}?</h2>
+              {quickActionConfirm === 'kick-all' && <p>{players.length} {t('adminDashboard.players')}</p>}
+              <div className="admin-dashboard__quick-dialog-actions">
+                <button type="button" onClick={() => setQuickActionConfirm(null)}>{t('adminDashboard.cancel')}</button>
+                <button type="button" onClick={() => { const action = quickActionConfirm; setQuickActionConfirm(null); if (action === 'kick-all') void kickAllPlayers(); else void runServerControl(action); }}>{t('adminDashboard.confirmAction')}</button>
+              </div>
+            </ModalDialog>
+          )}
+          {announcementOpen && (
+            <ModalDialog className="admin-dashboard__quick-dialog" onClose={() => { if (sidebarActionSending !== 'announcement') setAnnouncementOpen(false); }} aria-labelledby="announcement-title">
+              <h2 id="announcement-title">{t('adminDashboard.sendAnnouncement')}</h2>
+              <form onSubmit={event => { event.preventDefault(); if (sidebarActionSending !== 'announcement') void sendAnnouncement(); }}>
+                <label htmlFor="announcement-text">{t('adminDashboard.announcementPrompt')}</label>
+                <textarea id="announcement-text" value={announcementText} maxLength={2000} rows={5} required disabled={sidebarActionSending === 'announcement'} onChange={event => setAnnouncementText(event.target.value)} />
+                <p role="alert">{announcementError}</p>
+                <div className="admin-dashboard__quick-dialog-actions">
+                  <button type="button" disabled={sidebarActionSending === 'announcement'} onClick={() => setAnnouncementOpen(false)}>{t('adminDashboard.cancel')}</button>
+                  <button type="submit" disabled={!announcementText.trim() || sidebarActionSending === 'announcement'}>{t('adminDashboard.messageSend')}</button>
+                </div>
+              </form>
+            </ModalDialog>
+          )}
 
           <main className="admin-dashboard__main">
             <div className="admin-dashboard__main-header">
@@ -4816,6 +4831,7 @@ const AdminDashboard = () => {
                           disabled={
                             !capabilities.canConsole ||
                             !serverControlAvailable ||
+                            gameUnavailable ||
                             sidebarActionSending !== null
                           }
                           onClick={() => {
@@ -4838,10 +4854,11 @@ const AdminDashboard = () => {
                           disabled={
                             !capabilities.canConsole ||
                             !serverControlAvailable ||
+                            gameTransitioning ||
                             sidebarActionSending !== null
                           }
                           onClick={() => {
-                            void runServerControl('stop');
+                            void runServerControl(gameCanStart ? 'start' : 'stop');
                           }}
                           title={
                             !serverControlAvailable
@@ -4852,7 +4869,7 @@ const AdminDashboard = () => {
                               : undefined
                           }
                         >
-                          {t('adminDashboard.stopServer')}
+                          {t(gameCanStart ? 'adminDashboard.startServer' : 'adminDashboard.stopServer')}
                         </button>
                       </div>
                     </article>
@@ -4995,6 +5012,7 @@ const AdminDashboard = () => {
                           disabled={
                             !capabilities.canConsole ||
                             !serverControlAvailable ||
+                            gameUnavailable ||
                             sidebarActionSending !== null
                           }
                           onClick={() => {
@@ -5017,10 +5035,11 @@ const AdminDashboard = () => {
                           disabled={
                             !capabilities.canConsole ||
                             !serverControlAvailable ||
+                            gameTransitioning ||
                             sidebarActionSending !== null
                           }
                           onClick={() => {
-                            void runServerControl('stop');
+                            void runServerControl(gameCanStart ? 'start' : 'stop');
                           }}
                           title={
                             !serverControlAvailable
@@ -5031,7 +5050,7 @@ const AdminDashboard = () => {
                               : undefined
                           }
                         >
-                          {t('adminDashboard.stopServer')}
+                          {t(gameCanStart ? 'adminDashboard.startServer' : 'adminDashboard.stopServer')}
                         </button>
                       </div>
                     </article>
@@ -5981,7 +6000,15 @@ const AdminDashboard = () => {
 
                     {activeTopSection === 'whitelist' && (
                       <section className="admin-dashboard__tx-whitelist">
-                        {whitelistNotInApprovedLicenseMode && (
+                        <div className="admin-dashboard__tx-whitelist-grid">
+                          {adminRole === 'admin' && capabilities.canConsole && (
+                            <article className="admin-dashboard__tx-whitelist-panel" data-testid="steam-whitelist-panel">
+                              <PlayerAccessList />
+                            </article>
+                          )}
+
+                          <article className="admin-dashboard__tx-whitelist-panel">
+                            {whitelistNotInApprovedLicenseMode && (
                           <div className="admin-dashboard__tx-whitelist-warning">
                             <div className="admin-dashboard__tx-whitelist-warning-title">
                               {t('adminDashboard.topWhitelist_warningTitle', {
@@ -6003,83 +6030,7 @@ const AdminDashboard = () => {
                             </div>
                           </div>
                         )}
-
-                        <div className="admin-dashboard__tx-whitelist-grid">
-                          <article className="admin-dashboard__tx-whitelist-panel">
-                            <div className="admin-dashboard__tx-whitelist-panel-head">
-                              <div>
-                                <h4>
-                                  {t(
-                                    'adminDashboard.topWhitelist_requestsTitle',
-                                    { defaultValue: 'Whitelist Requests' },
-                                  )}
-                                  : 0
-                                </h4>
-                                <p>
-                                  {t(
-                                    'adminDashboard.topWhitelist_requestsDesc',
-                                    {
-                                      defaultValue:
-                                        'Players that tried to join the server but were not whitelisted.',
-                                })}
-                                </p>
-                              </div>
-                              <div className="admin-dashboard__tx-whitelist-search-wrap">
-                                <input
-                                  type="text"
-                                  className="admin-dashboard__tx-whitelist-search"
-                                  aria-label={t('adminDashboard.topWhitelist_searchPlaceholder')}
-                                  value={topbarWhitelistSearch}
-                                  onChange={(e) =>
-                                    setTopbarWhitelistSearch(e.target.value)
-                                  }
-                                  placeholder={t(
-                                    'adminDashboard.topWhitelist_searchPlaceholder',
-                                    { defaultValue: 'player name, R1234' },
-                                  )}
-                                />
-                                <button
-                                  type="button"
-                                  className="admin-dashboard__tx-whitelist-search-btn"
-                                >
-                                  {t('adminDashboard.search', {
-                                    defaultValue: 'Search',
-                                  })}
-                                </button>
-                              </div>
-                            </div>
-                            <div className="admin-dashboard__tx-whitelist-panel-body admin-dashboard__tx-whitelist-panel-body--empty">
-                              {t('adminDashboard.topWhitelist_noPlayers', {
-                                defaultValue: 'no players here yet',
-                              })}
-                            </div>
-                            <div className="admin-dashboard__tx-whitelist-panel-foot">
-                              <button
-                                type="button"
-                                className="admin-dashboard__tx-whitelist-deny"
-                                disabled
-                              >
-                                {t('adminDashboard.topWhitelist_denyAll', {
-                                  defaultValue: 'Deny All',
-                                })}
-                              </button>
-                              <div className="admin-dashboard__tx-whitelist-pagination">
-                                <button type="button" disabled>
-                                  {t('adminDashboard.previous', {
-                                    defaultValue: 'Previous',
-                                  })}
-                                </button>
-                                <span>1</span>
-                                <button type="button" disabled>
-                                  {t('adminDashboard.next', {
-                                    defaultValue: 'Next',
-                                  })}
-                                </button>
-                              </div>
-                            </div>
-                          </article>
-
-                          <article className="admin-dashboard__tx-whitelist-panel">
+                            
                             <div className="admin-dashboard__tx-whitelist-panel-head">
                               <div>
                                 <h4>
@@ -6116,6 +6067,19 @@ const AdminDashboard = () => {
                                 })}
                               </button>
                             </div>
+                            <div className="admin-dashboard__tx-whitelist-search-wrap"><input
+                                  type="text"
+                                  className="admin-dashboard__tx-whitelist-search"
+                                  aria-label={t('adminDashboard.topWhitelist_searchPlaceholder')}
+                                  value={topbarWhitelistSearch}
+                                  onChange={(e) =>
+                                    setTopbarWhitelistSearch(e.target.value)
+                                  }
+                                  placeholder={t(
+                                    'adminDashboard.topWhitelist_searchPlaceholder',
+                                    { defaultValue: 'player name, R1234' },
+                                  )}
+                                /></div>
                             <div className="admin-dashboard__tx-whitelist-panel-body"
                               tabIndex={0} role="region"
                               aria-label={t('adminDashboard.topWhitelist_approvedTitle')}>
@@ -6633,6 +6597,11 @@ const AdminDashboard = () => {
                             </span>
                           </div>
                         </div>
+                        <LauncherConnectionPanel onSaved={() => void loadCfgEditor()} />
+                        <button type="button" className="admin-dashboard__log-btn" onClick={() => {
+                          setActiveMenuSurface('sidebar'); setActiveTab('cfg'); setCfgEditorTab('discord');
+                          window.history.replaceState(null, '', '#discord');
+                        }}>{t('adminDashboard.discordSettings.title')}</button>
                         <p className="admin-dashboard__cfg-status">
                           {t('adminDashboard.settingsUnifiedEditorHint', {
                             defaultValue:
@@ -6658,7 +6627,7 @@ const AdminDashboard = () => {
                 </section>
               )}
 
-            {activeMenuSurface === 'sidebar' && (
+            {activeMenuSurface === 'sidebar' && activeTab !== 'cfg' && (
               <div className="admin-dashboard__summary-grid">
                 {summaryCards.map((card) => (
                   <div
@@ -6943,9 +6912,12 @@ const AdminDashboard = () => {
                                         );
                                       }}
                                     >
-                                      {player.actorName ||
+                                      {player.playerName || player.actorName ||
                                         `userId=${player.userId}`}
                                     </button>
+                                    {player.playerName && <div style={{ fontSize: '0.82em', opacity: 0.75 }}>
+                                      {player.actorName && player.actorName !== player.playerName ? player.actorName + ' · ' : ''}{player.steamId ? 'Steam ' + player.steamId : ''}
+                                    </div>}
                                     {muteEntry && (
                                       <span
                                         className="admin-dashboard__muted-badge"
@@ -7837,6 +7809,8 @@ const AdminDashboard = () => {
 
                     {capabilities.canViewLogs && (
                       <>
+                        <ServerPerformancePanel />
+                        <h3>{t('adminDashboard.performance.frontendTitle')}</h3>
                         <div className="admin-dashboard__metrics-toolbar">
                           <input
                             className="admin-dashboard__metrics-input"
@@ -8187,6 +8161,10 @@ const AdminDashboard = () => {
                   </div>
                 )}
 
+                {activeMenuSurface === 'sidebar' && activeTab === 'resources' && (
+                  <ModLoadOrderPanel canView={capabilities.canViewLogs} canEdit={adminRole === 'admin' && capabilities.canConsole} />
+                )}
+
                 {activeMenuSurface === 'sidebar' && activeTab === 'cfg' && (
                   <div
                     className="admin-dashboard__panel"
@@ -8194,84 +8172,22 @@ const AdminDashboard = () => {
                     role="tabpanel"
                     aria-labelledby="admin-tab-cfg"
                   >
-                    <div className="admin-dashboard__panel-toolbar">
+                    {cfgEditorTab !== 'discord' && <div className="admin-dashboard__panel-toolbar admin-dashboard__cfg-toolbar">
                       <div className="admin-dashboard__panel-toolbar-left">
-                        <span className="admin-dashboard__panel-toolbar-title">
-                          {t('adminDashboard.cfgEditorTitle')}
-                        </span>
+                        <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.cfgEditorTitle')}</span>
+                        <span className="admin-dashboard__cfg-hint">{t('adminDashboard.cfgToolbarHint')}</span>
                       </div>
                       <div className="admin-dashboard__panel-toolbar-right">
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn"
-                          onClick={() => void loadCfgEditor()}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {t('adminDashboard.cfgLoad')}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn"
-                          onClick={() => {
-                            try {
-                              const normalized = mergeCfgFormIntoJson(
-                                cfgEditorText || '{}',
-                                cfgForm,
-                              );
-                              setCfgEditorText(normalized);
-                              setCfgEditorStatus(
-                                t('adminDashboard.cfgFormApplied'),
-                              );
-                            } catch {
-                              setCfgEditorStatus(
-                                t('adminDashboard.cfgInvalidJson'),
-                              );
-                            }
-                          }}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {t('adminDashboard.cfgApplyForm')}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn"
-                          onClick={formatCfgEditor}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {t('adminDashboard.cfgFormat')}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn"
-                          onClick={applyAccessDiscordToCfgEditor}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {t('adminDashboard.cfgApplyAccess')}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn admin-dashboard__log-btn--primary"
-                          onClick={async () => {
-                            const normalized = applyAccessDiscordToCfgEditor();
-                            if (!normalized) return;
-                            await saveCfgEditor(normalized);
-                          }}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {t('adminDashboard.cfgSaveAccess')}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-dashboard__log-btn admin-dashboard__log-btn--primary"
-                          onClick={() => void saveCfgEditor()}
-                          disabled={cfgEditorLoading || cfgEditorSaving}
-                        >
-                          {cfgEditorSaving
-                            ? t('adminDashboard.loading')
-                            : t('adminDashboard.cfgSave')}
+                        <button type="button" className="admin-dashboard__log-btn" onClick={() => void loadCfgEditor()}
+                          disabled={cfgEditorLoading || cfgEditorSaving}>{t('adminDashboard.cfgLoad')}</button>
+                        {cfgEditorTab === 'json' && <button type="button" className="admin-dashboard__log-btn" onClick={formatCfgEditor}
+                          disabled={cfgEditorLoading || cfgEditorSaving}>{t('adminDashboard.cfgFormat')}</button>}
+                        <button type="button" className="admin-dashboard__log-btn admin-dashboard__log-btn--primary"
+                          onClick={() => void saveCfgEditor()} disabled={cfgEditorLoading || cfgEditorSaving}>
+                          {cfgEditorSaving ? t('adminDashboard.loading') : t('adminDashboard.cfgSave')}
                         </button>
                       </div>
-                    </div>
+                    </div>}
 
                     <div
                       className="admin-dashboard__cfg-tabs"
@@ -8283,6 +8199,7 @@ const AdminDashboard = () => {
                         [
                           'general',
                           'access',
+                          'discord',
                           'inventory',
                           'json',
                         ] as CfgEditorTab[]
@@ -8304,13 +8221,14 @@ const AdminDashboard = () => {
                               ? ' admin-dashboard__cfg-tab--active'
                               : ''
                           }`}
-                          onClick={() => setCfgEditorTab(tab)}
+                          onClick={() => { setCfgEditorTab(tab); if (tab === 'discord') window.history.replaceState(null, '', '#discord'); else if (window.location.hash === '#discord') window.history.replaceState(null, '', window.location.pathname + window.location.search); }}
                         >
                           {t(`adminDashboard.cfgTab_${tab}`)}
                         </button>
                       ))}
                     </div>
 
+                    {cfgEditorTab === 'general' && <LauncherConnectionPanel onSaved={() => void loadCfgEditor()} />}
                     {cfgEditorTab === 'general' && (
                       <div className="admin-dashboard__cfg-form-grid"
                         role="tabpanel" id="admin-cfg-panel-general"
@@ -8330,40 +8248,9 @@ const AdminDashboard = () => {
                           />
                         </label>
 
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgMasterUrl')}</span>
-                          <select
-                            className="admin-dashboard__log-select"
-                            value={cfgForm.masterUrl}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                masterUrl: e.target.value,
-                              }))
-                            }
-                          >
-                            {MASTER_URL_OPTIONS.map((url) => (
-                              <option key={url} value={url}>
-                                {url}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
 
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgMasterKey')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.masterKey}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                masterKey: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
+
+
 
                         <label className="admin-dashboard__cfg-field">
                           <span>{t('adminDashboard.cfgPort')}</span>
@@ -8398,6 +8285,13 @@ const AdminDashboard = () => {
                         </label>
 
                         <label className="admin-dashboard__cfg-field">
+                          <span>{t('adminDashboard.cfgGamemodePath')}</span>
+                          <input className="admin-dashboard__search-input" type="text" value={cfgForm.gamemodePath}
+                            onChange={(e) => setCfgForm((prev) => ({ ...prev, gamemodePath: e.target.value }))} placeholder="./gamemode.js" />
+                          <small>{t('adminDashboard.cfgGamemodePathHint')}</small>
+                        </label>
+
+                        <label className="admin-dashboard__cfg-field">
                           <span>{t('adminDashboard.cfgLanguage')}</span>
                           <select
                             className="admin-dashboard__log-select"
@@ -8418,19 +8312,7 @@ const AdminDashboard = () => {
                           </select>
                         </label>
 
-                        <label className="admin-dashboard__cfg-check">
-                          <input
-                            type="checkbox"
-                            checked={cfgForm.offlineMode}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                offlineMode: e.target.checked,
-                              }))
-                            }
-                          />
-                          <span>{t('adminDashboard.cfgOfflineMode')}</span>
-                        </label>
+                        
 
                         <label className="admin-dashboard__cfg-check">
                           <input
@@ -8528,190 +8410,16 @@ const AdminDashboard = () => {
                     )}
 
                     {cfgEditorTab === 'access' && (
-                      <div className="admin-dashboard__cfg-form-grid"
-                        role="tabpanel" id="admin-cfg-panel-access"
+                      <div className="admin-dashboard__cfg-tabpanel" role="tabpanel" id="admin-cfg-panel-access"
                         aria-labelledby="admin-cfg-tab-access" tabIndex={0}>
-                        <label className="admin-dashboard__cfg-check">
-                          <input
-                            type="checkbox"
-                            checked={cfgForm.discordBot.enabled}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                discordBot: {
-                                  ...prev.discordBot,
-                                  enabled: e.target.checked,
-                                },
-                              }))
-                            }
-                          />
-                          <span>{t('adminDashboard.cfgDiscordEnabled')}</span>
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field admin-dashboard__cfg-field--full">
-                          <span>{t('adminDashboard.cfgJoinMode')}</span>
-                          <select
-                            className="admin-dashboard__log-select"
-                            value={cfgForm.joinAccess.mode}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                joinAccess: {
-                                  ...prev.joinAccess,
-                                  mode: e.target
-                                    .value as JoinAccessForm['mode'],
-                                },
-                              }))
-                            }
-                          >
-                            <option value="none">
-                              {t('adminDashboard.cfgJoinMode_none')}
-                            </option>
-                            <option value="approvedLicense">
-                                {t(
-                                  'adminDashboard.cfgJoinMode_approvedLicense',
-                                )}
-                            </option>
-                            <option value="discordMember">
-                              {t('adminDashboard.cfgJoinMode_discordMember')}
-                            </option>
-                            <option value="discordRoles">
-                              {t('adminDashboard.cfgJoinMode_discordRoles')}
-                            </option>
-                          </select>
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field admin-dashboard__cfg-field--full">
-                          <span>{t('adminDashboard.cfgRejectMessage')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.joinAccess.rejectionMessage}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                joinAccess: {
-                                  ...prev.joinAccess,
-                                  rejectionMessage: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgApprovedLicenses')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.joinAccess.approvedLicenses}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                joinAccess: {
-                                  ...prev.joinAccess,
-                                  approvedLicenses: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>
-                            {t('adminDashboard.cfgApprovedDiscordIds')}
-                          </span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.joinAccess.approvedDiscordIds}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                joinAccess: {
-                                  ...prev.joinAccess,
-                                  approvedDiscordIds: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgDiscordRoles')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.joinAccess.discordRoleIds}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                joinAccess: {
-                                  ...prev.joinAccess,
-                                  discordRoleIds: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgDiscordToken')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="password"
-                            value={cfgForm.discordBot.token}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                discordBot: {
-                                  ...prev.discordBot,
-                                  token: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>{t('adminDashboard.cfgDiscordGuildId')}</span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.discordBot.guildId}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                discordBot: {
-                                  ...prev.discordBot,
-                                  guildId: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-
-                        <label className="admin-dashboard__cfg-field">
-                          <span>
-                            {t('adminDashboard.cfgDiscordWarningsChannel')}
-                          </span>
-                          <input
-                            className="admin-dashboard__search-input"
-                            type="text"
-                            value={cfgForm.discordBot.warningsChannelId}
-                            onChange={(e) =>
-                              setCfgForm((prev) => ({
-                                ...prev,
-                                discordBot: {
-                                  ...prev.discordBot,
-                                  warningsChannelId: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
+                        <AccessSettingsPanel settings={cfgForm}
+                          onChange={changes => setCfgForm(previous => ({ ...previous, ...changes }))} />
                       </div>
                     )}
+
+                    <div hidden={cfgEditorTab !== 'discord'} style={{ display: cfgEditorTab === 'discord' ? undefined : 'none' }} className="admin-dashboard__cfg-tabpanel" role="tabpanel" id="admin-cfg-panel-discord" aria-labelledby="admin-cfg-tab-discord" tabIndex={0}>
+                      <DiscordSettingsPanel active={cfgEditorTab === 'discord'} canEdit={capabilities.canConsole} status={status} onSaved={syncSavedDiscord} />
+                    </div>
 
                     {cfgEditorTab === 'inventory' && (
                       <div className="admin-dashboard__cfg-tabpanel"
@@ -9169,9 +8877,9 @@ const AdminDashboard = () => {
                       />
                       </div>
                     )}
-                    <div className="admin-dashboard__cfg-status" role="status">
+                    {cfgEditorTab !== 'discord' && <div className="admin-dashboard__cfg-status" role="status">
                       {cfgEditorStatus}
-                    </div>
+                    </div>}
                   </div>
                 )}
 

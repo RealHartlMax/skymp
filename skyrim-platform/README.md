@@ -8,9 +8,18 @@ Here is everything you need to know:
 
 ## Supported Games
 
-- Steam latest (currently Skyrim SE/AE 1.6.1170)
+Previously documented release targets:
+
+- Skyrim SE/AE 1.6.1170
 - Skyrim SE/AE 1.6.640
 - Skyrim SE 1.5.97.0.8 (Deprecated, not accepting bugs anymore)
+
+Local fork checkpoint, **22 October 2026**: CommonLib has been ported to 7.5.4
+and new client release DLLs plus independent Address Library format-1/2/5 probes
+have been produced, including Skyrim 1.7.104. Full SKSE/CEF/gameplay acceptance
+is still open. Do not infer compatibility from the Steam version or a successful
+library-reader test alone. See [current project status](../docs/docs_project_status.md)
+and [client installation](../docs/docs_client_installation.md).
 
 ## For Mod Creators
 

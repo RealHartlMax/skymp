@@ -1,6 +1,14 @@
 # Server Ports Usage
 
-Currently, the server uses three ports to keep all systems work. This page describes the role of each port, default values, etc.
+Normal operation uses a UDP game listener and a separate TCP/HTTP listener.
+The webpack and Chromium ports below are development facilities. This page
+describes their roles; the configured HTTP and UDP port numbers can also be equal.
+
+For the current test packages, forward **7777/UDP** for gameplay and
+**8080/TCP** for HTTP/WebSocket access. The
+[VPS firewall and process-control guide](docs_vps_ports_and_process_control.md)
+includes HTTPS recommendations, concrete rules and the independent full
+dashboard available while the game backend is stopped (r3 and later).
 
 ## Main Port
 
@@ -12,12 +20,15 @@ Used to perform synchronization and other basic networking.
 
 ## UI Port
 
-Used by the embedded browser to access HTML/CSS/JS and other assets.
+Used by the embedded browser, admin dashboard, mod downloads and optional
+client-runtime hosting. The launcher reads `/api/launcher/manifest` here.
 
 - Protocol is HTTP
 - Configurable via `uiPort` in `server-settings.json`
 - If `uiPort` is omitted, server uses the same value as `port`
 - `uiListenHost` can be used to control bind address for this HTTP listener
+- Local test packages set `uiPort: 8080`; read the actual server configuration
+- Remote launcher downloads need an externally reachable HTTP(S) base URL as well as the UDP game port
 
 ## WebPack DevServer Port
 

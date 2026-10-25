@@ -1,7 +1,7 @@
 if(MSVC)
     include(${CMAKE_SOURCE_DIR}/cmake/apply_default_settings.cmake)
 
-    file(GLOB_RECURSE sources "${CMAKE_CURRENT_SOURCE_DIR}/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+    file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
     add_library(platform_lib STATIC ${sources})
     target_link_libraries(platform_lib PUBLIC viet)
     target_include_directories(platform_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

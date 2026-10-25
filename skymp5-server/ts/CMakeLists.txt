@@ -1,9 +1,13 @@
 include(${CMAKE_SOURCE_DIR}/cmake/package_manager.cmake)
 
-file(GLOB_RECURSE sources ${CMAKE_CURRENT_LIST_DIR}/*.ts)
+file(GLOB_RECURSE sources CONFIGURE_DEPENDS
+  ${CMAKE_CURRENT_LIST_DIR}/*.ts
+  ${CMAKE_CURRENT_LIST_DIR}/*.js
+)
 
 set(out
   ${CMAKE_BINARY_DIR}/dist/server/dist_back/skymp5-server.js
+  ${CMAKE_BINARY_DIR}/dist/server/dist_back/skymp5-admin.js
 )
 
 if(WIN32)

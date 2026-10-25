@@ -1,5 +1,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
+import { steamAccessMessage, steamSessionFromSettings } from '../../features/steamAuthentication';
+declare const steamStatusText: string;
 import { AuthGameData, RemoteAuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
@@ -156,6 +158,11 @@ export class AuthService extends ClientListener {
     const settingsGameData = this.sp.settings['skymp5-client'][
       'gameData'
     ] as any;
+    const steamSession = steamSessionFromSettings(settingsGameData);
+    if (steamSession) {
+      this.controller.emitter.emit('authAttempt', { authGameData: { steamSession } });
+      return;
+    }
     const isOfflineMode = Number.isInteger(settingsGameData?.profileId);
     if (isOfflineMode) {
       logTrace(
@@ -190,6 +197,7 @@ export class AuthService extends ClientListener {
 
   private onCreateActorMessage(e: ConnectionMessage<CreateActorMessage>) {
     if (e.message.isMe) {
+      this.steamWaiting = false;
       if (this.authDialogOpen) {
         logTrace(
           this,
@@ -236,6 +244,33 @@ export class AuthService extends ClientListener {
     }
 
     switch (msgContent['customPacketType']) {
+      case 'playerAccountRequired': {
+        this.steamWaiting = false;
+        const stored = this.sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
+        if (stored?.remote) {
+          this.sendSteamPacket('loginWithSkympIo', { gameData: { session: stored.remote.session } });
+        } else {
+          this.loggingStartMoment = 0;
+          this.controller.lookupListener(NetworkingService).close();
+          this.setListenBrowserMessage(true, 'Steam verified; account login required');
+          this.trigger.authNeededFired = true;
+          if (this.trigger.conditionMet) this.onBrowserWindowLoadedAndOnlineAuthNeeded();
+        }
+        break;
+      }
+      case 'playerAuthResult': {
+        const state = String(msgContent.state || 'error');
+        this.showSteamStatus(state, typeof msgContent.id === 'string' ? msgContent.id : '');
+        if (state === 'pending' && !this.steamWaiting) {
+          this.steamWaiting = true;
+          this.steamWaitUntil = Date.now() + 10 * 60 * 1000;
+          this.pollSteamApproval();
+        } else if (state !== 'pending') this.steamWaiting = false;
+        break;
+      }
+      case 'playerSteamRequired':
+        this.showSteamStatus('required');
+        break;
       // case 'loginRequired':
       //   logTrace(this, 'loginRequired received');
       //   this.loginWithSkympIoCredentials();
@@ -627,7 +662,7 @@ export class AuthService extends ClientListener {
   private writeAuthDataToDisk(data: RemoteAuthGameData | null) {
     const content = '//' + (data ? JSON.stringify(data) : 'null');
 
-    logTrace(this, `Writing`, this.pluginAuthDataName, `to disk:`, content);
+    logTrace(this, `Writing authentication data to disk`);
 
     try {
       this.sp.writePlugin(
@@ -849,6 +884,12 @@ export class AuthService extends ClientListener {
   private handleConnectionAccepted() {
     this.setListenBrowserMessage(false, 'connectionAccepted event received');
     this.loggingStartMoment = Date.now();
+    this.steamWaiting = false;
+    const steamSession = steamSessionFromSettings(this.sp.settings['skymp5-client']['gameData']);
+    if (steamSession) {
+      this.sendSteamPacket('loginWithSteam', { steamSession });
+      return;
+    }
 
     const authData = this.sp.storage[authGameDataStorageKey] as
       | AuthGameData
@@ -895,6 +936,39 @@ export class AuthService extends ClientListener {
 
     logError(this, 'Not found authentication method');
   }
+
+  private sendSteamPacket(type: string, data: Record<string, unknown> = {}) {
+    this.controller.emitter.emit('sendMessage', { message: { t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({ customPacketType: type, ...data }) }, reliability: 'reliable' });
+  }
+
+  private showSteamStatus(state: string, id = '') {
+    this.loggingStartMoment = 0;
+    let language = 'en';
+    try { language = fs.readFileSync('./Data/Platform/Distribution/locale', 'utf8').trim(); } catch {}
+    const text = steamAccessMessage(state, language, id);
+    this.sp.browser.setVisible(true);
+    this.sp.browser.setFocused(true);
+    this.sp.browser.executeJavaScript(new FunctionInfo(this.steamStatusWidget).getText({ steamStatusText: text }));
+    this.authDialogOpen = true;
+  }
+
+  private steamStatusWidget = () => {
+    window.skyrimPlatform.widgets.set([{ type: 'form', id: 70, caption: 'SkyMP Worlds', elements:
+      steamStatusText.split('\n').map(text => ({ type: 'text', text, tags: [] })) }]);
+  };
+
+  private pollSteamApproval() {
+    this.controller.lookupListener(TimersService).setTimeout(() => {
+      if (!this.steamWaiting) return;
+      if (Date.now() > this.steamWaitUntil) { this.steamWaiting = false; this.showSteamStatus('pending'); return; }
+      this.sendSteamPacket('steamLoginStatus');
+      this.pollSteamApproval();
+    }, 2000);
+  }
+
+  private steamWaiting = false;
+  private steamWaitUntil = 0;
 
   private onTick() {
     // TODO: Should be no hardcoded/magic-number limit

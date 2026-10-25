@@ -1,0 +1,56 @@
+.discord-settings {
+  color: #e6edf0; min-width: 0; font-size: 14px; container: discord-settings / inline-size;
+  h3, h4, h5, p { margin: 0; }
+  &__heading, &__preview > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin: 16px 0 20px; }
+  h3 { font-size: 23px; } h4 { font-size: 17px; }
+  &__heading p, &__preview header p { color: #a7b9c2; line-height: 1.6; font-size: 13px; margin-top: 5px; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  fieldset:disabled { opacity: .7; }
+  &__card { background: #1b252b; border: 1px solid #304048; border-radius: 12px; overflow: hidden; }
+  &__row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 24px; padding: 24px; border-bottom: 1px solid #2b3b43; align-items: start; }
+  &__row:last-child { border-bottom: 0; }
+  &__row > label, &__row > div > label, &__row > span { display: block; color: #e6edf0; font-size: 14px; font-weight: 600; line-height: 1.5; padding-top: 8px; }
+  &__required, &__format { display: block; margin-top: 7px; font-size: 10px; letter-spacing: .06em; color: #d5b374; text-transform: uppercase; }
+  &__format { color: #a7b9c2; }
+  input:not([type='checkbox']), textarea, select { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #3a4c56; background: #111b21; color: #e6edf0; border-radius: 7px; font: inherit; padding: 11px 12px; min-height: 44px; }
+  textarea { display: block; resize: vertical; font: 12px/1.7 Consolas, 'Courier New', monospace; tab-size: 2; }
+  textarea[aria-invalid='true'] { border-color: #df9393; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #5ee1be; outline-offset: 3px; }
+  button, &__preview-links a { box-sizing: border-box; border: 1px solid #41555e; border-radius: 7px; background: #203039; color: #e6edf0; min-height: 40px; padding: 9px 14px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.is-primary { background: #127551; border-color: #1a9d71; font-weight: 600; }
+  a { color: #6ce0c1; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+  &__secret { display: flex; gap: 8px; } &__secret input { flex: 1; } &__secret button { white-space: nowrap; }
+  &__help { font-size: 12px; color: #acbdc6; line-height: 1.7; margin-top: 9px !important; }
+  &__connection { font-size: 12px; color: #80d9bf; line-height: 1.7; margin-top: 9px !important; }
+  &__switch { display: inline-flex !important; align-items: center; min-height: 44px; gap: 10px; position: relative; cursor: pointer; }
+  &__switch input { position: absolute; width: 36px; height: 24px; opacity: 0; margin: 0; }
+  &__switch > span { width: 36px; height: 21px; border-radius: 20px; background: #4c5a62; position: relative; flex-shrink: 0; pointer-events: none; }
+  &__switch > span::after { content: ''; width: 15px; height: 15px; background: #edf5f3; border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: transform .15s; }
+  &__switch input:checked + span { background: #16865c; } &__switch input:checked + span::after { transform: translateX(15px); }
+  &__switch input:focus-visible + span { outline: 2px solid #5ee1be; outline-offset: 4px; }
+  &__switch strong { font-size: 13px; font-weight: 400; }
+  &__editor-actions { display: flex; gap: 10px; margin-top: 9px; flex-wrap: wrap; } &__editor-actions button { flex: 1 1 170px; }
+  &__placeholders { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
+  code { color: #a5d7ca; border: 1px solid #34484e; border-radius: 5px; background: #152127; font-size: 11px; padding: 6px 8px; overflow-wrap: anywhere; }
+  &__save { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0; font-size: 12px; color: #a7b9c2; }
+  &__save > .discord-settings__editor-actions { margin-top: 0; justify-content: flex-end; }
+  &__save > .discord-settings__editor-actions button { flex: 0 1 auto; max-width: 100%; }
+  &__notice { border-left: 3px solid #5ee1be; background: #17392f; color: #c6ebdf; padding: 12px 14px; font-size: 13px; line-height: 1.6; margin: 12px 0 !important; overflow-wrap: anywhere; }
+  &__notice.is-error { border-color: #e2a1a1; background: #3b252b; color: #f0c9ce; }
+  &__preview { margin: 12px 0 24px; padding: 22px 24px; border: 1px solid #304048; border-radius: 12px; background: #172127; }
+  &__preview header { margin-top: 0; flex-wrap: wrap; }
+  &__preview-select { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #acbdc6; } &__preview-select select { width: auto; font-size: 12px; }
+  &__embed { border-left: 4px solid; border-radius: 5px; max-width: 620px; background: #222a32; padding: 18px 20px; overflow-wrap: anywhere; }
+  &__embed h5 { font-size: 17px; line-height: 1.5; } &__embed p { white-space: pre-wrap; margin-top: 10px; font-size: 13px; }
+  &__embed dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+  &__embed dl > div { grid-column: 1 / -1; } &__embed dl > .is-inline { grid-column: auto; }
+  &__embed dt { font-weight: 600; font-size: 12px; margin-bottom: 5px; } &__embed dd { margin: 0; font-size: 12px; white-space: pre-wrap; color: #d1dce0; }
+  &__embed small { color: #a7b9c2; font-size: 11px; }
+  &__preview-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  &__preview-links a { text-decoration: none; max-width: 100%; }
+  &__sr-only { position: absolute; height: 1px; width: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  @container discord-settings (max-width: 760px) { &__row { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 18px; } &__row > label, &__row > div > label { padding-top: 0; } }
+  @media (max-width: 600px) { &__row, &__preview { padding: 16px 12px; } &__row { grid-template-columns: minmax(0, 1fr); gap: 10px; } &__row > label, &__row > div > label { padding-top: 0; } &__heading { flex-wrap: wrap; } &__embed dl { grid-template-columns: minmax(0, 1fr); } &__save { flex-wrap: wrap; } &__preview-select { flex-wrap: wrap; } }
+  @media (prefers-reduced-motion: reduce) { &__switch > span::after { transition: none; } }
+}

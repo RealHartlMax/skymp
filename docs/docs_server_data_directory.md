@@ -9,7 +9,8 @@ SKSE starts. See [Launcher mod packages](docs_launcher_modpacks.md).
 ## Vanilla Skyrim SE Mods
 
 Should be placed into the root of the data directory and added to `"loadOrder"` in `server-settings.json`.
-All assets required for the game should be packed into an archive in .bsa format by Creation Kit or community tools.
+Client assets may be packed into a .bsa archive by Creation Kit or community tools,
+or published as loose files under `client-resources/Data/` for the standalone launcher.
 That archive must have the same name with related mod (i.e. `"FooBar.bsa"` for `"FooBar.esp"`).
 Please note that currently .bsa archives are used only on the client-side. If you want scripts to be working on the server, place them into the `scripts` subdirectory.
 
@@ -43,6 +44,10 @@ The server generates `manifest.json` during startup. Do not modify that file, co
 `"mods"` is an array of objects with fields `"crc32"`, `"filename"` and `"size"`.
 `"loadOrder"` is a load order of mods (taken from `server-settings.json` directly).
 
+This native game manifest remains version 1. It differs from the launcher's
+version-2 `/api/launcher/manifest` and the optional runtime `catalog.json`.
+Their version numbers describe different contracts.
+
 ## Runtime-generated admin/state files
 
 Depending on enabled features and admin usage, the server may create additional files in `dataDir`, for example:
@@ -53,6 +58,8 @@ Depending on enabled features and admin usage, the server may create additional 
 - `admin-history.json` - moderation action history
 - `admin-player-stats.json` - tracked player stats used by admin views
 - `admin-menu-debug.log` - optional admin menu debug log output
+- `.admin/server-performance.json` - private rolling 24-hour minute history;
+  preserve this hidden directory during updates. See [server metrics](docs_server_metrics.md).
 
 These files are managed by the server runtime and should not be edited manually while server is running.
 

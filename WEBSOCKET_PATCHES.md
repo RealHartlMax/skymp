@@ -1,5 +1,7 @@
 ## WebSocket Integration - Exact Code Patches
 
+> Historical implementation note. Checked on 22 October 2026: the six-stream integration and reconnect/HTTP fallback are already represented in [ROADMAP_FRONTEND.md](ROADMAP_FRONTEND.md). Old checklists and measurements below describe that earlier work; use [current project status](docs/docs_project_status.md) for active TODOs and validation limits.
+
 > **Status: ✅ All Patches Applied — 2026-05-17**  
 > All patches below have been applied to `skymp5-server/ts/ui.ts` and `skymp5-front/src/features/adminDashboard/index.tsx`. This file is kept as a historical diff reference.
 

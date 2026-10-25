@@ -2,6 +2,35 @@
 
 The recommended way to configure the server is setting up all required values in `server-settings.json`. It's standard JSON without C-style comments support. See also [Server Command Line API](docs_server_command_line_api.md).
 
+Checked against the local checkout on **24 October 2026**. Examples labelled
+`json5` below illustrate individual fields; the actual file requires quoted
+keys and no comments. See [project status](docs_project_status.md) for validation
+limits and [browser setup](docs_linux_vps.md) for the packaged first installation.
+
+## playerAccess (Steam authentication, r5)
+
+Use browser setup or **CFG → Access & Discord**. For example:
+
+```json
+{
+  "playerAccess": {
+    "mode": "guest",
+    "approvalRequired": true,
+    "steamApiKey": "<private 32-character Steam Web API key>",
+    "steamAppId": 489830
+  }
+}
+```
+
+`guest` needs no master account; `account` requires the configured in-game master
+login after Steam verification. Steam is mandatory in both modes, including old
+`offlineMode` configurations. `approvalRequired` applies to guests. `joinAccess`
+rules apply to account mode. The `steam_webApiKey` alias is accepted if the new
+key is absent. No valid key means no player login. App ID defaults to Skyrim SE/AE.
+Keep the key server-side; a SteamID alone is not proof. Restart the game server
+after changing access settings. See [login and API contract](docs_ingame_login.md)
+for sessions, duplicate-login prevention and update requirements.
+
 ## name
 
 Server's name that will be published on a master server.
@@ -16,14 +45,183 @@ Server's name that will be published on a master server.
 
 ## masterKey
 
-Specify the server key you wish to use for Master API. Client must have the same key specified to log in successfully.
+Private key used by the server to authenticate its Master API heartbeat.
+With SkyMP Worlds, players use the public `serverUid`; do not distribute the
+private `masterKey` as client configuration. Older masters may use the same
+routing key for both purposes. Preserve an existing identity when updating a server.
 
 ```json5
 {
   // ...
-  masterKey: 'my-awesome-server',
+    masterKey: '<private key from the owner dashboard>',
   // ...
 }
+```
+
+## master, serverUid and publicHost
+
+`master` is the HTTP(S) base URL for registration and online account/session
+requests. `serverUid` is the public server identity used by players; `masterKey`
+stays private. `publicHost` advertises the externally reachable game hostname/IP;
+it does not bind a network socket. `externalHost` is also accepted by the server
+as an advertised-host fallback. Bind addresses remain `listenHost` and `uiListenHost`.
+
+The current local `Settings` default is `https://api.skymp-worlds.net`.
+Explicit existing master settings still take precedence.
+
+For the existing SkyMP Worlds PHP integration, merge these fields into the
+existing configuration; retain the server's own IDs and data:
+
+```json
+{
+  "master": "https://api.skymp-worlds.net",
+  "serverUid": "<public dashboard ID>",
+  "masterKey": "<private dashboard key>",
+  "publicHost": "play.example.org",
+  "offlineMode": false,
+  "masterHeartbeatIntervalMs": 15000
+}
+```
+
+The heartbeat uses `POST <master>/api/servers/<privateMasterKey>`.
+Its interval is clamped to 10–30 seconds (default 15 seconds). Offline test mode
+does not publish a heartbeat. Website upload and account setup are separate from
+configuring the game server; see [SkyMP Worlds](docs_launcher_worlds.md).
+
+## launcherResources
+
+Public pre-game mod publication, separate from the admin inventory scanner.
+
+```json
+{
+  "launcherResources": {
+    "enabled": true,
+    "directory": "./client-resources",
+    "runtimeSource": "https://files.example.org/client-runtime/catalog.json"
+  }
+}
+```
+
+- Runtime defaults when the object is absent: enabled, directory `./client-resources`, no runtime source.
+- The current CMake configuration generator supplies an external runtime catalog
+  for newly missing values: `https://update.skymp-worlds.net/client-runtime/catalog.json`.
+  It retains explicit existing values, including `runtimeSource: ""`.
+  `-DSKYMP_RUNTIME_CATALOG_URL=""` disables that generated default offer;
+  it does not change already stored explicit settings. A configured URL is not
+  evidence that its contents have been uploaded or accepted in the game.
+- Loose client files go under `directory/Data/`; custom server `loadOrder`
+  plugins and matching BSA archives are also published from `dataDir`.
+- `runtimeSource` is optional and accepts an absolute HTTP(S) URL without
+  credentials, query or fragment. It can identify a runtime manifest or a
+  version-selection catalog understood by the current desktop launcher.
+- `GET /api/launcher/manifest` publishes sizes, SHA-256, paths, load order and
+  local game requirements. Bethesda masters and private server files are excluded.
+- Native DLLs/JS use the separate runtime package. A manual runtime source in
+  the launcher takes precedence over the advertised source.
+
+See [mod publication](docs_launcher_modpacks.md) and
+[runtime catalog](docs_launcher_runtime_updates.md). A valid package/download
+does not prove native game compatibility.
+
+## joinAccess
+
+Online game-join policy, evaluated by `systems/login.ts` after obtaining the
+player's profile. It is separate from access to the admin dashboard.
+
+```json
+{
+  "joinAccess": {
+    "mode": "approvedLicense",
+    "rejectionMessage": "Please ask the server team for access.",
+    "approvedLicenses": ["<profile license identifier>"],
+    "approvedDiscordIds": [],
+    "discordRoleIds": []
+  }
+}
+```
+
+| Field/value | Behavior |
+| --- | --- |
+| `mode: "open"` | Default; no additional join policy |
+| `mode: "adminOnly"` | Allows a matching `approvedLicenses` entry or `approvedDiscordIds` entry; dashboard role alone does not grant access |
+| `mode: "approvedLicense"` | Requires a matching profile license identifier |
+| `mode: "discordMember"` | Requires linked Discord identity and a successful guild-membership check |
+| `mode: "discordRoles"` | Requires linked Discord identity, confirmed membership and at least one matching `discordRoleIds` entry |
+| `rejectionMessage` | Base text for the login rejection; the server adds a specific reason |
+| `approvedLicenses`, `approvedDiscordIds`, `discordRoleIds` | Arrays of identifiers; duplicates/empty entries are normalized |
+
+Unknown modes fall back to `open`; use the dashboard Access form or validate
+the spelling. Discord modes reject the login if Discord verification is
+unavailable, the account is not linked, membership cannot be confirmed, or no
+required roles are configured. `approvedLicense` does not treat the Discord-ID
+allowlist as a license match. Offline test identities are a different login path,
+not a substitute for verified public player accounts.
+
+## discordAuth and discordBot
+
+The online login integration reads `discordAuth.botToken` and
+`discordAuth.guilds`. Each guild declares a `guildId` and can declare
+`banRoleId`, `eventLogChannelId` and `hideIpRoleId`.
+
+```json
+{
+  "discordAuth": {
+    "botToken": "<operator token>",
+    "guilds": [{ "guildId": "123456789012345678" }]
+  },
+  "discordBot": {
+    "enabled": false,
+    "token": "",
+    "guildId": "",
+    "statusChannelId": "",
+    "warningsChannelId": ""
+  }
+}
+```
+
+`discordBot` is the configuration surface used by the Admin CFG Discord form:
+`enabled`, `token`, `guildId`, `statusChannelId`, `warningsChannelId`. New packages
+default to disabled. Since r4 the bot runs exclusively in the independent
+dashboard process, including offline game mode. Status messages cover game
+start, ready, stop, restart, startup failure and crash. Dashboard warnings and
+existing configured login logs are sent through that same bot. Game controls
+retain its Discord connection. Saving applies bot configuration immediately;
+`GET /api/admin/status` includes its connection/error/delivery state without tokens.
+
+Source after r9 adds **CFG → Discord**, also linked from Settings, and a
+separate owner-only `/api/admin/discord/settings` GET/POST API. Its save operation
+preserves unrelated settings and applies live. `statusEmbedEnabled` defaults to
+`false`; `statusEmbed` defines title/description/fields/footer/URL/timestamp, while
+`statusConfig` defines online/partial/offline labels, `#RRGGBB` colors and up to five
+HTTP(S) link buttons. Defaults follow the server language. The browser preview and
+transport share validation and placeholder rendering. See the
+[template guide](docs_discord_bot.md#status-embed-und-json-vorlagen). These source
+changes have not been added to a new release package yet.
+
+Saving a Discord-based `joinAccess` mode adds the selected primary guild to
+`discordAuth.guilds`, preserving existing guilds and their moderation/log settings.
+Monitoring alone does not create a login restriction. Legacy `discordAuth`-only
+bots remain enabled until explicitly disabled through `discordBot.enabled`.
+Disabling the bot stops Gateway/notifications; configured online login checks
+and admin OAuth remain separate. Tokens are normalized with or without `Bot `.
+
+The full administrator CFG response and private configuration/backup files contain
+the token; treat them as secrets. Only administrators can read the full CFG.
+See [Discord bot operation](docs_discord_bot.md) for setup, channel permissions,
+privileged member intent, lifecycle limits and the distinction between simulated
+integration checks and real Discord delivery.
+Admin Discord OAuth is a separate mechanism described in
+[Admin Discord OAuth](docs_admin_discord_oauth.md).
+
+## showCharacterNicknames
+
+Boolean, default `true`. Controls display of character names above remote
+actors. The server sends the choice on connect and broadcasts a change saved
+through the Admin CFG General form. An explicit server choice takes precedence
+over the client's local F1 toggle.
+
+```json
+{ "showCharacterNicknames": false }
 ```
 
 ## listenHost
@@ -90,16 +288,19 @@ If omitted, `/metrics` is not available.
 
 Credentials for the web admin dashboard (`/admin`).
 
-If omitted, the server falls back to `metricsAuth` credentials. If neither is configured, admin dashboard login is unavailable.
-
-Note: this key is treated as a legacy bootstrap source and may be removed from `server-settings.json` by newer admin flows.
+Legacy bootstrap credentials. Current setup creates a scrypt credential store
+at `<dataDir>/admin-auth.json`; that store takes precedence. Legacy
+`adminUiAuth`/`metricsAuth` credentials may be migrated and the plaintext key
+removed from `server-settings.json`. Browser first-run packages contain no
+pre-created account: use their terminal PIN and create an owner in the browser.
+See [admin session endpoints](docs_running_a_server.md#admin-session-api).
 
 ```json5
 {
   // ...
   adminUiAuth: {
-    user: 'admin',
-    password: 'admin',
+    user: '<legacy owner>',
+    password: '<legacy password to migrate>',
   },
   // ...
 }
@@ -218,8 +419,11 @@ The language, the translation of which will be obtained from the string files lo
 
 ## offlineMode
 
-The boolean variable shows is server in "offline mode" or not (the server allows clients to connect with any profile id they choose).
-Users need to specify `"profileId"` in their `skymp5-settings.txt`.
+Legacy configuration switch. In r5, `true` selects Steam guest access and disables
+the old master-account login; it does not allow arbitrary client-selected profile
+IDs. The launcher must obtain a verified Steam session. New configurations use
+`playerAccess.mode: "guest"` with `offlineMode: false` instead. See
+[Steam and login modes](docs_ingame_login.md).
 
 ```json5
 {
@@ -778,13 +982,25 @@ A boolean setting that controls hot-reloading behavior for connected clients.
 
 ## supervisor
 
-Supervisor process control used by Admin dashboard server actions.
+The packaged `start-test-server`/`launch_server` starters provide process control
+automatically; no shell commands are needed. From r3 the full dashboard has its
+own process. Game stop/start/restart and crashes retain its settings, logs,
+session and WebSocket connections. `GET /api/admin/status` includes `gameState`,
+`gamePid` and `dashboardPid`. Authenticated same-origin
+`POST /api/admin/server/control` accepts `start`, `stop` or `restart` in packaged
+mode and requires `canConsole`. See [VPS ports and process control](docs_vps_ports_and_process_control.md).
+
+The following settings apply to the **legacy direct backend/external supervisor**
+mode. A command that stops the whole hosting service also stops that service's
+web backend; use the packaged starter for an independent dashboard.
 
 - `enabled`: turns supervisor control on/off.
 - `stopCommand`: command executed for stop action.
 - `restartCommand`: command executed for restart action.
 
-Admin dashboard stop/restart buttons are only enabled when supervisor is configured and available.
+In legacy mode stop/restart buttons require a configured supervisor. Packaged
+mode also offers Start while the game is stopped; runtime player actions require
+a running game server. No additional public control port is needed.
 
 ```json5
 {

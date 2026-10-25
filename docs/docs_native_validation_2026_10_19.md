@@ -1,5 +1,26 @@
 # Native Server-Abnahme vom 19. Oktober 2026
 
+## Nachtrag vom 22. Oktober 2026
+
+Das Protokoll darunter dokumentiert die damaligen Server-/Clientstände.
+Inzwischen ist die CommonLib-7.5.4-Portierung im aktiven lokalen Quellstand
+vorhanden. Neue `SkyrimPlatform.dll` und `SkyrimPlatformImpl.dll` wurden als
+Release gebaut. Der eigenständige Adressdatenbank-Test besteht für Skyrim
+1.5.97 / Format 1, 1.6.1170 / Format 2 und 1.7.104 / Format 5.
+
+Die neuere Clientausgabe liegt im Launcher-Repository unter
+`local-builds/current/client-runtime/`; deren `VALIDATION.json` und
+`native-compat/real-catalog-validation.json` belegen Paketdownload,
+Versions-/Prüfsummenprüfung, Cache und Wiederherstellung. Das ältere unten
+beschriebene Research-Plugin wurde laut aktuellem Nachweis vom Benutzer entfernt.
+
+Diese Nachweise nennen weiterhin **keinen Spielstart und keine echte Sitzung**.
+Der vollständige Skyrim-/SKSE-/CEF-Test bleibt offen. Die frühere Server-Suite
+bleibt separat: Linux 264/264, Windows 263/264 mit offenem `Activate torch`-Fehler;
+die volle native Suite wurde für die neuen Clientänderungen nicht wiederholt.
+Siehe [aktueller Projektstand](docs_project_status.md) und
+[Clientinstallation](docs_client_installation.md).
+
 ## Umfang und Quellstand
 
 Auf Wunsch des Benutzers werden zunächst **Server-Testpakete für Linux und
@@ -199,7 +220,7 @@ verwendet Offline-Modus und 16 Spielerplätze, UDP 7777 und HTTP 8080. HTTP bind
 an Loopback; der Admin-Zugriff auf den VPS erfolgt zunächst über SSH-Tunnel.
 Node.js ab Version 22 und die fünf eigenen Skyrim-Masterdateien sind erforderlich.
 
-## Zurückgestellter Skyrim-/CEF-Test
+## Zurückgestellter Skyrim-/CEF-Test (historischer Stand vom 20. Oktober)
 
 Die Steam-Installation auf `G:` verwendet Skyrim `1.7.104.0`. SKSE `2.3.1` und
 Address Library v13 wurden zuvor aus den bereitgestellten Archiven mit Sicherung

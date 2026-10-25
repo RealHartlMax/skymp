@@ -1,7 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-command -v node >/dev/null 2>&1 || { echo 'Node.js 22 oder neuer fehlt. Siehe README-TEST.md.' >&2; exit 1; }
-node setup-server.cjs --ensure
-node check-install.cjs
-exec node dist_back/skymp5-server.js "$@"
+. ./bootstrap-runtime.sh
+ensure_runtime
+PATH="$(dirname -- "$SKYMP_NODE"):$PATH"
+export PATH
+if [ "${SKYMP_RUNTIME_CHECK_ONLY:-0}" = 1 ]; then printf '%s\n' "$SKYMP_NODE"; exit 0; fi
+"$SKYMP_NODE" setup-server.cjs --ensure
+"$SKYMP_NODE" check-install.cjs
+exec "$SKYMP_NODE" server-supervisor.cjs "$@"

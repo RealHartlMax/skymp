@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const crypto = require('node:crypto');
+const launcherConnection = require('./launcher-connection.cjs');
 
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const json = value => JSON.stringify(value, null, 2) + '\n';
@@ -75,12 +76,15 @@ function configure(root, input) {
     const settings = readJson(settingsFile);
     if (isConfigured(root, settings)) throw new Error('Server ist bereits eingerichtet. Zugangsdaten und Einstellungen bleiben erhalten.');
     file = authPath(root, settings);
+    const connection = input.launcher ? launcherConnection.normalize({
+      ...input.launcher, publicHost: values.publicHost, port: values.port,
+    }, settings) : {};
     const next = {
-      ...settings, name: values.name, port: values.port, uiPort: values.uiPort,
+      ...settings, ...connection, publicHost: values.publicHost, name: values.name, port: values.port, uiPort: values.uiPort,
       maxPlayers: values.maxPlayers,
       listenHost: values.access === 'local' ? '127.0.0.1' : '0.0.0.0',
       uiListenHost: values.access === 'public' ? '0.0.0.0' : '127.0.0.1',
-      masterKey: settings.masterKey || 'skymp-' + crypto.randomBytes(16).toString('hex'),
+      masterKey: connection.masterKey || settings.masterKey || '',
       adminApi: { ...settings.adminApi, enabled: true },
       adminUiUsers: { ...settings.adminUiUsers, [values.adminUser]: { role: 'admin' } },
       adminUiRoles: { ...settings.adminUiRoles, [values.adminUser]: 'admin' },
@@ -104,14 +108,14 @@ function configure(root, input) {
     const hostForUrl = net.isIP(values.publicHost) === 6 ? `[${values.publicHost}]` : values.publicHost;
     const dashboard = values.access === 'public' ? `http://${hostForUrl}:${values.uiPort}/admin` : `http://127.0.0.1:${values.uiPort}/admin`;
     const client = {
-      gameData: { profileId: 1 }, master: '', 'server-info-ignore': true,
+      master: next.offlineMode ? '' : next.master, 'server-info-ignore': true,
       'server-ip': values.publicHost, 'server-port': values.port,
-      'server-master-key': next.masterKey,
+      'server-master-key': next.offlineMode ? undefined : next.serverUid,
     };
     // These are convenience exports; credentials and configuration are already saved.
     try {
       fs.writeFileSync(path.join(root, 'skymp5-client-settings.example.txt'), json(client));
-      fs.writeFileSync(path.join(root, 'VERBINDUNG.txt'), `Dashboard: ${dashboard}\nAdmin-Benutzer: ${values.adminUser}\nSpieler: ${values.publicHost}, UDP ${values.port}\nDashboard: TCP ${values.uiPort}, ${next.uiListenHost}\n\nPasswort wird ausschliesslich als Hash in data/admin-auth.json gespeichert.\nJeder Testspieler braucht eine eigene gameData.profileId (1, 2, 3, ...).\nOffline-Anmeldung ist fuer eine vertraute Testgruppe gedacht.\nSiehe README-TEST.md fuer Firewall, SSH-Tunnel und Client-Installation.\n`);
+      fs.writeFileSync(path.join(root, 'VERBINDUNG.txt'), `Dashboard: ${dashboard}\nAdmin-Benutzer: ${values.adminUser}\nSpieler: ${values.publicHost}, UDP ${values.port}\nDashboard: TCP ${values.uiPort}, ${next.uiListenHost}\n\nPasswort wird ausschliesslich als Hash in data/admin-auth.json gespeichert.\nAnmeldung: Steam ist Pflicht; aktueller Launcher und passendes Clientpaket erforderlich. Steam Web API Key bleibt auf dem Server. Gastzugang benoetigt kein Ingame-Konto; bei Kontozugang gilt der ausgewaehlte Anmeldedienst.\nSiehe INGAME-LOGIN.md und README-TEST.md fuer Einrichtung, Firewall und Client-Installation.\n`);
     } catch (error) {
       console.error(`Hinweis: Verbindungsexport konnte nicht geschrieben werden: ${error.message}`);
     }

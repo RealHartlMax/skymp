@@ -206,11 +206,12 @@ jobs:
           SKYMP5_PATCHES_PAT: ${{ github.token }}
           NUGET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Remove ESM files before packing
+      - name: Package complete Windows first-run server
         shell: powershell
+        working-directory: build
         run: |
-          Get-ChildItem -Path "${{ github.workspace }}\build\dist\server" -Recurse -Include "*.esm" -Force | Remove-Item -Force
-          Write-Host "Removed all *.esm files from server dist"
+          node ../misc/deploy/package_ci_server.cjs --platform windows-x64 --version "${{ needs.determine-version.outputs.version }}" --source dist/server --output ci-server
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Pack Windows client files
         shell: powershell
@@ -227,7 +228,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: running_server_files_windows_server_dist
-          path: ${{ github.workspace }}/build/dist/server
+          path: ${{ github.workspace }}/build/ci-server/dist/server
+
+      - name: Upload Windows server sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: running_server_files_windows_source
+          path: ${{ github.workspace }}/build/ci-server/*-source.tar.gz
 
   linux-server-files:
     name: Linux server files
@@ -297,22 +304,27 @@ jobs:
           }
           EOF
 
-      - name: Remove ESM files before packing
+      - name: Package complete Linux first-run server
+        working-directory: build
         run: |
-          cd "${{ github.workspace }}/build/dist/server"
-          find . -name '*.esm' -type f -delete
-          echo "Removed all *.esm files from server dist"
+          node ../misc/deploy/package_ci_server.cjs --platform linux-x64 --version "${{ needs.determine-version.outputs.version }}" --source dist/server --output ci-server
 
       - name: Pack server files
         run: |
-          cd "${{ github.workspace }}/build"
-          tar czf running_server_files_linux_server_dist.tar.gz dist/server
+          cd "${{ github.workspace }}/build/ci-server"
+          tar czf ../running_server_files_linux_server_dist.tar.gz dist/server
 
       - name: Upload Linux server artifact
         uses: actions/upload-artifact@v7
         with:
           name: running_server_files_linux_server_dist
           path: ${{ github.workspace }}/build/running_server_files_linux_server_dist.tar.gz
+
+      - name: Upload Linux server sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: running_server_files_linux_source
+          path: ${{ github.workspace }}/build/ci-server/*-source.tar.gz
 
       - name: Upload vcpkg logs (Linux)
         if: ${{ failure() }}
@@ -356,6 +368,18 @@ jobs:
           name: running_server_files_linux_server_dist
           path: ./artifacts
 
+      - name: Download Windows server sources
+        uses: actions/download-artifact@v8
+        with:
+          name: running_server_files_windows_source
+          path: ./artifacts
+
+      - name: Download Linux server sources
+        uses: actions/download-artifact@v8
+        with:
+          name: running_server_files_linux_source
+          path: ./artifacts
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v3
         with:
@@ -368,5 +392,6 @@ jobs:
             ./artifacts/running_server_files_windows_client_dist.zip
             ./artifacts/running_server_files_windows_server_dist.zip
             ./artifacts/running_server_files_linux_server_dist.tar.gz
+            ./artifacts/*-source.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

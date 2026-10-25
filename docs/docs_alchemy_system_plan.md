@@ -1,5 +1,7 @@
 # Server-Side Alchemy System Implementation Plan
 
+> Planning/research document. Reviewed 22 October 2026; proposals and external-fork examples are not automatically implemented in this checkout. See [current project status](docs_project_status.md) and the main roadmap for verified completion.
+
 ## Goal
 
 Implement a production-ready alchemy crafting system where players can:

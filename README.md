@@ -1,525 +1,416 @@
-# SkyMP
+# SkyMP Worlds
 
-[![Discord Chat](https://img.shields.io/discord/699653182946803722?label=Discord&logo=Discord)](https://discord.gg/k39uQ9Yudt)
-[![PR's Welcome](https://img.shields.io/badge/PRs%20-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Players](https://skymp-badges.vercel.app/badges/players_online.svg)](https://discord.gg/k39uQ9Yudt)
-[![Servers](https://skymp-badges.vercel.app/badges/servers_online.svg)](https://discord.gg/k39uQ9Yudt)
+Skyrim-Multiplayer mit einem globalen Launcher, eigenen Community-Servern und einer
+Verwaltung im Browser. Dieser Fork von [SkyMP](https://github.com/skyrim-multiplayer/skymp)
+enthält den Gameserver, den nativen Spielclient und das Admin-Dashboard.
 
-SkyMP is an open-source multiplayer project for Skyrim.
+Der **[globale SkyMP-Worlds-Launcher](https://github.com/RealHartlMax/skymp-client-launcher)**
+wird in einem eigenen Repository entwickelt. Spieler verwenden denselben Launcher
+für verschiedene Server; er bereitet deren Mods und passende Clientdateien vor dem Spielstart vor.
 
-This repository is the main home of the project: server, client, admin web UI, build system, docs, and CI pipelines are all managed here.
+**Stand: 24. Oktober 2026 · Testversion / WIP.** Der aktuelle Quellstand und die
+Prüfgrenzen stehen im [Projektstatus](docs/docs_project_status.md).
+Veröffentlichte Releases und lokale Testbuilds haben jeweils ihren eigenen Stand und Prüfnachweis.
 
-## Project Status (WIP Fork)
-
-This fork is currently a **work in progress**.
-
-Some features are already usable, but not every part has been tested on every host setup yet. This is one reason why this fork is not integrated into the main repository at the moment.
-
-We are actively looking for testers who can:
-
-1. Set up their own servers on different systems.
-2. Validate gameplay and admin workflows in real environments.
-3. Report bugs, crashes, and configuration issues.
-
-Because every system is different, real-world feedback is extremely valuable.
-
-## Language Quick Links
-
-| Language | Start Here |
+| Dein Ziel | Einstieg |
 | --- | --- |
-| Deutsch | [Zum deutschen Abschnitt](#deutsch) |
-| English | [Go to English section](#english) |
-| Русский | [Перейти к русскому разделу](#русский) |
-| Español | [Ir a la sección en español](#español) |
-| Français | [Aller a la section francaise](#francais) |
-| Italiano | [Vai alla sezione italiana](#italiano) |
+| Als Spieler verbinden | [Globaler Launcher](https://github.com/RealHartlMax/skymp-client-launcher) · [Verbindungsanleitung](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md) |
+| Eigenen Server einrichten | [Browser-Ersteinrichtung und Linux-VPS](docs/docs_linux_vps.md) · [Releases dieses Forks](https://github.com/RealHartlMax/skymp/releases) |
+| Bestehenden Server aktualisieren | [Update-Anleitung mit Erhalt der eigenen Daten](docs/docs_packaged_server_update.md) |
+| Am Projekt mitarbeiten | [Entwicklung](#entwicklung) · [Offene und erledigte Aufgaben](docs/docs_project_status.md) |
+
+[Deutsch](#deutsch) · [English](#english) · [Русский](#русский) ·
+[Español](#español) · [Français](#français) · [Italiano](#italiano)
 
 ## Deutsch
 
-### Überblick
+### Als Spieler verbinden
 
-SkyMP bringt Multiplayer nach Skyrim. Dieses Repository ist die zentrale Anlaufstelle für Betrieb, Entwicklung und Beiträge.
+1. Eine eigene Skyrim-SE-/AE-Installation unter Windows bereithalten. Für die konkrete
+   Version von `SkyrimSE.exe` muss ein passendes Clientpaket verfügbar sein.
+2. Den [globalen Launcher](https://github.com/RealHartlMax/skymp-client-launcher) beziehen
+   und unter **Einstellungen** den Skyrim-Spielordner auswählen.
+3. Unter **Server entdecken** einen Server auswählen und **Verbinden** drücken.
+   Für eigene Testserver steht **Direktverbindung** zur Verfügung.
+4. Der Launcher prüft die lokalen Spieldateien, lädt fehlende oder geänderte Mods,
+   prüft Dateigrößen und SHA-256 und aktiviert die Ladereihenfolge. Ein vollständiger
+   Versionskatalog liefert außerdem den passenden SkyMP-Client samt SKSE, Address Library
+   und Ingame-Oberfläche. Erst nach erfolgreicher Vorbereitung startet SKSE.
+5. Steam starten und anmelden. Der aktualisierte Launcher übermittelt ein Steam-Ticket;
+   der Server prüft die SteamID. Offene Gastserver benötigen kein Ingame-Konto,
+   Freigabeserver warten auf die Dashboard-Freigabe. Nur im Kontomodus folgt der
+   **Ingame-Login**. [Zugangsarten und Steam-Einrichtung](docs/docs_ingame_login.md).
 
-### Wofür du dieses Repository nutzen kannst
+Für die vom Betreiber bereitgestellten Dateien ist kein Nexus-/Vortex-Konto nötig.
+Skyrim und benötigte Bethesda-/DLC-Dateien bleiben lokale Voraussetzungen.
+Die Launcher-EXE enthält selbst keine SkyMP-/SKSE-DLLs; der Betreiber stellt ein
+zur Spielversion passendes Runtime-Paket bereit. Bei einem unvollständigen Paket
+müssen die fehlenden Komponenten bereits passend installiert sein.
+Der Launcher bietet auch Vorbereitung ohne Spielstart und Wiederherstellung der Originaldateien.
+Details: [Spielerverbindung](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md)
+und [Client-Installation](docs/docs_client_installation.md).
 
-1. Deinen eigenen Server betreiben.
-2. Client und Server selbst bauen.
-3. Mit Code, Dokumentation und Tests beitragen.
+### Eigenen Server einrichten
 
-### Schnellstart
+1. Ein vollständiges **Serverpaket dieses Forks** für **Linux x64** oder **Windows x64**
+   in einen neuen Ordner entpacken. Veröffentlichte Pakete stehen unter
+   [Releases](https://github.com/RealHartlMax/skymp/releases), lokale Testbuilds im
+   [Projektstatus](docs/docs_project_status.md). Server- und Launcherpakete sind getrennte Ausgaben.
+2. Die fünf eigenen Masterdateien nach `data/` kopieren:
+   `Skyrim.esm`, `Update.esm`, `Dawnguard.esm`, `HearthFires.esm`, `Dragonborn.esm`.
+3. Im Ordner mit `server-settings.json` unter Windows **`start-test-server.bat`**,
+   unter Linux **`sh ./start-test-server.sh`** starten. Die Aliase
+   `launch_server.bat` und `launch_server.sh` verwenden denselben Startablauf.
+4. Die benötigten [Ports freigeben](docs/docs_vps_ports_and_process_control.md).
+   Für einen direkten Test sind das **7777/UDP** für das Spiel und **8080/TCP**
+   für Dashboard, WebSockets und Launcher-Downloads. Für HTTPS den Webzugriff über
+   einen TLS-Reverse-Proxy auf **443/TCP** bereitstellen.
+5. Die ausgegebene Browser-Adresse öffnen, standardmäßig **`http://<server>:8080/admin`**.
+   Den zufälligen **vierstelligen Terminal-Code** im Browser eingeben. Dort Server,
+   öffentliche Adresse, Ports und ein eigenes Admin-Konto einrichten.
+6. Für die globale Serverliste unter **Einstellungen → Launcher-Anbindung**
+   Master, öffentliche Server-ID, privaten Schlüssel und öffentliche Spieladresse
+   hinterlegen. Ein registrierter, aktiver Servereintrag mit gültigem Heartbeat
+   ist für die öffentliche Liste erforderlich. Siehe [SkyMP Worlds](docs/docs_launcher_worlds.md).
 
-#### Server starten
+Die Startskripte prüfen Node.js 22+ und richten bei Bedarf eine private, geprüfte
+Node-22-Laufzeit ein. JavaScript-Abhängigkeiten sind im Paket gebündelt; ein
+`npm install` ist zum Start nicht erforderlich. Unter Ubuntu/Debian können fehlende
+Systempakete mit passenden Rechten automatisch installiert werden. Die automatische
+Einrichtung benötigt Internetzugriff; ein vollständiges System-Upgrade erfolgt nicht.
+Es werden weder Admin-Zugangsdaten noch Skyrim-Masterdateien mitgeliefert.
 
-Die einfachste Möglichkeit ist das direkte Herunterladen eines fertigen Builds – **kein Klonen des Repos, kein Kompilieren erforderlich**:
+**Das vollständige Dashboard bleibt bei Game-Stopp, Neustart und Absturz erreichbar.**
+Die Prozesssteuerung im Dashboard betrifft den Gameserver. Anmeldung, Einstellungen,
+Logs, Launcher-Downloads und der konfigurierte Discord-Bot laufen im Webserver weiter.
+Dazu den mitgelieferten Starter verwenden.
 
-1. Lade das neueste Release von [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases) herunter.
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Entpacke das Archiv in einen eigenen Ordner.
-3. Starte `launch_server.bat` (Windows) oder `launch_server.sh` (Linux). Node.js und npm-Abhängigkeiten werden beim ersten Start automatisch installiert.
-4. Passe `server-settings.json` an (Name, Ports, Load-Order).
-5. Öffne das Admin-Dashboard unter `http://<host>:<uiPort>/admin`.
-
-Vollständige Anleitung: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-
-#### Aus dem Quellcode bauen (für Entwickler)
-
-1. Folge [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Baue das Projekt.
-3. Artefakte findest du unter `build/dist`.
-4. Server unter `build/dist/server`.
-5. Client unter `build/dist/client`.
-
-#### Beitreten als Spieler
-
-1. Installiere Skyrim SE oder AE.
-2. Installiere SKSE gemäß [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. Falls du selbst baust: kopiere `build/dist/client` in deinen Skyrim-Ordner.
-4. Starte das Spiel und verbinde dich mit deinem Server.
-
-Wenn du keinen eigenen Launcher bauen möchtest, ist dieses Nexus-Tool eine praktische Option:
-
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
-
-Zusätzlich arbeiten wir an einem globalen Launcher, damit Server-Betreiber langfristig keinen eigenen Launcher mehr erstellen müssen.
-
-### Plattformstatus
-
-- Windows-Server: stabil und gut unterstützt.
-- Linux-Server: empfohlen auf Ubuntu 24.04 und ähnlichen glibc-basierten Distributionen.
-- Client: Schwerpunkt weiterhin Windows.
-
-### Wichtige Bereiche im Repository
-
-- `skymp5-server`: Server-Logik und Admin-API.
-- `skymp5-front`: Admin-Dashboard.
-- `skymp5-client`: Client-Integration.
-- `docs`: Dokumentation.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: Build- und Dependency-Infrastruktur.
-
-### Wichtige Dokumente
-
-- Einstieg in Build und Entwicklung: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Serverbetrieb: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Client-Installation: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Server-Konfiguration: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Ports und Netzwerk: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Projektstruktur: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
-
-### Rechtliches
-
-- Nutzungsbedingungen: [TERMS.md](TERMS.md)
-- Drittanbieter-Lizenzen: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+Bestehende Installationen nach der [Update-Anleitung](docs/docs_packaged_server_update.md)
+aktualisieren: Konfiguration, Admin-Konten, Weltdaten, Mods und eigenen Gamemode erhalten.
 
 ## English
 
-### Overview
+### Join a server
 
-SkyMP brings multiplayer to Skyrim. This repository is the central place for running servers, building binaries, and contributing to the project.
+1. Have your own Skyrim SE/AE installation on Windows. Your exact `SkyrimSE.exe`
+   version needs a matching client runtime.
+2. Get the [global launcher](https://github.com/RealHartlMax/skymp-client-launcher)
+   and select your Skyrim folder in settings.
+3. Discover a server and choose **Connect**, or use a direct connection for a test server.
+4. The launcher checks local game requirements, downloads missing or changed mods,
+   verifies sizes and SHA-256, and applies the load order. A complete version catalog
+   also supplies the matching SkyMP client, SKSE, Address Library and in-game UI.
+   SKSE starts after preparation succeeds. Incomplete runtime packages require the
+   missing matching components to be installed separately.
+5. Run Steam and sign in. The updated launcher obtains a Steam ticket and the server
+   verifies the Steam ID. Guest-open needs no in-game account; approval mode waits
+   for an administrator. Account mode additionally uses the **in-game login**.
+   See [Steam and login modes](docs/docs_ingame_login.md).
 
-### What you can do here
+Operator-hosted downloads need no Nexus/Vortex account. Skyrim and required Bethesda/DLC
+files must already be available locally. The launcher EXE contains no SkyMP/SKSE DLLs;
+operators publish the runtime separately. Preparation without launching and restoration
+of original files are also available. See the
+[connection guide](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md).
 
-1. Host your own server.
-2. Build client and server from source.
-3. Contribute code, docs, and tests.
+### Host a server
 
-### Quick Start
+1. Extract a complete **Linux x64 or Windows x64 server package from this fork** into a
+   new directory. See [releases](https://github.com/RealHartlMax/skymp/releases) and
+   [local build status](docs/docs_project_status.md). Launcher packages are separate.
+2. Put your own `Skyrim.esm`, `Update.esm`, `Dawnguard.esm`, `HearthFires.esm`
+   and `Dragonborn.esm` in `data/`.
+3. Run `start-test-server.bat` on Windows or `sh ./start-test-server.sh` on Linux
+   from the directory containing `server-settings.json`. The `launch_server` aliases use the same flow.
+4. Allow **7777/UDP** for gameplay and **8080/TCP** for HTTP/WebSockets/downloads;
+   use **443/TCP** through a TLS reverse proxy for HTTPS.
+5. Open `http://<server>:8080/admin`, enter the random **four-digit terminal code**,
+   and configure the server and your own admin account in the browser.
+6. Configure Launcher integration in the dashboard. Public discovery requires a
+   registered, active server and a valid heartbeat.
 
-#### Run a server
+Starters can install a private Node 22 runtime and missing Ubuntu/Debian system packages
+with suitable permissions and internet access. JavaScript dependencies are bundled.
+No admin credentials or Skyrim masters are shipped. Game stop/restart/crash leaves the
+full dashboard, logs, downloads and configured Discord bot running in the web process.
+For updates, preserve configuration, accounts, world data, mods and custom gamemodes.
 
-The fastest way is to download a pre-built package — **no need to clone the repo or compile anything**:
-
-1. Download the latest release from [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Extract the archive to a dedicated folder.
-3. Run `launch_server.bat` (Windows) or `launch_server.sh` (Linux). Node.js and npm dependencies are installed automatically on first start.
-4. Edit `server-settings.json` to set your server name, ports, and load order.
-5. Open the admin dashboard at `http://<host>:<uiPort>/admin`.
-
-Full guide: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-
-#### Build from source (for contributors)
-
-1. Follow [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Build the project.
-3. Output is in `build/dist`.
-4. Server package: `build/dist/server`.
-5. Client package: `build/dist/client`.
-
-#### Join as a player
-
-1. Install Skyrim SE or AE.
-2. Install SKSE as described in [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. If you build locally, copy `build/dist/client` into your Skyrim folder.
-4. Launch the game and connect to your server.
-
-If you do not want to build your own launcher, this Nexus tool is a practical option:
-
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
-
-In parallel, we are working on a global launcher so server owners will not need to build and maintain separate custom launchers.
-
-### Platform status
-
-- Windows server: stable and well supported.
-- Linux server: best on Ubuntu 24.04 and similar glibc-based distributions.
-- Client runtime: still primarily Windows-focused.
-
-### Key areas in this repo
-
-- `skymp5-server`: server runtime and admin APIs.
-- `skymp5-front`: admin dashboard frontend.
-- `skymp5-client`: client-side integration.
-- `docs`: full documentation.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: build and dependency stack.
-
-### Essential docs
-
-- Build and dev setup: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Running a server: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Client installation: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Server config reference: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Ports and networking: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Repository structure: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
-
-### Legal
-
-- Terms of use: [TERMS.md](TERMS.md)
-- Third-party licenses: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+[Server setup](docs/docs_linux_vps.md) · [Safe updates](docs/docs_packaged_server_update.md) ·
+[Server owner guide](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/SERVER_OWNER_GUIDE.en.md)
 
 ## Русский
 
-### Обзор
+### Подключение к серверу
 
-SkyMP добавляет мультиплеер в Skyrim. Этот репозиторий - центральная точка проекта для запуска сервера, сборки клиента и участия в разработке.
+1. Нужна собственная установленная Skyrim SE/AE под Windows. Для точной версии
+   `SkyrimSE.exe` должен быть доступен совместимый клиентский пакет.
+2. Установите [глобальный лаунчер](https://github.com/RealHartlMax/skymp-client-launcher)
+   и выберите папку Skyrim в настройках.
+3. Найдите сервер и нажмите **Подключиться**. Для тестового сервера доступно прямое подключение.
+4. Лаунчер проверяет локальные игровые файлы, загружает недостающие или изменённые моды,
+   проверяет размеры и SHA-256 и применяет порядок загрузки. Полный каталог версий
+   также предоставляет подходящие SkyMP-клиент, SKSE, Address Library и игровой интерфейс.
+   SKSE запускается после успешной подготовки. Для неполного пакета недостающие
+   совместимые компоненты необходимо установить отдельно.
+5. Запустите Steam и войдите в аккаунт. Новый лаунчер получает билет Steam, а сервер
+   проверяет SteamID. Гостям игровой аккаунт не нужен; при режиме одобрения требуется
+   разрешение администратора. Режим аккаунта дополнительно требует **входа в игре**.
+   [Steam и варианты входа](docs/docs_ingame_login.md).
 
-### Что можно делать в этом репозитории
+Для файлов, предоставленных оператором сервера, аккаунт Nexus/Vortex не нужен.
+Skyrim и необходимые файлы Bethesda/DLC должны быть установлены локально.
+EXE лаунчера не содержит DLL SkyMP/SKSE: оператор публикует клиентский пакет отдельно.
+Доступны подготовка без запуска игры и восстановление исходных файлов. Подробнее:
+[подключение](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md).
 
-1. Поднять собственный сервер.
-2. Собрать клиент и сервер из исходников.
-3. Помогать проекту кодом, документацией и тестами.
+### Создание сервера
 
-### Быстрый старт
+1. Распакуйте полный **серверный пакет этого форка для Linux x64 или Windows x64**
+   в новую папку. См. [релизы](https://github.com/RealHartlMax/skymp/releases) и
+   [состояние локальных сборок](docs/docs_project_status.md). Лаунчер поставляется отдельно.
+2. Скопируйте собственные `Skyrim.esm`, `Update.esm`, `Dawnguard.esm`,
+   `HearthFires.esm` и `Dragonborn.esm` в `data/`.
+3. Из папки с `server-settings.json` запустите `start-test-server.bat` под Windows
+   или `sh ./start-test-server.sh` под Linux. Скрипты `launch_server` используют тот же запуск.
+4. Откройте **7777/UDP** для игры и **8080/TCP** для HTTP/WebSocket/загрузок;
+   для HTTPS используйте TLS reverse proxy на **443/TCP**.
+5. Откройте `http://<server>:8080/admin`, введите случайный **четырёхзначный код
+   из терминала** и настройте сервер и собственную учётную запись администратора в браузере.
+6. Настройте интеграцию с лаунчером в панели. Публичный список требует
+   зарегистрированный активный сервер и действующий heartbeat.
 
-#### Запуск сервера
+Скрипты запуска могут установить приватную среду Node 22 и недостающие системные
+пакеты Ubuntu/Debian при наличии прав и интернета. JavaScript-зависимости включены.
+Готовые пароли и мастер-файлы Skyrim не поставляются. Остановка, перезапуск или сбой
+игрового процесса сохраняют полную панель, журналы, загрузки и настроенного Discord-бота
+в веб-процессе. При обновлении сохраняйте настройки, учётные записи, миры, моды и свой gamemode.
 
-Самый простой способ — скачать готовый релиз. **Клонировать репозиторий и собирать проект не нужно:**
-
-1. Скачайте последний релиз с [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Распакуйте архив в отдельную папку.
-3. Запустите `launch_server.bat` (Windows) или `launch_server.sh` (Linux). Node.js и npm-зависимости установятся автоматически при первом запуске.
-4. Отредактируйте `server-settings.json`: задайте имя сервера, порты и load order.
-5. Откройте панель администратора: `http://<host>:<uiPort>/admin`.
-
-Полная инструкция: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-
-#### Сборка из исходников (для разработчиков)
-
-1. Следуйте [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Соберите проект.
-3. Результаты лежат в `build/dist`.
-4. Сервер: `build/dist/server`.
-5. Клиент: `build/dist/client`.
-
-#### Подключение игрока
-
-1. Установите Skyrim SE или AE.
-2. Установите SKSE по [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. При локальной сборке скопируйте `build/dist/client` в папку Skyrim.
-4. Запустите игру и подключитесь к серверу.
-
-Если не хотите делать собственный лаунчер, можно использовать инструмент с Nexus:
-
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
-
-Параллельно мы работаем над глобальным лаунчером, чтобы владельцам серверов не приходилось делать и поддерживать отдельные собственные лаунчеры.
-
-### Статус платформ
-
-- Windows-сервер: стабильная и зрелая поддержка.
-- Linux-сервер: лучший опыт на Ubuntu 24.04 и других дистрибутивах на базе glibc.
-- Клиент: основной фокус по-прежнему на Windows.
-
-### Ключевые разделы репозитория
-
-- `skymp5-server`: сервер и admin API.
-- `skymp5-front`: веб-панель администратора.
-- `skymp5-client`: клиентская интеграция.
-- `docs`: документация.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: инфраструктура сборки и зависимостей.
-
-### Важные документы
-
-- Сборка и разработка: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Запуск сервера: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Установка клиента: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Настройки сервера: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Порты и сеть: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Структура репозитория: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
-
-### Правовая информация
-
-- Условия использования: [TERMS.md](TERMS.md)
-- Сторонние лицензии: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+[Установка сервера](docs/docs_linux_vps.md) · [Обновление](docs/docs_packaged_server_update.md) ·
+[Руководство оператора](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/SERVER_OWNER_GUIDE.ru.md)
 
 ## Español
 
-### Resumen
+Un único [launcher global](https://github.com/RealHartlMax/skymp-client-launcher)
+permite conectarse a diferentes servidores de SkyMP Worlds.
 
-SkyMP lleva el modo multijugador a Skyrim. Este repositorio es el centro del proyecto para operar servidores, compilar componentes y colaborar en el desarrollo.
+1. Instala tu propia copia de Skyrim SE/AE en Windows y selecciona su carpeta en el launcher.
+2. Elige un servidor y pulsa **Conectar**, o utiliza la conexión directa para pruebas.
+3. El launcher verifica los archivos locales, descarga los mods, comprueba tamaños y SHA-256
+   y aplica el orden de carga. Un catálogo completo aporta el cliente SkyMP, SKSE,
+   Address Library y la interfaz del juego compatibles con tu versión exacta de Skyrim.
+4. Inicia sesión en Steam. El launcher actualizado obtiene un ticket y el servidor verifica
+   tu SteamID antes de iniciar el juego. El acceso de invitado no necesita cuenta del juego;
+   el modo con aprobación espera al administrador. Solo el modo de cuenta añade el login
+   dentro del juego. [Steam y modos de acceso](docs/docs_ingame_login.md).
 
-### Qué puedes hacer aquí
+Las descargas del operador no requieren una cuenta Nexus/Vortex. Skyrim y sus archivos
+Bethesda/DLC deben estar instalados. Las DLL se distribuyen en un paquete separado del launcher.
 
-1. Alojar tu propio servidor.
-2. Compilar cliente y servidor desde código fuente.
-3. Contribuir con código, documentación y pruebas.
+**Servidor:** extrae un paquete completo de este fork para Linux x64 o Windows x64 en una
+carpeta nueva y copia los cinco archivos maestros indicados en [English](#english) a `data/`.
+Ejecuta `start-test-server.bat` o `sh ./start-test-server.sh` desde la carpeta del servidor.
+Abre `http://<server>:8080/admin`, introduce el **código aleatorio de cuatro dígitos**
+del terminal y configura el servidor y tu administrador en el navegador. El inicio puede
+instalar Node 22 y las dependencias de sistema Ubuntu/Debian necesarias con permisos e internet.
 
-### Inicio rápido
+Puertos: **7777/UDP** y **8080/TCP**, o **443/TCP** mediante proxy TLS. La lista pública
+requiere un registro activo y heartbeat válido. El panel completo, las descargas y el bot
+Discord configurado siguen activos al detener o reiniciar el juego, incluso tras un fallo.
+Para actualizar, conserva configuración, cuentas, mundos, mods y gamemode.
 
-#### Ejecutar un servidor
-
-La forma más sencilla es descargar un paquete precompilado: **no necesitas clonar el repositorio ni compilar nada**.
-
-1. Descarga el último release desde [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Extrae el archivo en una carpeta dedicada.
-3. Ejecuta `launch_server.bat` (Windows) o `launch_server.sh` (Linux). Node.js y las dependencias npm se instalan automáticamente en el primer inicio.
-4. Edita `server-settings.json` con el nombre del servidor, puertos y orden de carga.
-5. Abre el panel de administración en `http://<host>:<uiPort>/admin`.
-
-Guía completa: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-
-#### Compilar desde el código fuente (para contribuidores)
-
-1. Sigue [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Compila el proyecto.
-3. La salida queda en `build/dist`.
-4. Servidor: `build/dist/server`.
-5. Cliente: `build/dist/client`.
-
-#### Unirte como jugador
-
-1. Instala Skyrim SE o AE.
-2. Instala SKSE según [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. Si compilas localmente, copia `build/dist/client` a tu carpeta de Skyrim.
-4. Inicia el juego y conéctate a tu servidor.
-
-Si no quieres crear tu propio launcher, esta herramienta de Nexus es una opción práctica:
-
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
-
-En paralelo, estamos trabajando en un launcher global para que los dueños de servidores no tengan que crear y mantener launchers personalizados por separado.
-
-### Estado de plataforma
-
-- Servidor Windows: soporte estable.
-- Servidor Linux: la mejor experiencia es en Ubuntu 24.04 y otras distribuciones basadas en glibc.
-- Cliente: enfoque principal todavía en Windows.
-
-### Áreas clave del repositorio
-
-- `skymp5-server`: servidor y APIs de administración.
-- `skymp5-front`: frontend del panel de administración.
-- `skymp5-client`: integración del lado cliente.
-- `docs`: documentación completa.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: infraestructura de build y dependencias.
-
-### Documentos clave
-
-- Configuración de build y desarrollo: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Ejecutar un servidor: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Instalación del cliente: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Configuración del servidor: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Puertos y red: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Estructura del repositorio: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
-
-### Legal
-
-- Términos de uso: [TERMS.md](TERMS.md)
-- Licencias de terceros: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+[Instalación](docs/docs_linux_vps.md) · [Actualización](docs/docs_packaged_server_update.md) ·
+[Conexión](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md)
 
 ## Français
 
-### Vue d'ensemble
+Le même [launcher global](https://github.com/RealHartlMax/skymp-client-launcher)
+permet de rejoindre différents serveurs SkyMP Worlds.
 
-SkyMP ajoute le multijoueur a Skyrim. Ce depot est le point central pour executer des serveurs, compiler les composants et contribuer au projet.
+1. Installez votre propre Skyrim SE/AE sous Windows et sélectionnez son dossier dans le launcher.
+2. Choisissez un serveur et cliquez sur **Connexion**, ou utilisez la connexion directe pour un test.
+3. Le launcher vérifie les fichiers locaux, télécharge les mods, contrôle tailles et SHA-256
+   et applique l'ordre de chargement. Un catalogue complet fournit le client SkyMP, SKSE,
+   Address Library et l'interface du jeu adaptés à la version exacte de Skyrim.
+4. Connectez-vous à Steam. Le launcher actualisé obtient un ticket et le serveur vérifie
+   votre SteamID avant le lancement. L’accès invité ne demande aucun compte de jeu ;
+   le mode avec approbation attend l’administrateur. Seul le mode compte ajoute
+   la connexion dans le jeu. [Steam et modes d’accès](docs/docs_ingame_login.md).
 
-### Ce que vous pouvez faire ici
+Les téléchargements fournis par l'opérateur ne nécessitent aucun compte Nexus/Vortex.
+Skyrim et les fichiers Bethesda/DLC doivent être installés. Les DLL sont distribuées séparément du launcher.
 
-1. Heberger votre propre serveur.
-2. Compiler le client et le serveur depuis les sources.
-3. Contribuer avec du code, de la documentation et des tests.
+**Serveur :** extrayez un paquet complet de ce fork pour Linux x64 ou Windows x64 dans
+un nouveau dossier et copiez les cinq fichiers maîtres indiqués dans [English](#english) vers `data/`.
+Lancez `start-test-server.bat` ou `sh ./start-test-server.sh` depuis le dossier du serveur.
+Ouvrez `http://<server>:8080/admin`, saisissez le **code aléatoire à quatre chiffres**
+du terminal, puis configurez le serveur et votre administrateur dans le navigateur.
+Le démarrage peut installer Node 22 et les paquets système Ubuntu/Debian manquants avec les droits et internet nécessaires.
 
-### Statut du projet (Fork WIP)
+Ports : **7777/UDP** et **8080/TCP**, ou **443/TCP** via un reverse proxy TLS. La liste
+publique exige un serveur enregistré actif et un heartbeat valide. Le tableau de bord complet,
+les téléchargements et le bot Discord configuré restent disponibles lorsque le jeu s'arrête,
+redémarre ou plante. Lors des mises à jour, conservez configuration, comptes, mondes, mods et gamemode.
 
-Ce fork est actuellement un projet **en cours de developpement**.
-
-Certaines fonctionnalites sont deja utilisables, mais tout n'a pas encore ete teste sur toutes les configurations possibles. C'est aussi pour cela que ce fork n'est pas encore integre au depot principal.
-
-Nous recherchons activement des testeurs qui peuvent:
-
-1. Lancer leur propre serveur sur differents systemes.
-2. Tester le gameplay et les flux d'administration en conditions reelles.
-3. Signaler les bugs, crashs et problemes de configuration.
-
-Comme chaque systeme est different, les retours de terrain sont tres importants.
-
-### Demarrage rapide
-
-#### Lancer un serveur
-
-Le plus simple est de telecharger un build precompile: **pas besoin de cloner le depot ni de compiler**.
-
-1. Telechargez la derniere release depuis [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Extrayez l'archive dans un dossier dedie.
-3. Lancez `launch_server.bat` (Windows) ou `launch_server.sh` (Linux). Node.js et les dependances npm sont installes automatiquement au premier lancement.
-4. Modifiez `server-settings.json` (nom du serveur, ports, ordre de chargement).
-5. Ouvrez le tableau de bord admin sur `http://<host>:<uiPort>/admin`.
-
-Guide complet: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
-
-#### Compiler depuis les sources (pour les contributeurs)
-
-1. Suivez [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Compilez le projet.
-3. Les artefacts sont dans `build/dist`.
-4. Serveur: `build/dist/server`.
-5. Client: `build/dist/client`.
-
-#### Rejoindre en tant que joueur
-
-1. Installez Skyrim SE ou AE.
-2. Installez SKSE comme indique dans [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. Si vous compilez localement, copiez `build/dist/client` dans votre dossier Skyrim.
-4. Lancez le jeu et connectez-vous a votre serveur.
-
-Si vous ne souhaitez pas creer votre propre launcher, cet outil Nexus est une option pratique:
-
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
-
-En parallele, nous travaillons sur un launcher global afin que les administrateurs de serveurs n'aient plus a maintenir des launchers personnalises separes.
-
-### Statut plateforme
-
-- Serveur Windows: support stable.
-- Serveur Linux: meilleure experience sur Ubuntu 24.04 et distributions similaires basees sur glibc.
-- Client: encore principalement axe Windows.
-
-### Zones cle du depot
-
-- `skymp5-server`: runtime serveur et API d'administration.
-- `skymp5-front`: frontend du tableau de bord admin.
-- `skymp5-client`: integration cote client.
-- `docs`: documentation complete.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: pile de build et dependances.
-
-### Documents essentiels
-
-- Setup build et developpement: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Lancer un serveur: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Installation client: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Reference de configuration serveur: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Ports et reseau: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Structure du depot: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
-
-### Mentions legales
-
-- Conditions d'utilisation: [TERMS.md](TERMS.md)
-- Licences tierces: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+[Installation](docs/docs_linux_vps.md) · [Mise à jour](docs/docs_packaged_server_update.md) ·
+[Connexion](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md)
 
 ## Italiano
 
-### Panoramica
+Un solo [launcher globale](https://github.com/RealHartlMax/skymp-client-launcher)
+permette di collegarsi a diversi server SkyMP Worlds.
 
-SkyMP porta il multiplayer in Skyrim. Questo repository e il punto centrale per eseguire server, compilare i componenti e contribuire al progetto.
+1. Installa la tua copia di Skyrim SE/AE su Windows e seleziona la cartella nel launcher.
+2. Scegli un server e premi **Connetti**, oppure usa la connessione diretta per i test.
+3. Il launcher verifica i file locali, scarica le mod, controlla dimensioni e SHA-256
+   e applica l'ordine di caricamento. Un catalogo completo fornisce client SkyMP, SKSE,
+   Address Library e interfaccia di gioco compatibili con la versione esatta di Skyrim.
+4. Accedi a Steam. Il launcher aggiornato ottiene un ticket e il server verifica lo SteamID
+   prima dell’avvio. L’accesso ospite non richiede un account di gioco; la modalità con
+   approvazione attende l’amministratore. Solo la modalità account aggiunge il login
+   nel gioco. [Steam e modalità di accesso](docs/docs_ingame_login.md).
 
-### Cosa puoi fare qui
+I download dell'operatore non richiedono un account Nexus/Vortex. Skyrim e i file
+Bethesda/DLC devono essere installati. Le DLL vengono distribuite separatamente dal launcher.
 
-1. Ospitare il tuo server.
-2. Compilare client e server dai sorgenti.
-3. Contribuire con codice, documentazione e test.
+**Server:** estrai un pacchetto completo di questo fork per Linux x64 o Windows x64 in
+una nuova cartella e copia i cinque file master indicati in [English](#english) in `data/`.
+Esegui `start-test-server.bat` oppure `sh ./start-test-server.sh` dalla cartella del server.
+Apri `http://<server>:8080/admin`, inserisci il **codice casuale di quattro cifre**
+del terminale e configura server e amministratore nel browser. L'avvio può installare
+Node 22 e i pacchetti di sistema Ubuntu/Debian mancanti con i permessi e internet necessari.
 
-### Stato del progetto (Fork WIP)
+Porte: **7777/UDP** e **8080/TCP**, oppure **443/TCP** tramite reverse proxy TLS. L'elenco
+pubblico richiede un server registrato attivo e un heartbeat valido. Dashboard completo,
+download e bot Discord configurato restano attivi quando il gioco viene fermato,
+riavviato o termina in modo imprevisto. Negli aggiornamenti conserva configurazione, account, mondi, mod e gamemode.
 
-Questo fork e attualmente un progetto **work in progress**.
+[Installazione](docs/docs_linux_vps.md) · [Aggiornamenti](docs/docs_packaged_server_update.md) ·
+[Connessione](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md)
 
-Alcune funzionalita sono gia utilizzabili, ma non tutto e stato ancora testato su tutte le configurazioni possibili. Anche per questo motivo il fork non e ancora integrato nel repository principale.
+## Komponenten und Zuständigkeiten
 
-Stiamo cercando attivamente tester che possano:
+| Komponente | Aufgabe | Quellcode |
+| --- | --- | --- |
+| Gameserver | Native Spielsimulation, Welt, Papyrus, Spieler und Synchronisierung unter Linux/Windows x64 | `skymp5-server/` in diesem Repository |
+| Webserver und Admin-Dashboard | Browser-Setup, Konten, Einstellungen, Moderation, Konsole, Logs und Game-Prozesssteuerung | `skymp5-server/`, `skymp5-front/`, `misc/deploy/test-server/` |
+| Discord-Bot | Game-Statusmeldungen, Warnungen und konfigurierte Rollenprüfung; läuft im Webserver | [Discord-Anleitung](docs/docs_discord_bot.md) |
+| Nativer Spielclient und Ingame-UI | Skyrim-Integration, Verbindung, Anmeldung und Spieloberfläche | `skymp5-client/`, `skyrim-platform/`, `skymp5-front/` |
+| Globaler Windows-Launcher | Server entdecken, Profile, Downloads, Dateiaktivierung, Wiederherstellung und SKSE-Start; Tauri, React und Rust | [Launcher-Repository](https://github.com/RealHartlMax/skymp-client-launcher) |
+| SkyMP-Worlds-Webdienste | Zentrale Serverliste, Konten, Serververwaltung und Veröffentlichung von Clientpaketen; PHP-Webroots | [Webhosting im Launcher-Repository](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/PHP_HOSTING.md) |
 
-1. Avviare il proprio server su sistemi differenti.
-2. Verificare gameplay e flussi admin in ambienti reali.
-3. Segnalare bug, crash e problemi di configurazione.
+Ein eigener Spielserver nutzt die gemeinsamen Webdienste oder eine entsprechend
+betriebene Infrastruktur. Die Webdienste gehören zum separaten Launcher-Repository.
+Ein Serverpaket enthält keine Launcher-EXE. Modmanifest und Runtime-Katalog sind
+getrennte Schnittstellen: Servermods und native Clientkomponenten lassen sich so
+unabhängig vom Launcher aktualisieren.
 
-Poiche ogni sistema e diverso, il feedback reale e molto importante.
+### Mods und Clientpakete veröffentlichen
 
-### Avvio rapido
+- Eigene `.esp`-/`.esm`-/`.esl`-Plugins nach `data/` legen und in `loadOrder`
+  aufnehmen. Zugehörige BSA-Dateien werden ebenfalls angeboten.
+- Zusätzliche Clientdateien mit fertiger Skyrim-Verzeichnisstruktur unter
+  `client-resources/Data/` bereitstellen, etwa Texturen, Meshes oder `Scripts/*.pex`.
+- Serverseitige Papyrus-Dateien unter `data/scripts/` werden dadurch nicht automatisch
+  beim Spieler installiert. Benötigte Clientskripte zusätzlich als Clientressourcen bereitstellen.
+- `GET /api/launcher/manifest` liefert Zielpfade, Größen, SHA-256, lokale Voraussetzungen,
+  Downloadadressen und Ladereihenfolge. Der Launcher verarbeitet die veröffentlichten Dateien vor dem Start.
+- SkyMP, SKSE, Address Library und Ingame-UI als vollständigen, zur Spielversion passenden
+  Runtime-Katalog veröffentlichen und unter **Launcher-Anbindung** im Feld
+  **Clientpaket / Versionskatalog** hinterlegen.
+  Die Zielpfade stammen aus dem Manifest, unter anderem `Data/Platform/Plugins`,
+  `Data/SKSE/Plugins` und der Spielhauptordner.
 
-#### Avviare un server
+Die Modpakete bestehen aus vorbereiteten Dateien; FOMOD-Installationsdialoge werden
+nicht beim Spieler ausgeführt. Bethesda-/DLC-/Creation-Club-Dateien und private
+Serverdaten gehören nicht in das Downloadpaket. Details und Veröffentlichungsschritte:
+[Modpakete](docs/docs_launcher_modpacks.md) und [Runtime-Kataloge](docs/docs_launcher_runtime_updates.md).
 
-Il modo piu semplice e scaricare un pacchetto precompilato: **non serve clonare il repository ne compilare**.
+### Netzwerk und unabhängige Verwaltung
 
-1. Scarica l'ultima release da [github.com/skyrim-multiplayer/skymp/releases](https://github.com/skyrim-multiplayer/skymp/releases).
-	- Windows: `running_server_files_windows_server_dist.zip`
-	- Linux: `running_server_files_linux_server_dist.tar.gz`
-2. Estrai l'archivio in una cartella dedicata.
-3. Esegui `launch_server.bat` (Windows) oppure `launch_server.sh` (Linux). Node.js e le dipendenze npm vengono installate automaticamente al primo avvio.
-4. Modifica `server-settings.json` (nome server, porte, ordine di caricamento).
-5. Apri la dashboard admin su `http://<host>:<uiPort>/admin`.
+| Verbindung | Standard | Verwendung |
+| --- | --- | --- |
+| Spiel | `7777/UDP` | Öffentliche Spielverbindung und Synchronisierung |
+| Direkter Webzugriff | `8080/TCP` | Browser-Setup, Dashboard, HTTP-Downloads und WebSockets |
+| Webzugriff mit TLS-Proxy | `443/TCP` öffentlich, `127.0.0.1:8080/TCP` intern | HTTPS/WSS; öffentliche 8080-Freigabe entfällt nach entsprechender Proxy-Einrichtung |
+| Discord | Ausgehend `443/TCP` | HTTPS/WSS; kein zusätzlicher eingehender Bot-Port |
+| Interne Prozesssteuerung | Loopback und private Node-IPC | Keine öffentliche Portfreigabe |
 
-Guida completa: [docs/docs_running_a_server.md](docs/docs_running_a_server.md).
+Die Werte sind konfigurierbar. Die öffentliche Spieladresse und die Downloadadresse
+müssen für die Spieler erreichbar sein. Nur den Adminzugriff zu ermöglichen reicht
+für Launcher-Downloads nicht aus. WebSockets verwenden denselben Webport wie HTTP.
+Der mitgelieferte Starter verwaltet Web- und Game-Prozess getrennt; ein direkter Aufruf
+des Game-Bundles umgeht diese Verwaltung. Details: [Ports und Prozesssteuerung](docs/docs_vps_ports_and_process_control.md).
 
-#### Compilare dai sorgenti (per contributor)
+Der Discord-Bot meldet bei passender Konfiguration Start, Stopp, Neustart, Bereitschaft,
+Startfehler und unerwartetes Prozessende. Er bleibt bei gestopptem Gameserver verbunden.
+Ein Ausfall des gesamten Webservers/VPS kann von diesem Bot nicht mehr gemeldet werden.
+Ein automatischer Neustart des Gameservers nach einem Absturz ist derzeit nicht enthalten.
 
-1. Segui [CONTRIBUTING.md](CONTRIBUTING.md).
-2. Compila il progetto.
-3. L'output e in `build/dist`.
-4. Pacchetto server: `build/dist/server`.
-5. Pacchetto client: `build/dist/client`.
+## Dokumentation
 
-#### Unirsi come giocatore
+| Thema | Anleitung |
+| --- | --- |
+| Geprüfter Stand, Grenzen, erledigte und offene Aufgaben | [Projektstatus](docs/docs_project_status.md) · [Frontend-Roadmap](ROADMAP_FRONTEND.md) |
+| Server-Ersteinrichtung und Ubuntu-VPS | [Linux-VPS und Browser-Setup](docs/docs_linux_vps.md) |
+| Bestehende Installation aktualisieren | [Paket-Updates](docs/docs_packaged_server_update.md) |
+| Firewall, öffentliche Adressen und Prozesssteuerung | [VPS-Ports](docs/docs_vps_ports_and_process_control.md) |
+| Mods für Spieler bereitstellen | [Launcher-Modpakete](docs/docs_launcher_modpacks.md) |
+| Native Clientdateien und Updates veröffentlichen | [Runtime-Kataloge](docs/docs_launcher_runtime_updates.md) |
+| Globale Serverliste, Master und Online-Anbindung | [SkyMP Worlds](docs/docs_launcher_worlds.md) |
+| Steam, Gastzugang und Legacy-Login | [Spielerzugang](docs/docs_ingame_login.md) |
+| Discord-Bot und Game-Überwachung | [Discord-Betrieb](docs/docs_discord_bot.md) |
+| Konfiguration und Admin-Konsole | [Konfigurationsreferenz](docs/docs_server_configuration_reference.md) · [Konsolenbefehle](docs/docs_admin_console_commands.md) |
+| Client-Installation und manueller Entwicklungsweg | [Client-Installation](docs/docs_client_installation.md) |
+| Launcher-Verbindung und Serververwaltung | [Verbindung](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/CONNECTING.md) · [DE](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/SERVER_OWNER_GUIDE.de.md) / [EN](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/SERVER_OWNER_GUIDE.en.md) / [RU](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/SERVER_OWNER_GUIDE.ru.md) |
+| PHP-Webdienste und Hosting | [Hosting im Launcher-Repository](https://github.com/RealHartlMax/skymp-client-launcher/blob/main/docs/PHP_HOSTING.md) |
+| Quellcode-Aufbau | [Repository-Struktur](docs/docs_repository_structure.md) |
 
-1. Installa Skyrim SE o AE.
-2. Installa SKSE come descritto in [docs/docs_client_installation.md](docs/docs_client_installation.md).
-3. Se compili in locale, copia `build/dist/client` nella cartella di Skyrim.
-4. Avvia il gioco e collegati al tuo server.
+## Entwicklung
 
-Se non vuoi creare un tuo launcher, questo strumento su Nexus e un'opzione pratica:
+Den Fork einschließlich seiner Submodule auschecken:
 
-https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files
+```sh
+git clone --recurse-submodules https://github.com/RealHartlMax/skymp.git
+cd skymp
+```
 
-In parallelo, stiamo lavorando a un launcher globale cosi i gestori server non dovranno piu creare e mantenere launcher personalizzati separati.
+Toolchain, Konfiguration und Beiträge beschreibt [CONTRIBUTING.md](CONTRIBUTING.md).
+Die für diesen Fork geprüfte Linux-Umgebung und Server-Buildschritte stehen in
+[Linux-VPS → Eigenen Fork bauen](docs/docs_linux_vps.md#eigenen-fork-bauen).
+Nach der CMake-Konfiguration Build und Tests **im Verzeichnis `build/`** ausführen:
 
-### Stato piattaforme
+```sh
+cmake --build .
+ctest --verbose
+```
 
-- Server Windows: stabile e ben supportato.
-- Server Linux: esperienza migliore su Ubuntu 24.04 e distribuzioni simili basate su glibc.
-- Client runtime: ancora principalmente orientato a Windows.
+Ausgaben liegen unter `build/dist/server/` beziehungsweise `build/dist/client/`.
+Lokale Server-Testpakete und Prüfnachweise liegen getrennt davon unter
+`build/releases/`. Launcher, Runtime-Veröffentlichung und PHP-Webpakete
+werden im [Launcher-Repository](https://github.com/RealHartlMax/skymp-client-launcher) gebaut.
 
-### Aree chiave del repository
+### Prüfstand und Kompatibilität
 
-- `skymp5-server`: runtime server e API admin.
-- `skymp5-front`: frontend dashboard admin.
-- `skymp5-client`: integrazione lato client.
-- `docs`: documentazione completa.
-- `cmake`, `overlay_ports`, `overlay_triplets`, `vcpkg`: stack di build e dipendenze.
+Der Server wurde als Paket unter Windows x64 und Ubuntu 26.04.1 x64 geprüft:
+Browser-PIN-Setup, Admin-Anmeldung, native Serverbereitschaft, Launcher-Downloads,
+UDP-Bindung und unabhängige Dashboard-/Game-Prozesse. Discord wurde lokal mit
+SDK-Testfällen geprüft; echte Zustellung in einem Discord-Server ist separat zu prüfen.
 
-### Documenti essenziali
+Ein erfolgreicher Download oder gestarteter Skyrim-Prozess bestätigt keine vollständige
+Spielsitzung. Echte Skyrim-/SKSE-/CEF-Anmeldung, Multiplayer, VPS-Betrieb und Lasttests
+bleiben eigene Prüfschritte. Die Windows-Native-Suite hat weiterhin den offenen
+`Activate torch`-Fehler. Eine pauschale Kompatibilität mit jeder SE-/AE-Version oder
+beliebigen Mods wird nicht zugesagt. Maßgeblich sind die Versionen und Prüfnachweise
+des jeweils verwendeten Server- und Clientpakets; siehe [Projektstatus](docs/docs_project_status.md).
 
-- Setup build e sviluppo: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Eseguire un server: [docs/docs_running_a_server.md](docs/docs_running_a_server.md)
-- Installazione client: [docs/docs_client_installation.md](docs/docs_client_installation.md)
-- Riferimento configurazione server: [docs/docs_server_configuration_reference.md](docs/docs_server_configuration_reference.md)
-- Porte e rete: [docs/docs_server_ports_usage.md](docs/docs_server_ports_usage.md)
-- Struttura repository: [docs/docs_repository_structure.md](docs/docs_repository_structure.md)
+## Herkunft und Lizenzen
 
-### Legale
+Dieser Fork baut auf [skyrim-multiplayer/skymp](https://github.com/skyrim-multiplayer/skymp)
+auf. Der globale Launcher und die zugehörigen Webdienste werden separat in
+[RealHartlMax/skymp-client-launcher](https://github.com/RealHartlMax/skymp-client-launcher) entwickelt.
 
-- Termini di utilizzo: [TERMS.md](TERMS.md)
-- Licenze di terze parti: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)
+Die jeweiligen Komponenten haben eigene Lizenzen, unter anderem für
+[Server](skymp5-server/LICENSE), [Client](skymp5-client/LICENSE),
+[Frontend](skymp5-front/LICENSE) und [Skyrim Platform](skyrim-platform/LICENSE).
+Weitere Hinweise: [TERMS.md](TERMS.md) und [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+Skyrim und Bethesda-Spieldateien sind nicht Bestandteil der bereitgestellten Pakete.

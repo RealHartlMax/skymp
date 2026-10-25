@@ -4,11 +4,6 @@
 
 namespace RE {
 
-struct TESQuestInitEvent
-{
-  RE::FormID questId;
-};
-
 struct TESQuestStageItemDoneEvent // not finished
 {
   uint32_t stage;

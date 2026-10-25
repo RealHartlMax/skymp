@@ -152,7 +152,7 @@ DLLEXPORT void SkyrimPlatform_IpcSend_Impl(const char* systemName,
   return IPC::Send(systemName, data, length);
 }
 
-DLLEXPORT bool SKSEAPI SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
+DLLEXPORT bool __cdecl SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
 {
   InitLog();
 

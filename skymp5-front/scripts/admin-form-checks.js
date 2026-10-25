@@ -10,7 +10,7 @@ async function installAdminFormMocks(page) {
   const whitelistWrites = [];
   let failNextWhitelistSave = false;
   let settings = {
-    name: 'SkyMP Forms Test', port: 7777, maxPlayers: 100,
+    name: 'SkyMP Forms Test', port: 7777, maxPlayers: 100, offlineMode: true,
     localeRouting: { defaultLanguage: 'en' },
     joinAccess: { mode: 'none' }, discordBot: { enabled: false },
     starterInventory: { entries: [] }, customSetting: { keep: 'unchanged' },

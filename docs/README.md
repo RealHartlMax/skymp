@@ -2,6 +2,16 @@
 
 Welcome to the SkyMP documentation portal. Here you will find practical guides, API references, server manuals, and maintenance notes.
 
+Current server checkout audit: **24 October 2026**. Start with
+[project status and completed/open TODOs](docs_project_status.md),
+[Linux/Windows browser setup](docs_linux_vps.md),
+[VPS firewall and game process control](docs_vps_ports_and_process_control.md),
+[Discord bot and game monitoring](docs_discord_bot.md),
+[Steam, guest access and Legacy in-game login](docs_ingame_login.md),
+[launcher mod packages](docs_launcher_modpacks.md), and
+[versioned client/SKSE packages](docs_launcher_runtime_updates.md).
+Local build/download checks and real Skyrim/CEF gameplay acceptance are recorded separately.
+
 ## Project Status (WIP Fork)
 
 This fork is currently a **work in progress**.

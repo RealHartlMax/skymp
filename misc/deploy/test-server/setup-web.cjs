@@ -4,6 +4,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { configure, isConfigured, validate } = require('./setup-server.cjs');
 
+const launcherConnection = require('./launcher-connection.cjs');
 const COOKIE = 'skymp_setup_session';
 const securityHeaders = {
   'cache-control': 'no-store',
@@ -86,7 +87,7 @@ async function createSetupServer(root, options = {}) {
   }
   const assets = new Map([
     ['/', ['setup.html', 'text/html']], ['/admin', ['setup.html', 'text/html']], ['/setup', ['setup.html', 'text/html']],
-    ['/setup.js', ['setup.js', 'text/javascript']], ['/setup.css', ['setup.css', 'text/css']],
+    ['/password-fields.js', ['password-fields.js', 'text/javascript']], ['/setup.js', ['setup.js', 'text/javascript']], ['/setup.css', ['setup.css', 'text/css']],
   ].map(([route, [file, type]]) => [route, { data: fs.readFileSync(path.join(__dirname, 'setup-ui', file)), type }]));
   const server = http.createServer(async (req, res) => {
     try {
@@ -121,13 +122,14 @@ async function createSetupServer(root, options = {}) {
         return send(res, 200, {
           csrf: session.csrf, expiresAt: session.expiresAt, startAfterSetup: Boolean(options.startAfterSetup),
           defaults: { serverName: settings.name || 'SkyMP Test Server', port: settings.port || 7777, uiPort: settings.uiPort || 8080, maxPlayers: settings.maxPlayers || 16 },
+          launcher: launcherConnection.describe(readSettings(root)),
           installation: inspectInstallation(root, readSettings(root)),
         });
       }
       if (route === '/api/setup/complete' && req.method === 'POST') {
         if (!equal(req.headers['x-skymp-setup-csrf'], session.csrf)) return send(res, 403, { error: 'Browser-Freigabe fehlt. Seite neu laden.' });
         const input = await body(req);
-        try { validate(input); } catch (error) { return send(res, 400, { error: error.message }); }
+        try { validate(input); if (input.launcher) launcherConnection.normalize({ ...input.launcher, publicHost: input.access === 'local' ? '127.0.0.1' : input.publicHost, port: input.port }, readSettings(root)); } catch (error) { return send(res, 400, { error: error.message }); }
         if (!inspectInstallation(root, readSettings(root)).ready) return send(res, 409, { error: 'Spieldaten oder Paketdateien fehlen. Bitte zuerst die Dateien prüfen.' });
         let result;
         try { result = configure(root, input); }

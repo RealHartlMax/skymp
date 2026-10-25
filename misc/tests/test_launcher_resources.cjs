@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const Module = require('node:module');
-const repo = path.resolve(__dirname, '../..');
+const repo = process.env.SKYMP_TEST_REPO ? path.resolve(process.env.SKYMP_TEST_REPO) : path.resolve(__dirname, '../..');
 const dependencies = path.join(repo, 'skymp5-server/node_modules');
 const Koa = require(path.join(dependencies, 'koa'));
 const Router = require(path.join(dependencies, 'koa-router'));
@@ -15,7 +15,7 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 let compiled;
 function loadApi() {
   if (!compiled) {
-    const result = ts.transpileModule(fs.readFileSync(path.join(repo, 'skymp5-server/ts/launcherResources.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true } });
+    const result = ts.transpileModule(fs.readFileSync(process.env.SKYMP_LAUNCHER_RESOURCE_SOURCE || path.join(repo, 'skymp5-server/ts/launcherResources.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true } });
     const output = new Module('launcher-resources-test.cjs', module);
     output._compile(result.outputText, path.join(repo, 'build/launcher-resources-test.cjs'));
     compiled = output.exports;
@@ -120,7 +120,6 @@ async function run() {
     ['runtime code', f => write(f.publication, 'Data/SKSE/Plugins/Other.dll', 'runtime code belongs in runtime package')],
     ['official game file', f => write(f.publication, 'Data/Skyrim.esm', 'not distributable')],
     ['private settings', f => write(f.publication, 'Data/Platform/Plugins/skymp5-client-settings.txt', 'private')],
-    ['plugin absent from load order', f => write(f.publication, 'Data/Unused.esl', 'TES4')],
     ['stale game manifest', f => { const file = path.join(f.data, 'manifest.json'); const json = JSON.parse(fs.readFileSync(file)); json.loadOrder.reverse(); fs.writeFileSync(file, JSON.stringify(json)); }],
   ]) {
     const f = fixture(); let server;
@@ -130,6 +129,15 @@ async function run() {
       const failure = await response.json(); assert(!JSON.stringify(failure).includes(f.root), 'Do not leak source paths'); checks++;
     } finally { await dispose(f, server); }
   }
+  await check('disabled uploaded plugins are excluded from the active manifest', async (f, server) => {
+    write(f.publication, 'Data/Unused.esl', 'TES4-inactive-upload');
+    const response = await fetch(server.base + 'api/launcher/manifest');
+    assert.equal(response.status, 200);
+    const manifest = await response.json();
+    assert.deepEqual(manifest.loadOrder, f.options.loadOrder);
+    assert(!manifest.resources.some(entry => entry.name === 'Unused.esl'));
+    assert(manifest.resources.some(entry => entry.name === 'Community.esp'));
+  });
   await check('disabled endpoint returns 404', async (f) => {
     const server = await serve({ ...f.options, enabled: false });
     try { assert.equal((await fetch(server.base + 'api/launcher/manifest')).status, 404); }

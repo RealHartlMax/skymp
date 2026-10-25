@@ -85,6 +85,9 @@ Symlinks, Windows-Pfadkonflikte und geschützte Clientpfade werden abgewiesen.
 
 ## Client-/DLL-Paket vom gleichen HTTP-Server anbieten
 
+Der aktuelle Launcher unterstützt außerdem einen zur tatsächlichen Skyrim-Version
+passenden `catalog.json`. Siehe [Versionskatalog und vollständige Clientpakete](docs_launcher_runtime_updates.md).
+
 SKSE-/SkyMP-DLLs und JavaScript-Runtime-Dateien gehören in das bereits
 unterstützte separate Clientpaket. Der Launcher prüft auch dort Dateigröße und
 SHA-256 und übernimmt das Paket vor dem Spielstart. Ein Betreiber kann die
@@ -115,9 +118,12 @@ bereits über seinen HTTP-Port bereit. Danach beispielsweise konfigurieren:
 `runtimeSource` muss eine vollständige HTTP(S)-URL ohne Zugangsdaten,
 Query-Parameter oder Fragment sein. Dieselbe URL lässt sich weiterhin über die
 Serverliste oder die Verbindungsoptionen vorgeben. Eine explizite manuelle
-Auswahl hat Vorrang. Die bisherige Launcher-Ersteinrichtung erwartet eine
-Skyrim-/SKSE-Installation; die Kompatibilität von Skyrim, SKSE, Address Library
-und SkyMP-Client muss zum angebotenen Paket passen.
+Auswahl hat Vorrang. Die aktuelle Launcher-Ersteinrichtung benötigt das Spiel mit
+`SkyrimSE.exe`. Ein vollständiges versioniertes Clientpaket kann SKSE und die
+passende Address Library mitliefern; EXE-/DLL-Versionen und Adressdatenformat werden
+vor der Aktivierung geprüft. Ältere Pakete ohne Versionsangaben benötigen eine
+passend vorbereitete Installation. Der SkyMP-Client muss zusätzlich für diese
+Skyrim-Version gebaut und im Spiel geprüft werden.
 
 ## Schnittstelle für den Launcher
 
@@ -186,5 +192,6 @@ Die Tests verwenden temporäre Spielverzeichnisse und starten Skyrim nicht.
 Sie prüfen die echte Node/Koa-Schnittstelle auf Windows und Linux sowie den
 Rust-Downloader gegen diese API: vollständige Installation, Cachetreffer,
 beschädigte Cachedateien, Updates, fehlerhafte Pakete und Wiederherstellung.
-Ein echter Skyrim-/CEF-Test und die zuvor offene Client-Runtime-Kompatibilität
-bleiben separate Prüfungen.
+Die späteren Client-Release-DLLs und Adressdatenbank-Probes sind im
+[Projektstand vom 22. Oktober](docs_project_status.md) berücksichtigt. Ein echter
+Skyrim-/CEF-Spieltest bleibt eine separate, weiterhin offene Prüfung.

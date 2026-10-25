@@ -13,11 +13,12 @@ import { ClientListener, CombinedController, Sp } from './clientListener';
 import { SettingsService, TargetPeer } from './settingsService';
 
 printConsole('Hello Multiplayer!');
-printConsole('settings:', settings['skymp5-client']);
+printConsole('SkyMP connection settings loaded');
 
 export class SkympClient extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
+    this.controller.emitter.on('authAttempt', (e) => this.onAuthAttempt(e));
 
     this.controller.emitter.on('connectionFailed', (e) =>
       this.onConnectionFailed(e),
@@ -36,7 +37,7 @@ export class SkympClient extends ClientListener {
       | undefined;
 
     const storageHasValidAuthGameData =
-      authGameData?.local || authGameData?.remote;
+      authGameData?.local || authGameData?.remote || authGameData?.steamSession;
 
     if (storageHasValidAuthGameData) {
       logTrace(this, `Recovered AuthGameData from storage, starting client`);
@@ -51,7 +52,7 @@ export class SkympClient extends ClientListener {
       this.controller.once('tick', () => {
         this.controller.emitter.emit('authNeeded', {});
       });
-      this.controller.emitter.on('authAttempt', (e) => this.onAuthAttempt(e));
+
     }
   }
 

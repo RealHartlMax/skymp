@@ -1,5 +1,16 @@
 # Server Update Playbook (No Progress Loss)
 
+Current fork checkpoint: **23 October 2026**. This playbook's `update_server.*`
+commands apply to source-build/release packages that actually contain those
+helpers. The local browser-setup archives instead contain `start-test-server.*`;
+use their `UPDATE-VPS.md` and preserve the existing configuration/data. Starting
+with r4 the GitHub release workflow also stages that complete first-run runtime,
+including the independent dashboard/bot and platform-specific source archives.
+See [packaged server updates](docs_packaged_server_update.md),
+[VPS guide](docs_linux_vps.md), [SkyMP Worlds heartbeat update](docs_launcher_worlds.md)
+and [current status](docs_project_status.md). Native client/runtime packages and
+desktop-launcher updates are separate from replacing the game-server backend.
+
 This guide is for server operators who want to update without reinstalling from scratch and without losing player progress.
 
 ## Update Goal

@@ -1,4 +1,5 @@
 import Axios from 'axios';
+import { describeServerAssets } from '../serverAssets';
 
 import {
   DEFAULT_TIMEOUT_MS,
@@ -54,10 +55,21 @@ export class MasterClient implements System {
       return;
     }
 
-    this.log(`Using master server on ${this.masterUrl}`);
-
-    this.endpoint = `${this.masterUrl}/api/servers/${this.masterKey}`;
-    this.log(`Our endpoint on master is ${this.endpoint}`);
+    const base = this.masterUrl.trim().replace(/\/+$/, '');
+    try {
+      const url = new URL(base);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error('Invalid master URL');
+    } catch {
+      this.log('[MasterClient] Invalid master URL. Use an HTTP(S) origin without credentials, query or fragment.');
+      return;
+    }
+    const privateKey = String(this.masterKey || '').trim();
+    if (!/^[a-zA-Z0-9_-]{12,128}$/.test(privateKey)) {
+      this.log('[MasterClient] Missing or invalid private server key. Copy it from Launcher & online authentication in the dashboard.');
+      return;
+    }
+    this.endpoint = base + '/api/servers/' + encodeURIComponent(privateKey);
+    this.log('[MasterClient] Using dashboard master ' + base + '; public server ID: ' + (this.serverUid || 'resolved from private key'));
 
     await this.sendHeartbeat(0, 'initial');
 
@@ -122,38 +134,49 @@ export class MasterClient implements System {
       return;
     }
 
-    const payload = this.buildPayload(online);
+    const payload = { ...this.buildPayload(online), serverStatus: reason === 'shutdown' ? 'offline' : 'online', assets: await describeServerAssets() };
     const maxAttempts = 4;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await Axios.post(this.endpoint, payload, {
+        const response = await Axios.post(this.endpoint, payload, {
           timeout: DEFAULT_TIMEOUT_MS,
           maxBodyLength: MAX_REQUEST_BODY_BYTES,
           maxContentLength: MAX_RESPONSE_BODY_BYTES,
         });
+        const now = Date.now();
+        if (reason === 'initial' || this.hadHeartbeatFailure || now - this.lastSuccessLog >= 60000) {
+          this.log('[MasterClient] Heartbeat ' + reason + ' accepted (HTTP ' + response.status + ', public ID=' + (this.serverUid || 'dashboard') + ', host=' + this.serverIp + ':' + this.serverPort + ', players=' + online + ').');
+          this.lastSuccessLog = now;
+        }
+        this.hadHeartbeatFailure = false;
         return;
       } catch (error) {
+        this.hadHeartbeatFailure = true;
         if (Axios.isAxiosError(error)) {
           if (error.response) {
-            const body =
-              typeof error.response.data === 'string'
-                ? error.response.data
-                : JSON.stringify(error.response.data);
+            const body = this.safeError(error.response.data);
             this.log(
               `[MasterClient] Heartbeat ${reason} failed with status=${error.response.status}, body=${body}`,
             );
+            if (error.response.status === 404) {
+              this.log('[MasterClient] Check the API webroot: api/servers/index.php must delegate to the dashboard-backed native master. Then verify the dashboard server entry and private key.');
+            } else if (error.response.status === 401) {
+              this.log('[MasterClient] The dashboard did not accept the private server key. Use the current key of your registered server; the public server ID is a different value.');
+            } else if (error.response.status === 400) {
+              this.log('[MasterClient] Check serverUid against the public dashboard ID and check player limits.');
+            }
             return;
           }
 
-          const message = error.message || 'network error';
+          const message = this.safeError(error.message || 'network error');
           this.log(
             `[MasterClient] Heartbeat ${reason} network error on attempt ${attempt}/${maxAttempts}: ${message}`,
           );
         } else {
           this.log(
             `[MasterClient] Heartbeat ${reason} failed on attempt ${attempt}/${maxAttempts}: ${String(
-              error,
+              this.safeError(error),
             )}`,
           );
         }
@@ -181,5 +204,13 @@ export class MasterClient implements System {
     return Math.max(10000, Math.min(30000, Math.floor(value)));
   }
 
+  private safeError(value: unknown): string {
+    const text = typeof value === 'string' ? value : JSON.stringify(value) || String(value);
+    const key = this.masterKey.trim();
+    return (key ? text.split(key).join('[redacted]') : text).slice(0, 1000);
+  }
+
+  private hadHeartbeatFailure = false;
+  private lastSuccessLog = 0;
   private endpoint: string | null = null;
 }

@@ -1,8 +1,11 @@
 import * as fetchRetry from 'fetch-retry';
 
 import { Settings } from '../settings';
+import { discordAuthorization, resolveDiscordSettings } from '../discordConfig';
+import { isManagedRuntime, publishDiscordNotification } from '../managedRuntime';
 import { loginErrorsCounter, loginsCounter } from './metricsSystem';
 import { Content, Log, System, SystemContext } from './system';
+import { bindSteamAccount, SteamPlayerSessions, playerAccessPolicy } from '../playerAccess';
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({
   customPacketType: 'loginFailedNotInTheDiscordServer',
@@ -49,6 +52,11 @@ namespace DiscordErrors {
 // TODO: reimplement Login system. Preferably, in C++ with clear data flow.
 export class Login implements System {
   systemName = 'Login';
+  private guest = new SteamPlayerSessions(() => this.settingsObject?.allSettings || {}, (ctx, userId, profileId) => {
+    this.emit(ctx, 'spawnAllowed', userId, profileId, [], undefined);
+    loginsCounter.inc();
+    this.log('Steam guest admitted', { userId, profileId, steamId: this.guest.getSteamId(ctx, userId) });
+  });
 
   constructor(
     private log: Log,
@@ -140,6 +148,7 @@ export class Login implements System {
     };
 
     add(profile.id);
+    if (profile.steamId) add('steam:' + profile.steamId);
 
     const possibleKeys = [
       'license',
@@ -324,11 +333,11 @@ export class Login implements System {
     this.settingsObject = await Settings.get();
 
     this.log(
-      `Login system assumed that ${this.masterKey} is our master api key`,
+      'Login system initialized; private master credentials are not logged',
     );
   }
 
-  disconnect(userId: number): void {}
+  disconnect(userId: number): void { this.guest.disconnect(userId); }
 
   customPacket(
     userId: number,
@@ -336,14 +345,21 @@ export class Login implements System {
     content: Content,
     ctx: SystemContext,
   ): void {
+    if (this.guest.handle(userId, type, content, ctx)) return;
     if (type !== 'loginWithSkympIo') {
+      return;
+    }
+
+    const steamId = this.guest.getSteamId(ctx, userId);
+    if (!steamId || playerAccessPolicy(this.settingsObject.allSettings || {}).mode === 'guest') {
+      ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: 'playerSteamRequired' }));
       return;
     }
 
     const ip = ctx.svr.getUserIp(userId);
     console.log(`Connecting a user ${userId} with ip ${ip}`);
 
-    let discordAuth = this.settingsObject.discordAuth;
+    let discordAuth = resolveDiscordSettings(this.settingsObject.allSettings || {}).auth;
 
     const gameData = content['gameData'];
     if (this.offlineMode === true && gameData && gameData.session) {
@@ -358,6 +374,8 @@ export class Login implements System {
           userId,
           ctx,
         );
+        // Only the Steam identity verified from the launcher's Steam ticket is trusted.
+        profile.steamId = steamId;
         const guidAfterAsyncOp = ctx.svr.isConnected(userId)
           ? ctx.svr.getUserGuid(userId)
           : '<disconnected>';
@@ -375,7 +393,7 @@ export class Login implements System {
           throw new Error('Guid mismatch after getUserProfile');
         }
 
-        console.log('getUserProfileId:', profile);
+        this.log('Master profile verified', { userId, profileId: profile.id, steamId });
 
         if (discordAuth && !discordAuth.botToken) {
           discordAuth = undefined;
@@ -417,10 +435,11 @@ export class Login implements System {
 
           for (const guildConfig of discordAuth.guilds) {
             const response = await this.fetchRetry(
-              `https://discord.com/api/guilds/${guildConfig.guildId}/members/${profile.discordId}`,
+              `https://discord.com/api/v10/guilds/${guildConfig.guildId}/members/${profile.discordId}`,
               {
                 method: 'GET',
-                headers: { 'Authorization': `${discordAuth.botToken}` },
+                headers: { 'Authorization': discordAuthorization(discordAuth.botToken) },
+                signal: AbortSignal.timeout(15000),
                 ...this.getFetchOptions('discordAuth_multi'),
               },
             );
@@ -478,6 +497,7 @@ export class Login implements System {
                 ipToPrint,
                 actorIds,
                 profile,
+                guildId: guildConfig.guildId,
               });
             }
           }
@@ -499,14 +519,20 @@ export class Login implements System {
           discordAuthConfigured,
         );
 
+        if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guidBeforeAsyncOp || this.guest.getSteamId(ctx, userId) !== steamId) return;
+        bindSteamAccount(this.settingsObject.allSettings || {}, String(this.masterUrl), profile.id, steamId);
+        if (!this.guest.claim(ctx, userId)) return;
         this.emit(ctx, "spawnAllowed", userId, profile.id, rolesToAssign, profile.discordId);
         loginsCounter.inc();
         this.log('Logged as ' + profile.id);
       })().catch((err) => {
+        if (ctx.svr.isConnected(userId) && this.guest.getSteamId(ctx, userId) === steamId) {
+          ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: 'playerAuthResult', state: 'error' }));
+        }
         loginErrorsCounter.inc({ reason: err?.message || 'unknown' });
         console.error(
           'Error logging in client:',
-          JSON.stringify(gameData),
+          { userId },
           err,
         );
       });
@@ -515,12 +541,10 @@ export class Login implements System {
       gameData &&
       typeof gameData.profileId === 'number'
     ) {
-      const profileId = gameData.profileId;
-      this.emit(ctx, 'spawnAllowed', userId, profileId, [], undefined);
-      loginsCounter.inc();
-      this.log(userId + ' logged as ' + profileId);
+      // Raw client-selected profile IDs cannot bypass Steam identity or approval.
+      ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: 'playerSteamRequired' }));
     } else {
-      this.log('No credentials found in gameData:', gameData);
+      this.log('No usable login credentials received', { userId });
     }
   }
 
@@ -532,6 +556,7 @@ export class Login implements System {
       ipToPrint: string;
       actorIds: string[];
       profile: UserProfile;
+      guildId: string;
     },
   ) {
     const { userId, ipToPrint, actorIds, profile } = options;
@@ -539,12 +564,17 @@ export class Login implements System {
     const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId} <@${profile.discordId}>`;
     console.log(loginMessage);
 
+    if (isManagedRuntime()) {
+      publishDiscordNotification({ kind: 'login', guildId: options.guildId, channelId: eventLogChannelId, content: loginMessage });
+      return;
+    }
+
     this.fetchRetry(
-      `https://discord.com/api/channels/${eventLogChannelId}/messages`,
+      `https://discord.com/api/v10/channels/${eventLogChannelId}/messages`,
       {
         method: 'POST',
         headers: {
-          Authorization: `${botToken}`,
+          Authorization: discordAuthorization(botToken),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

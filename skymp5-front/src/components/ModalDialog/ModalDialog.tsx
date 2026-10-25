@@ -5,6 +5,7 @@ const useModalEffect = typeof window === 'undefined' ? useEffect : useLayoutEffe
 interface Props extends React.HTMLAttributes<HTMLDivElement> {
   onClose: () => void;
   initialFocusRef?: React.RefObject<HTMLElement>;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }
 
 interface OpenDialog {
@@ -59,7 +60,7 @@ const focusableElements = (root: HTMLElement) => Array.from(
   getComputedStyle(element).visibility !== 'hidden');
 
 /** Modal focus/escape handling shared by launcher, dashboard and child dialogs. */
-export const ModalDialog: React.FC<Props> = ({ onClose, initialFocusRef, children, ...props }) => {
+export const ModalDialog: React.FC<Props> = ({ onClose, onEscapeKeyDown, initialFocusRef, children, ...props }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   // Capture before commit: a child's autoFocus runs before this effect.
   const openerRef = useRef<HTMLElement | null>(
@@ -67,6 +68,8 @@ export const ModalDialog: React.FC<Props> = ({ onClose, initialFocusRef, childre
   );
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onEscapeKeyDownRef = useRef(onEscapeKeyDown);
+  onEscapeKeyDownRef.current = onEscapeKeyDown;
 
   useModalEffect(() => {
     const root = rootRef.current;
@@ -90,6 +93,8 @@ export const ModalDialog: React.FC<Props> = ({ onClose, initialFocusRef, childre
     const onKeyDown = (event: KeyboardEvent) => {
       if (topDialog() !== entry) return;
       if (event.key === 'Escape') {
+        onEscapeKeyDownRef.current?.(event);
+        if (event.defaultPrevented) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         onCloseRef.current();

@@ -1,4 +1,6 @@
 import { Settings } from '../settings';
+import { isManagedRuntime, onManagedMessage } from '../managedRuntime';
+import { resolveDiscordSettings, isDiscordId } from '../discordConfig';
 import { System, SystemContext } from './system';
 
 type Mp = any; // TODO
@@ -11,87 +13,24 @@ export class DiscordBanSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     const settingsObject = await Settings.get();
 
-    const discordAuth = settingsObject.discordAuth;
-
-    if (settingsObject.offlineMode) {
-      return console.log('discord ban system is disabled due to offline mode');
-    }
-    if (!discordAuth) {
-      return console.warn(
-        'discordAuth is missing, skipping Discord ban system',
-      );
-    }
-    if (!discordAuth.botToken) {
-      return console.warn(
-        'discordAuth.botToken is missing, skipping Discord ban system',
-      );
-    }
-    if (!discordAuth.guilds || discordAuth.guilds.length === 0) {
-      return console.warn(
-        'discordAuth.guilds array is empty or missing, skipping Discord ban system',
-      );
-    }
-
-    // Load discord.js only when the feature is actually enabled.
-    // This avoids pulling optional dependency trees in offline mode.
-    const { Client, GatewayIntentBits } = await import('discord.js');
-    const client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-    });
-
-    try {
-      await client.login(discordAuth.botToken);
-    } catch (e) {
-      return console.error(`Error logging in Discord client: ${e}`);
-    }
-
-    client.on('error', (error) => {
-      console.error(error);
-    });
-
-    client.on('warn', (message) => {
-      console.warn(message);
-    });
-
-    client.on('guildMemberUpdate', (oldMember, newMember) => {
-      if (!oldMember || !newMember) {
-        return;
-      }
-
-      const guildConfig = discordAuth.guilds.find(
-        (g) => g.guildId === newMember.guild.id,
-      );
-
-      if (!guildConfig || !guildConfig.banRoleId) {
-        return;
-      }
-
-      const newRole = newMember.roles.cache
-        .filter((r) => !oldMember.roles.cache.has(r.id))
-        .first();
-
-      if (!newRole) {
-        return;
-      }
-
-      if (newRole.id !== guildConfig.banRoleId) {
-        return;
-      }
-
-      const discordId = newMember.id;
-
+    // Only the dashboard connects to Discord. Moderation arrives over private IPC.
+    if (!isManagedRuntime() || settingsObject.offlineMode) return;
+    onManagedMessage(message => {
+      if (message?.type !== 'skymp:discord-ban') return;
+      const ban = message.ban;
+      if (!ban || !isDiscordId(String(ban.discordId || ''))) return;
+      const { bot, auth } = resolveDiscordSettings(settingsObject.allSettings || {});
+      if (!bot.enabled || !auth?.guilds.some(guild => guild.guildId === ban.guildId && guild.banRoleId === ban.roleId)) return;
       const mp = ctx.svr as unknown as Mp;
-      const forms = mp.findFormsByPropertyValue(
-        'private.indexed.discordId',
-        discordId,
-      ) as number[];
-
-      forms.forEach((formId) => {
-        console.log(
-          `Detected Discord ban on guild ${newMember.guild.id}, kicking ${formId.toString(16)}`,
-        );
+      const forms = mp.findFormsByPropertyValue('private.indexed.discordId', ban.discordId) as number[];
+      const users = new Set<number>();
+      for (const formId of forms) {
+        const userId = mp.getUserByActor(formId);
+        if (Number.isInteger(userId) && userId >= 0 && ctx.svr.isConnected(userId)) users.add(userId);
         ctx.svr.setEnabled(formId, false);
-      });
+      }
+      for (const userId of users) ctx.svr.kick(userId);
+      console.log(`[Discord] Ban role applied: ${forms.length} characters disabled, ${users.size} connections closed.`);
     });
   }
 }

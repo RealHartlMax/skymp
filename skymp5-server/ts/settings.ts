@@ -47,7 +47,7 @@ export class Settings {
   masterKey: string | null = null;
   port = 7777;
   maxPlayers = 100;
-  master: string = 'https://gateway.skymp.net';
+  master: string = 'https://api.skymp-worlds.net';
   name = 'Yet Another Server';
   listenHost = '0.0.0.0';
   externalHost: string | null = null;
