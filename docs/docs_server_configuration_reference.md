@@ -2,10 +2,20 @@
 
 The recommended way to configure the server is setting up all required values in `server-settings.json`. It's standard JSON without C-style comments support. See also [Server Command Line API](docs_server_command_line_api.md).
 
-Checked against the local checkout on **24 October 2026**. Examples labelled
+Checked against the local checkout on **26 October 2026**. Examples labelled
 `json5` below illustrate individual fields; the actual file requires quoted
 keys and no comments. See [project status](docs_project_status.md) for validation
 limits and [browser setup](docs_linux_vps.md) for the packaged first installation.
+
+## restartSchedule (game-only restarts, r12)
+
+Use **Settings → Game server** rather than editing JSON. The optional
+`restartSchedule` object has `enabled` (default `false`), `timeZone` (an IANA
+name such as `Europe/Berlin`), `times` (up to twelve daily `HH:mm` values) and
+`warningMinutes` (up to five whole minutes from 1 to 60). It requires the bundled
+supervisor, never starts stopped games and leaves the dashboard online. Claims
+and skip-next are durable under `dataDir`; preserve these on update. See
+[operation, DST behavior and API](docs_dashboard_operations.md).
 
 ## playerAccess (Steam authentication, r5)
 

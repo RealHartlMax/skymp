@@ -8,9 +8,14 @@ Der **[globale SkyMP-Worlds-Launcher](https://github.com/RealHartlMax/skymp-clie
 wird in einem eigenen Repository entwickelt. Spieler verwenden denselben Launcher
 für verschiedene Server; er bereitet deren Mods und passende Clientdateien vor dem Spielstart vor.
 
-**Stand: 24. Oktober 2026 · Testversion / WIP.** Der aktuelle Quellstand und die
+**Stand: 26. Oktober 2026 · Testversion / WIP.** Der aktuelle Quellstand und die
 Prüfgrenzen stehen im [Projektstatus](docs/docs_project_status.md).
 Veröffentlichte Releases und lokale Testbuilds haben jeweils ihren eigenen Stand und Prüfnachweis.
+
+Das [Admin-Dashboard](docs/docs_dashboard_operations.md) bietet eine gemeinsame
+Einstellungsnavigation, Live-Metriken, Abbruchhistorie und tägliche
+Gameserver-Neustarts mit Zeitzone. Die Webverwaltung bleibt beim Game-Stopp
+erreichbar. Full- und Update-ZIPs bleiben getrennt.
 
 | Dein Ziel | Einstieg |
 | --- | --- |

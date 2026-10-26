@@ -1,14 +1,23 @@
 # Projektstand und offene Aufgaben
 
-Stand: **25. Oktober 2026** für den Serverbuild; letzter Dokumentationsabgleich
+Stand: **26. Oktober 2026** für den Serverbuild; letzter Dokumentationsabgleich
 des separaten Launchers am **24. Oktober 2026**. Betrachtet werden der lokale
 Server-Fork `D:\GitHub\skymp` und der Launcher `D:\GitHub\skymp-client-launcher`.
-Der Server basiert auf Commit `a037003d`; darüber liegen unter anderem lokale
-Änderungen am nativen Client und am Master-Heartbeat. Der Launcher enthält
-ebenfalls noch nicht committete Erweiterungen. Diese Übersicht beschreibt den
+Der Server basiert auf Commit `4372c37e`; darüber liegen lokale Änderungen an
+Spielerprofilen sowie Dashboard-Übersicht, Navigation und Neustartplanung. Zum
+separaten Launcher wurde für diesen Serverbuild kein neuer Quellabgleich
+durchgeführt. Diese Übersicht beschreibt den
 lokalen Quellstand und vorhandene Nachweise, keine erfolgte Veröffentlichung.
 
 ## Was als erledigt zählt
+
+Mit r12 kommen die [Dashboard-Betriebsfunktionen](docs_dashboard_operations.md)
+hinzu: direkter Zugang zu den gemeinsamen Einstellungsformularen, Übersicht mit
+echten Prozess-/Tickwerten, dauerhafte Sechs-Stunden-Abbruchstatistik und tägliche
+Gameserver-Neustarts mit Zeitzone, Vorwarnungen und gespeichertem Überspringen.
+Der Neustartplan startet keine gestoppten Gameserver. Der Vergleich mit txAdmin
+8.1.1 war lesend; der RedM-Server wurde nicht verändert. Reale Skyrim-/CEF- und
+Discord-Abnahme bleiben von lokalen Browser-/Prozesstests getrennt.
 
 | Aufgabe | Status und Grenze | Nachweis |
 | --- | --- | --- |

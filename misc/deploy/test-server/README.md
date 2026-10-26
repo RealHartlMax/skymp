@@ -16,6 +16,10 @@ Dateien in das Serververzeichnis entpacken und den Dienst wieder starten.
 Die vorhandene Anmeldung bleibt erhalten; kein neues PIN-Setup.
 Die vollstaendige Anleitung steht in `UPDATE-VPS.md`.
 
+`DASHBOARD.md` beschreibt die direkte Einstellungsnavigation, Live-Metriken,
+Abbruchhistorie und geplante Gameserver-Neustarts mit Zeitzone und Vorwarnungen.
+Die Verwaltung bleibt beim Stoppen oder Neustarten des Gameservers erreichbar.
+
 ## Vorbereiten
 
 1. Das passende Paket entpacken: Windows x64 oder Ubuntu 26.04 x86_64.

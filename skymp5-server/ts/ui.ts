@@ -12,6 +12,9 @@ import type { DiscordBotSettings } from './discordConfig';
 import type { DashboardDiscordBot } from './discordBot';
 import { isGameRequest, proxyGameRequest } from './dashboardGameProxy';
 import { getServerPerformance, initializeServerPerformance } from './serverPerformance';
+import { publishScheduledAnnouncement } from './managedRuntime';
+import { registerRestartSchedule, RestartScheduler } from './restartSchedule';
+import { DashboardActivity } from './dashboardActivity';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as koaBody from 'koa-body';
@@ -64,6 +67,8 @@ let gScampServer: any = null;
 let managedGameStatus: any = null;
 let managedPlayers: any[] = [];
 let dashboardDiscordBot: DashboardDiscordBot | null = null;
+let restartScheduler: RestartScheduler | null = null;
+let dashboardActivity: DashboardActivity | null = null;
 export const setDashboardDiscordBot = (bot: DashboardDiscordBot): void => { dashboardDiscordBot = bot; };
 
 let metricsAuth: { user: string; password: string } | null = null;
@@ -819,8 +824,11 @@ const environmentChanges: EnvironmentChangeEntry[] = [];
 const MAX_ENVIRONMENT_CHANGES = 500;
 
 const addPlayerDrop = (entry: Omit<PlayerDropEntry, 'ts'>): void => {
-  playerDrops.push({ ...entry, ts: Date.now() });
+  const drop = { ...entry, ts: Date.now() };
+  playerDrops.push(drop);
   if (playerDrops.length > MAX_PLAYER_DROPS) playerDrops.shift();
+  dashboardActivity?.record(drop);
+  publishManagedUpdate('playerDrop', { ts: drop.ts, type: drop.type, reason: drop.reason });
 };
 
 const addEnvironmentChange = (type: string, description: string): void => {
@@ -1356,8 +1364,8 @@ const loadPlayerStats = (dataDir: string): void => {
       const lastConnectionAt = Number((value as any).lastConnectionAt);
       const totalPlayMs = Number((value as any).totalPlayMs);
       const activeSessionStartedAtRaw = (value as any).activeSessionStartedAt;
-      const activeSessionStartedAt = Number.isFinite(
-        Number(activeSessionStartedAtRaw),
+      const activeSessionStartedAt = typeof activeSessionStartedAtRaw === 'number' && Number.isFinite(
+        activeSessionStartedAtRaw,
       )
         ? Number(activeSessionStartedAtRaw)
         : null;
@@ -2497,11 +2505,37 @@ const getAdminStatus = (settings: Settings) => {
     dashboardUptimeSec: Math.floor((Date.now() - processStartedAt) / 1000),
     lastGameExit: managed?.lastExit || null,
     discordBot: dashboardDiscordBot?.getStatus() || null,
+    restartSchedule: restartScheduler?.view() || null,
+    accessMode: String((settings.allSettings?.joinAccess as any)?.mode || 'none'),
   };
 };
 
 const createApp = (settings: Settings, getOriginPort: () => number) => {
   const dataDir: string = settings.dataDir ?? './data';
+  if (!isManagedRuntime() || isDashboardRuntime()) {
+    dashboardActivity = new DashboardActivity(path.join(dataDir, 'dashboard-activity.json'));
+    process.once('SIGTERM', () => dashboardActivity?.close());
+    process.once('SIGINT', () => dashboardActivity?.close());
+  }
+  if (isDashboardRuntime()) {
+    restartScheduler = new RestartScheduler({
+      file: path.join(dataDir, 'restart-schedule-state.json'),
+      read: () => readServerSettingsJson().restartSchedule,
+      supported: isDashboardRuntime, running: () => getManagedGameState().state === 'running',
+      restart: () => requestManagedControl('restart'),
+      log: message => addAdminLog('console', message),
+      warn: minutes => {
+        const language = String((settings.allSettings?.localeRouting as any)?.defaultLanguage || 'en');
+        const message = language === 'de' ? `Geplanter Serverneustart in ${minutes} Minute(n).` : language === 'ru' ? `Плановый перезапуск сервера через ${minutes} мин.` : `Scheduled server restart in ${minutes} minute(s).`;
+        publishScheduledAnnouncement(message);
+        dashboardDiscordBot?.notify({ kind: 'warning', content: message });
+        addAdminLog('console', message);
+      },
+    });
+    restartScheduler.start();
+    process.once('SIGTERM', () => restartScheduler?.close());
+    process.once('SIGINT', () => restartScheduler?.close());
+  }
   loadStoredAdminAuth(dataDir);
   loadModerationState(dataDir);
   loadPlayerStats(dataDir);
@@ -2525,17 +2559,25 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         adminSessions.set(message.id, { id: message.id, user: message.user, createdAt: message.lastActivityAt, lastActivityAt: message.lastActivityAt });
       } else if (message?.type === 'skymp:logout') adminSessions.delete(message.id);
       else if (message?.type === 'skymp:settings-changed') reloadSettings();
+      else if (!isDashboardRuntime() && message?.type === 'skymp:scheduled-announcement' && typeof message.message === 'string' && message.message.length <= 500) {
+        for (const userId of getOnlinePlayerIds()) {
+          safeCall(() => gScampServer.sendChatMessage?.(userId, message.message), undefined);
+          safeCall(() => gScampServer.sendMessage?.(userId, message.message), undefined);
+          safeCall(() => gScampServer.sendCustomPacket(userId, JSON.stringify({ customPacketType: 'announcementToast', message: message.message, durationMs: 8000 })), undefined);
+        }
+      }
       else if (isDashboardRuntime() && message?.type === 'skymp:game-log') {
         pushServerLogChunk(message.level === 'error' ? 'error' : 'info', String(message.text || ''));
       } else if (isDashboardRuntime() && message?.type === 'skymp:update') {
         if (message.updateType === 'status') managedGameStatus = message.data;
+        else if (message.updateType === 'playerDrop') dashboardActivity?.record(message.data);
         else if (message.updateType === 'players') managedPlayers = message.data?.players || [];
         else if (message.updateType === 'log' && message.data?.entry) {
           adminLog.push(message.data.entry); if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
         }
         else if (message.updateType === 'plugin') updatePluginRuntimeStatus(message.data.name, message.data.status, message.data.options);
         // Status/players are emitted by this dashboard with process state attached.
-        if (!['status', 'players'].includes(message.updateType)) broadcastAdminUpdate(message.updateType, message.data);
+        if (!['status', 'players', 'playerDrop'].includes(message.updateType)) broadcastAdminUpdate(message.updateType, message.data);
       } else if (isDashboardRuntime() && message?.type === 'skymp:game-state') {
         if (message.value.state !== 'running') { managedGameStatus = null; managedPlayers = []; }
         if (['stopped', 'crashed'].includes(message.value.state)) {
@@ -3819,6 +3861,21 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       ctx.body = getAdminStatus(settings);
     });
 
+    router.get('/api/admin/overview', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      ctx.set('Cache-Control', 'no-store');
+      ctx.body = { ok: true, drops: dashboardActivity?.view() || null };
+    });
+    if (restartScheduler) registerRestartSchedule(router, {
+      scheduler: restartScheduler, read: readServerSettingsJson,
+      write: value => { writeServerSettingsJson(value); settings.allSettings = value; addAdminLog('console', 'Game restart schedule updated.'); },
+      authorize: (ctx, write) => {
+        if (!ensureAdminCapability(settings, ctx, write ? 'canConsole' : 'canViewLogs')) return false;
+        if (write && getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return false; }
+        return true;
+      },
+    });
+
     router.get('/api/admin/update-status', async (ctx: any) => {
       const installed = readInstalledReleaseInfo();
       const runtimeReadiness = getRuntimeReadinessReport();
@@ -4419,11 +4476,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.get('/api/admin/players/:userId/profile', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
       const userId = Number(ctx.params.userId);
-      if (!Number.isFinite(userId)) {
+      if (!Number.isSafeInteger(userId) || userId < 0) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: 'invalid userId' };
+        ctx.body = { ok: false, code: 'INVALID_USER_ID', error: 'invalid userId' };
         return;
       }
+      // Live WebSocket players may exist before any REST list request.
+      if (!isDashboardRuntime()) updatePlayerStatsSnapshot(dataDir);
       const stats = adminPlayerStats.get(userId);
       if (!stats) {
         ctx.status = 404;
@@ -4443,6 +4502,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ok: true,
         userId: stats.userId,
         displayName: stats.lastDisplayName,
+        ...getSteamPlayerInfo(gScampServer, userId),
         firstJoinedAt: stats.firstJoinedAt,
         lastConnectionAt: stats.lastConnectionAt,
         playTimeSec: Math.floor((stats.totalPlayMs + sessionPlayMs) / 1000),
@@ -4456,11 +4516,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     router.put('/api/admin/players/:userId/profile', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
       const userId = Number(ctx.params.userId);
-      if (!Number.isFinite(userId)) {
+      if (!Number.isSafeInteger(userId) || userId < 0) {
         ctx.status = 400;
-        ctx.body = { ok: false, error: 'invalid userId' };
+        ctx.body = { ok: false, code: 'INVALID_USER_ID', error: 'invalid userId' };
         return;
       }
+      // Live WebSocket players may exist before any REST list request.
+      if (!isDashboardRuntime()) updatePlayerStatsSnapshot(dataDir);
       const stats = adminPlayerStats.get(userId);
       if (!stats) {
         ctx.status = 404;
@@ -5849,6 +5911,7 @@ export const main = (settings: Settings): void => {
           () => getAdminStatus(settings),
           () => {
             if (isDashboardRuntime() && getManagedGameState().state === 'running') return managedPlayers;
+            if (!isDashboardRuntime()) updatePlayerStatsSnapshot(settings.dataDir ?? './data');
             const now = Date.now();
             const playersByUserId = new Map<number, any>();
             getOnlinePlayerIds().forEach((userId) => {

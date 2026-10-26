@@ -7,6 +7,8 @@ export interface PlayerProfileData {
   ok: boolean;
   userId: number;
   displayName: string;
+  steamId?: string;
+  playerName?: string;
   firstJoinedAt: number;
   lastConnectionAt: number;
   playTimeSec: number;
@@ -38,6 +40,14 @@ interface Props {
 }
 
 type ProfileTab = 'identifiers' | 'history' | 'notes';
+
+const PROFILE_LOAD_ERROR_KEYS: Record<number, string> = {
+  401: 'adminDashboard.profileLoadSessionExpired',
+  403: 'adminDashboard.profileLoadForbidden',
+  404: 'adminDashboard.profileLoadNotFound',
+  409: 'adminDashboard.profileLoadUnavailable',
+  503: 'adminDashboard.profileLoadUnavailable',
+};
 
 const SUPPORTED_IDENTIFIER_TYPES = ['steam', 'discord', 'license', 'licenseea', 'live', 'xblive'];
 
@@ -104,10 +114,14 @@ export const PlayerProfileModal: React.FC<Props> = ({
     try {
       const res = await fetch(`/api/admin/players/${userId}/profile`);
       if (!res.ok) {
-        setLoadError(t('adminDashboard.apiError'));
+        setLoadError(t(PROFILE_LOAD_ERROR_KEYS[res.status] || 'adminDashboard.profileLoadFailed', { status: res.status }));
         return;
       }
       const data: PlayerProfileData = await res.json();
+      if (!data?.ok || data.userId !== userId) {
+        setLoadError(t('adminDashboard.profileLoadFailed', { status: res.status }));
+        return;
+      }
       setProfile(data);
       setEditingIdentifiers(data.identifiers ?? []);
       setNotesText(data.notes ?? '');
@@ -353,6 +367,14 @@ export const PlayerProfileModal: React.FC<Props> = ({
           {/* IDENTIFIERS TAB */}
           {!loading && !loadError && activeTab === 'identifiers' && (
             <div>
+              {profile?.steamId && (
+                <div style={{ marginBottom: 16, fontSize: 13 }} data-testid="profile-verified-steam">
+                  <div style={{ marginBottom: 6 }}>{t('adminDashboard.profileVerifiedSteamId')}</div>
+                  <a href={`https://steamcommunity.com/profiles/${profile.steamId}`} target="_blank" rel="noreferrer noopener" style={{ fontFamily: 'monospace', color: '#7ec8c8' }}>
+                    {profile.steamId}
+                  </a>
+                </div>
+              )}
               <div style={{ marginBottom: 12, fontSize: 12, opacity: 0.7 }}>
                 {t('adminDashboard.profileIdentifiersHint', {
                   defaultValue:
@@ -405,13 +427,13 @@ export const PlayerProfileModal: React.FC<Props> = ({
               )}
 
               {/* Existing identifiers */}
-              {editingIdentifiers.length === 0 ? (
+              {editingIdentifiers.length === 0 ? (profile?.steamId ? null : (
                 <div style={{ color: '#888', fontSize: 13 }}>
                   {t('adminDashboard.profileNoIdentifiers', {
                     defaultValue: 'Noch keine Identifier hinterlegt.',
                   })}
                 </div>
-              ) : (
+              )) : (
                 <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ opacity: 0.6 }}>

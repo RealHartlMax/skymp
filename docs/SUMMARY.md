@@ -33,6 +33,7 @@
 - [Admin Discord OAuth](docs_admin_discord_oauth.md)
 - [Discord bot and game monitoring](docs_discord_bot.md)
 - [Server performance and metrics](docs_server_metrics.md)
+- [Dashboard and scheduled game restarts](docs_dashboard_operations.md)
 - [Updating complete server packages](docs_packaged_server_update.md)
 - [Server Ports Usage](docs_server_ports_usage.md)
 - [VPS Firewall and Game Process Control](docs_vps_ports_and_process_control.md)

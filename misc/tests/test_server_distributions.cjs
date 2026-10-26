@@ -21,7 +21,7 @@ try {
     'scam_native.node': 'ELF fixture', 'dist_back/skymp5-server.js': '// new game backend', 'dist_back/skymp5-admin.js': '// new dashboard backend',
     'ui/build.js': '// new frontend', 'ui/index.html': '<html></html>', 'setup-ui/setup.js': '// setup', 'supervisor-ui/app.js': '// control',
     'start-test-server.sh': '#!/bin/sh\nexit 0\n', 'launch_server.sh': '#!/bin/sh\nexit 0\n', 'bootstrap-runtime.sh': '#!/bin/sh\n',
-    'UPDATE-VPS.md': 'Stop whole service, overlay update, start service', 'release-info.json': '{}', 'README-TEST.md': 'Browser setup', 'LICENSE': 'license',
+    'UPDATE-VPS.md': 'Stop whole service, overlay update, start service', 'DASHBOARD.md': 'Dashboard and scheduled game restarts', 'release-info.json': '{}', 'README-TEST.md': 'Browser setup', 'LICENSE': 'license',
   };
   for (const [name, value] of Object.entries(contents)) write(source, name, value);
   const manifest = { buildId: 'skymp-server-fixture', installationMode: 'first-run', platform: 'linux-x64', sourceFingerprint: 'f'.repeat(64), runtimeDependenciesBundled: true, files: Object.keys(contents).map(name => ({ path: name, bytes: fs.statSync(path.join(source, name)).size, sha256: hash(path.join(source, name)) })) };

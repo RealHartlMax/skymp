@@ -61,6 +61,8 @@ function createSupervisor({ root = ROOT, args = process.argv.slice(2), entry = '
       send(owned === child ? dashboard : child, message);
     } else if (owned === dashboard && message.type === 'skymp:discord-ban') {
       send(child, { type: 'skymp:discord-ban', ban: message.ban });
+    } else if (owned === dashboard && message.type === 'skymp:scheduled-announcement' && state === 'running' && typeof message.message === 'string' && message.message.length <= 500) {
+      send(child, { type: 'skymp:scheduled-announcement', message: message.message });
     } else if (owned === child && message.type === 'skymp:discord-notification') {
       send(dashboard, { type: 'skymp:discord-notification', notification: message.notification });
     } else if (message.type === 'skymp:control' && ['start', 'stop', 'restart'].includes(message.action)) {

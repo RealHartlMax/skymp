@@ -74,6 +74,7 @@ fs.copyFileSync(path.resolve(__dirname, '../../docs/docs_vps_ports_and_process_c
 fs.copyFileSync(path.resolve(__dirname, '../../docs/docs_discord_bot.md'), path.join(output, 'DISCORD-BOT.md'));
 fs.copyFileSync(path.resolve(__dirname, '../../docs/docs_ingame_login.md'), path.join(output, 'INGAME-LOGIN.md'));
 fs.copyFileSync(path.resolve(__dirname, '../../skymp5-server/MOD_LOAD_ORDER.md'), path.join(output, 'MOD-LOAD-ORDER.md'));
+fs.copyFileSync(path.resolve(__dirname, '../../docs/docs_dashboard_operations.md'), path.join(output, 'DASHBOARD.md'));
 fs.copyFileSync(path.resolve(__dirname, '../../docs/docs_packaged_server_update.md'), path.join(output, 'UPDATE-VPS.md'));
 fs.copyFileSync(path.join(__dirname, 'test-server/check-install.cjs'), path.join(output, 'check-install.cjs'));
 fs.copyFileSync(path.join(__dirname, 'test-server/setup-server.cjs'), path.join(output, 'setup-server.cjs'));

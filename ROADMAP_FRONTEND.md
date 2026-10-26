@@ -9,6 +9,29 @@ release provenance and remaining game/live acceptance. This roadmap covers
 `skymp5-front`; the separate Rust/Tauri desktop launcher has its own roadmap.
 Test harness completion is distinct from full accessibility/device coverage.
 
+## Dashboard operations (2026-10-26, r12)
+
+- [x] Read-only comparison with the operator's live txAdmin 8.1.1: overview,
+  settings, access, Discord, players, resources and console navigation.
+- [x] Overview displays existing real process/tick metrics, a selectable history
+  and persistent six-hour disconnect aggregates with explicit observation coverage.
+- [x] Settings opens shared form tabs directly; CFG opens JSON; `#settings/*`
+  deep links and the existing `#discord` link are supported.
+- [x] Game-only daily restart schedules with IANA time zones, warnings, durable
+  skip-next, stale-edit detection and at-most-once handling of repeated DST times.
+- [x] Stopped games remain stopped; missed restarts are not caught up; the
+  dashboard and its sessions remain independent of game lifecycle changes.
+- [x] DE/EN/RU labels and documentation; ES/FR/IT use explicit English fallback
+  for the new operation labels, preserving all existing translations.
+- [ ] Real Skyrim/CEF notification display, multiplayer acceptance and live
+  Discord delivery. This is not a claim of complete txAdmin feature parity.
+
+See [operator and API guide](docs/docs_dashboard_operations.md).
+
+The r12 production JavaScript measures 876,677 gzip bytes (about 856 KiB),
+compared with 864,015 bytes in r11. The feature-growth guard is now 865 KiB;
+the 500 KiB optimization target and code splitting remain open.
+
 ## Steam and player access (2026-10-24, r5)
 
 - [x] Browser setup and dashboard Steam Web API key fields; key stays server-side.

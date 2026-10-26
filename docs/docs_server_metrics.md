@@ -1,7 +1,12 @@
 # Serverleistung im Admin-Dashboard
 
-Stand: 25. Oktober 2026, **Serverrevision r10**. Diese Erweiterung wird in den
+Stand: 26. Oktober 2026, **Serverrevision r12**. Diese Erweiterung wird in den
 Voll- und Update-Paketen für Windows x64 und Linux x64 mitgeliefert.
+
+Die Messansicht steht auch direkt auf **Dashboard** zur Verfügung, ergänzt um
+die dauerhaft im Webprozess erfassten Verbindungsabbrüche der letzten sechs
+Stunden. Die beobachtete Zeit wird ausdrücklich angezeigt. Siehe
+[Dashboard und Neustartplan](docs_dashboard_operations.md).
 
 ## Deutsch
 

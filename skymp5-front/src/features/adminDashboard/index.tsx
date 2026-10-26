@@ -13,6 +13,9 @@ import type { DiscordSettingsValue } from './DiscordSettingsPanel';
 import { PlayerAccessList } from './PlayerAccessList';
 import { ServerPerformancePanel } from './ServerPerformancePanel';
 import { ModLoadOrderPanel } from './ModLoadOrderPanel';
+import { OverviewPanel } from './OverviewPanel';
+import { RestartSchedulePanel, RestartScheduleSummary } from './RestartSchedulePanel';
+import type { ScheduleView } from './RestartSchedulePanel';
 import { normalizeJoinMode, validateLoginSettings, WORLDS_MASTER } from './loginProviders';
 
 import {
@@ -75,6 +78,8 @@ interface AdminStatus {
   gameState?: 'starting' | 'running' | 'stopping' | 'stopped' | 'crashed';
   gamePid?: number | null;
   dashboardPid?: number | null;
+  restartSchedule?: ScheduleView | null;
+  accessMode?: string;
   discordBot?: {
     state: 'disabled' | 'connecting' | 'connected' | 'reconnecting' | 'error';
     lastError: string | null;
@@ -417,7 +422,7 @@ interface TopbarAdminFormState {
   discordId: string;
 }
 
-type CfgEditorTab = 'general' | 'access' | 'discord' | 'inventory' | 'json';
+type CfgEditorTab = 'general' | 'server' | 'access' | 'discord' | 'inventory' | 'json';
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canKick: true,
@@ -725,6 +730,7 @@ const AdminDashboard = () => {
   const [serverControlAvailable, setServerControlAvailable] = useState(false);
   const [independentDashboard, setIndependentDashboard] = useState(false);
   const [quickActionConfirm, setQuickActionConfirm] = useState<'stop' | 'restart' | 'kick-all' | null>(null);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementError, setAnnouncementError] = useState('');
@@ -1006,6 +1012,7 @@ const AdminDashboard = () => {
           'console',
           'logs',
           'metrics',
+          'resources',
           'respawn',
           'events',
           'cfg',
@@ -3056,15 +3063,34 @@ const AdminDashboard = () => {
     };
   }, [hide, show]);
 
+  const openSettings = useCallback((tab: CfgEditorTab) => {
+    setActiveMenuSurface('sidebar'); setActiveTab('cfg'); setCfgEditorTab(tab);
+    setActiveTopSection('settings'); setSystemSectionActive(false);
+    window.history.replaceState(null, '', `#settings/${tab === 'inventory' ? 'game' : tab}`);
+  }, []);
+
   useEffect(() => {
-    const openDiscordLink = () => {
-      if (window.location.hash !== '#discord') return;
-      setActiveMenuSurface('sidebar'); setActiveTab('cfg'); setCfgEditorTab('discord');
+    if (activeMenuSurface === 'topbar' && activeTopSection === 'settings') openSettings('general');
+  }, [activeMenuSurface, activeTopSection, openSettings]);
+
+  useEffect(() => {
+    const openSettingsLink = () => {
+      const route = window.location.hash;
+      const requested = route === '#discord' ? 'discord' : route.startsWith('#settings/') ? route.slice(10) : route === '#settings' ? 'general' : '';
+      const tab = requested === 'game' ? 'inventory' : requested;
+      if (!['general', 'server', 'access', 'discord', 'inventory', 'json'].includes(tab)) return;
+      openSettings(tab as CfgEditorTab);
       window.dispatchEvent(new Event('showAdminDashboard'));
     };
-    openDiscordLink(); window.addEventListener('hashchange', openDiscordLink);
-    return () => window.removeEventListener('hashchange', openDiscordLink);
-  }, []);
+    openSettingsLink(); window.addEventListener('hashchange', openSettingsLink); window.addEventListener('popstate', openSettingsLink);
+    return () => { window.removeEventListener('hashchange', openSettingsLink); window.removeEventListener('popstate', openSettingsLink); };
+  }, [openSettings]);
+
+  useEffect(() => {
+    if (visible && (activeMenuSurface !== 'sidebar' || activeTab !== 'cfg' || systemSectionActive) && window.location.hash.startsWith('#settings')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, [visible, activeMenuSurface, activeTab, systemSectionActive]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -3856,17 +3882,11 @@ const AdminDashboard = () => {
     topNavItems.find((item) => item.key === activeTopSection)?.label ??
     t('adminDashboard.subtitle');
   const currentMainTitle =
-    activeMenuSurface === 'topbar'
+    activeMenuSurface === 'sidebar' && activeTab === 'cfg' ? t('adminDashboard.settings') : activeMenuSurface === 'topbar'
       ? currentTopSectionLabel
       : currentSidebarLabel;
   const currentMainSubtitle =
-    activeMenuSurface === 'topbar'
-      ? t('adminDashboard.topbarSectionSubtitle', {
-          defaultValue: 'Topbar Section',
-        })
-      : t('adminDashboard.sidebarSectionSubtitle', {
-          defaultValue: 'Sidebar Section',
-        });
+    t('adminDashboard.operations.sectionHint');
   const gameTransitioning = independentDashboard && ['starting', 'stopping'].includes(status?.gameState || '');
   const gameCanStart = independentDashboard && ['stopped', 'crashed'].includes(status?.gameState || '');
   const gameUnavailable = independentDashboard && status?.gameState !== 'running';
@@ -3990,7 +4010,7 @@ const AdminDashboard = () => {
       <div className="admin-dashboard">
         <div className="admin-dashboard__topbar">
           <div className="admin-dashboard__brand">
-            <div className="admin-dashboard__brand-mark">SK</div>
+            <div className="admin-dashboard__brand-mark"><span>SK</span><img src="/api/launcher/assets/logo.png" alt="" onError={event => { event.currentTarget.style.display = 'none'; }} /></div>
             <div className="admin-dashboard__brand-text">
               <h1 className="admin-dashboard__title">
                 {t('adminDashboard.title')}
@@ -4016,20 +4036,20 @@ const AdminDashboard = () => {
                 data-testid={`admin-top-tab-${key}`}
                 role="tab"
                   aria-selected={
-                    activeMenuSurface === 'topbar' &&
+                    (key === 'settings' && activeMenuSurface === 'sidebar' && activeTab === 'cfg') || (activeMenuSurface === 'topbar' &&
                     activeTopSection === key &&
-                    !systemSectionActive
+                    !systemSectionActive)
                   }
                   tabIndex={activeTopSection === key ? 0 : -1}
                   aria-controls={
-                    activeMenuSurface === 'topbar' &&
+                    key === 'settings' && activeMenuSurface === 'sidebar' && activeTab === 'cfg' ? 'admin-panel-cfg' : activeMenuSurface === 'topbar' &&
                     activeTopSection === key &&
                     !systemSectionActive
                       ? `admin-top-panel-${key}`
                       : undefined
                   }
                 className={`admin-dashboard__topnav-item${
-                  activeTopSection === key
+                  (key === 'settings' && activeMenuSurface === 'sidebar' && activeTab === 'cfg') || (activeMenuSurface === 'topbar' && activeTopSection === key && !systemSectionActive)
                     ? ' admin-dashboard__topnav-item--active'
                     : ''
                 }`}
@@ -4049,9 +4069,8 @@ const AdminDashboard = () => {
                     visible,
                     ts: Date.now(),
                   });
-                  setActiveTopSection(key);
-                  setActiveMenuSurface('topbar');
-                  setSystemSectionActive(false);
+                  if (key === 'settings') openSettings('general');
+                  else { setActiveTopSection(key); setActiveMenuSurface('topbar'); setSystemSectionActive(false); }
                 }}
               >
                 {label}
@@ -4184,8 +4203,9 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        <div className="admin-dashboard__chrome">
-          <aside className="admin-dashboard__sidebar">
+        <button type="button" className="admin-dashboard__mobile-tools" aria-expanded={mobileToolsOpen} aria-controls="admin-sidebar-tools" onClick={() => setMobileToolsOpen(value => !value)}>{t('adminDashboard.operations.serverTools')} <span>{status?.gameState ? t(`adminDashboard.gameState_${status.gameState}`) : '—'} · {mobileToolsOpen ? '−' : '+'}</span></button>
+        <div className={`admin-dashboard__chrome${mobileToolsOpen ? ' is-mobile-tools-open' : ''}`}>
+          <aside className="admin-dashboard__sidebar" id="admin-sidebar-tools">
             <div className="admin-dashboard__sidebar-card admin-dashboard__sidebar-card--brand">
               <div className="admin-dashboard__server-name">
                 {status?.name || 'SkyMP'}
@@ -4196,7 +4216,7 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="admin-dashboard__sidebar-card">
+            <div className="admin-dashboard__sidebar-card admin-dashboard__sidebar-card--navigation">
               <div className="admin-dashboard__sidebar-section-title">
                 {t('adminDashboard.sideSectionNavigation', {
                   defaultValue: 'Navigation',
@@ -4232,6 +4252,7 @@ const AdminDashboard = () => {
                       });
                       setActiveTab(item.key);
                       setActiveMenuSurface('sidebar');
+                      if (item.key === 'cfg') openSettings('json');
                     }}
                   >
                     {item.label}
@@ -4284,6 +4305,9 @@ const AdminDashboard = () => {
                   {status ? `${status.online}/${status.maxPlayers}` : '0'}
                 </span>
               </div>
+              <div className="admin-dashboard__sidebar-status-row"><span className="admin-dashboard__sidebar-status-key">{t('adminDashboard.cfgTab_access')}</span><span className="admin-dashboard__sidebar-pill">{t(`adminDashboard.cfgJoinMode_${status?.accessMode || 'none'}`, { defaultValue: status?.accessMode || '—' })}</span></div>
+              <div className="admin-dashboard__sidebar-status-row"><span className="admin-dashboard__sidebar-status-key">Discord</span><span className="admin-dashboard__sidebar-pill">{t(`adminDashboard.discordState_${status?.discordBot?.state || 'disabled'}`)}</span></div>
+              {independentDashboard && <RestartScheduleSummary value={status?.restartSchedule} canEdit={adminRole === 'admin' && capabilities.canConsole} onEdit={() => openSettings('server')} onChanged={() => void fetchData()} />}
             </div>
 
             <div className="admin-dashboard__sidebar-card admin-dashboard__sidebar-card--actions">
@@ -6627,7 +6651,7 @@ const AdminDashboard = () => {
                 </section>
               )}
 
-            {activeMenuSurface === 'sidebar' && activeTab !== 'cfg' && (
+            {activeMenuSurface === 'sidebar' && activeTab !== 'cfg' && activeTab !== 'overview' && (
               <div className="admin-dashboard__summary-grid">
                 {summaryCards.map((card) => (
                   <div
@@ -6676,6 +6700,8 @@ const AdminDashboard = () => {
                       role="tabpanel"
                       aria-labelledby="admin-tab-overview"
                     >
+                      <OverviewPanel canView={capabilities.canViewLogs} />
+                      <details className="admin-dashboard__overview-details"><summary>{t('adminDashboard.operations.serverDetails')}</summary>
                       <div className="admin-dashboard__overview-info">
                         {[
                           {
@@ -6752,6 +6778,7 @@ const AdminDashboard = () => {
                           })}
                         </div>
                       </div>
+                      </details>
                     </div>
                   )}
 
@@ -8172,7 +8199,7 @@ const AdminDashboard = () => {
                     role="tabpanel"
                     aria-labelledby="admin-tab-cfg"
                   >
-                    {cfgEditorTab !== 'discord' && <div className="admin-dashboard__panel-toolbar admin-dashboard__cfg-toolbar">
+                    {!['discord', 'server'].includes(cfgEditorTab) && <div className="admin-dashboard__panel-toolbar admin-dashboard__cfg-toolbar">
                       <div className="admin-dashboard__panel-toolbar-left">
                         <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.cfgEditorTitle')}</span>
                         <span className="admin-dashboard__cfg-hint">{t('adminDashboard.cfgToolbarHint')}</span>
@@ -8198,6 +8225,7 @@ const AdminDashboard = () => {
                       {(
                         [
                           'general',
+                          'server',
                           'access',
                           'discord',
                           'inventory',
@@ -8221,12 +8249,14 @@ const AdminDashboard = () => {
                               ? ' admin-dashboard__cfg-tab--active'
                               : ''
                           }`}
-                          onClick={() => { setCfgEditorTab(tab); if (tab === 'discord') window.history.replaceState(null, '', '#discord'); else if (window.location.hash === '#discord') window.history.replaceState(null, '', window.location.pathname + window.location.search); }}
+                          onClick={() => openSettings(tab)}
                         >
-                          {t(`adminDashboard.cfgTab_${tab}`)}
+                          {tab === 'server' ? t('adminDashboard.operations.serverTab') : t(`adminDashboard.cfgTab_${tab}`)}
                         </button>
                       ))}
                     </div>
+
+                    {cfgEditorTab === 'server' && <div role="tabpanel" id="admin-cfg-panel-server" aria-labelledby="admin-cfg-tab-server" tabIndex={0}><RestartSchedulePanel canEdit={adminRole === 'admin' && capabilities.canConsole} onChanged={() => void fetchData()} /></div>}
 
                     {cfgEditorTab === 'general' && <LauncherConnectionPanel onSaved={() => void loadCfgEditor()} />}
                     {cfgEditorTab === 'general' && (
@@ -8877,7 +8907,7 @@ const AdminDashboard = () => {
                       />
                       </div>
                     )}
-                    {cfgEditorTab !== 'discord' && <div className="admin-dashboard__cfg-status" role="status">
+                    {!['discord', 'server'].includes(cfgEditorTab) && <div className="admin-dashboard__cfg-status" role="status">
                       {cfgEditorStatus}
                     </div>}
                   </div>

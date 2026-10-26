@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 
 const preservedPaths = ['server-settings.json', 'logo.png', 'banner.png', 'data/', 'world/', 'client-resources/', 'plugins/', 'mods/', 'gamemode.js', 'package.json', 'package-lock.json', '.runtime/', '.env', 'logs/'];
 const programFiles = new Set(['build-manifest.json', 'scam_native.node', 'server-supervisor.cjs', 'setup-server.cjs', 'setup-web.cjs', 'launcher-connection.cjs', 'check-install.cjs', 'start-test-server.sh', 'launch_server.sh', 'bootstrap-runtime.sh', 'start-test-server.bat', 'start-test-server.cmd', 'launch_server.bat', 'bootstrap-runtime.ps1', 'release-info.json', 'QUELLSTAND.txt', 'README-TEST.md', 'DISCORD-BOT.md', 'INGAME-LOGIN.md', 'PORTS-VPS.md', 'UPDATE-VPS.md', 'LICENSE', 'THIRD_PARTY_LICENSES']);
-const isUpdatePath = name => programFiles.has(name) || name === 'MOD-LOAD-ORDER.md' || /^(?:dist_back|ui|setup-ui|supervisor-ui)\//.test(name) || /^server-assets\/(?:logo|banner)\.png$/.test(name);
+const isUpdatePath = name => programFiles.has(name) || ['MOD-LOAD-ORDER.md', 'DASHBOARD.md'].includes(name) || /^(?:dist_back|ui|setup-ui|supervisor-ui)\//.test(name) || /^server-assets\/(?:logo|banner)\.png$/.test(name);
 const isPreservedPath = name => preservedPaths.some(item => item.endsWith('/') ? name.startsWith(item) : name === item);
 const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';

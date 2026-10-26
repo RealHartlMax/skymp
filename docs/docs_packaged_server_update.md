@@ -1,12 +1,12 @@
 # Server-ZIPs für Ersteinrichtung und bestehende Installationen
 
-Stand: 25. Oktober 2026, r11. Für Linux x64 und Windows x64 gibt es je zwei ZIPs mit
+Stand: 26. Oktober 2026, r12. Für Linux x64 und Windows x64 gibt es je zwei ZIPs mit
 Dateien direkt im Archivwurzelverzeichnis:
 
-- `skymp-server-2026-10-25-r11-<plattform>-full.zip`: vollständige neue Installation
+- `skymp-server-2026-10-26-r12-<plattform>-full.zip`: vollständige neue Installation
   mit Standardkonfiguration, Gamemode, PEX-Skripten und Browser-PIN-Einrichtung.
   In ein leeres Verzeichnis entpacken und eigene Skyrim-Masterdateien ergänzen.
-- `skymp-server-2026-10-25-r11-<plattform>-update.zip`: nur austauschbare
+- `skymp-server-2026-10-26-r12-<plattform>-update.zip`: nur austauschbare
   Programmdateien, Dashboard und Startskripte. Für einen bereits eingerichteten
   Server; dessen Zugangsdaten, Konfiguration, Spielstände und eigene Dateien
   bleiben erhalten. Es ist keine erneute PIN-Einrichtung erforderlich.
@@ -18,7 +18,15 @@ ebenfalls erhalten. Die mitgelieferte Dateiliste beschreibt nur die tatsächlich
 enthaltenen Programmdateien. Beide ZIPs enthalten Linux-Ausführungsrechte für
 die `.sh`-Starter (Linux). `<plattform>` ist `linux-x64` oder `windows-x64`.
 
-**Neu in r11:** Mod-Ladereihenfolge unter Ressourcen, aktive Plugin-Auswahl im
+**Neu in r12:** Dashboard-Übersicht mit Prozess-/Tickverlauf und dauerhafter
+Abbruchstatistik, direkte Einstellungsreiter und Gameserver-Neustartplan mit
+IANA-Zeitzone, Vorwarnungen und überspringbarem nächsten Termin. Die Anleitung
+`DASHBOARD.md` liegt in Full- und Update-ZIPs. `server-settings.json` und das
+gesamte `data/` inklusive Zeitplanstatus und Historie bleiben erhalten. Beide
+Backends, Supervisor und Frontend gemeinsam ersetzen. Auf Smartphones ist die
+Serversteuerung ausklappbar, damit die eigentliche Ansicht direkt erreichbar ist.
+
+**Weiterhin enthalten aus r11:** Mod-Ladereihenfolge unter Ressourcen, aktive Plugin-Auswahl im
 Launcher-Downloadmanifest und validierte Spielernamen aus der Steam-Anmeldung.
 Die SteamID bleibt die serverseitig geprüfte Identität. Die Anleitung
 `MOD-LOAD-ORDER.md` liegt auch im Update-ZIP. Beide Backends und das

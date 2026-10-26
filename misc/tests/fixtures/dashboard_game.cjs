@@ -13,6 +13,7 @@ const server = http.createServer(async (req, res) => {
     const command = JSON.parse(body).command;
     if (command === 'crash') { res.end(JSON.stringify({ ok: true })); setTimeout(() => process.exit(23), 50); return; }
     if (command === 'discord-warning') process.send({ type: 'skymp:discord-notification', notification: { kind: 'warning', content: 'Game warning forwarded to dashboard Discord bot' } });
+    if (command === 'fixture-drop') process.send({ type: 'skymp:update', updateType: 'playerDrop', data: { ts: Date.now(), type: 'unexpected', reason: 'fixture timeout' } });
     console.log('dashboard-log-' + process.pid);
     res.end(JSON.stringify({ ok: true, resultText: 'game:' + process.pid })); return;
   }
@@ -22,6 +23,7 @@ const server = http.createServer(async (req, res) => {
 process.on('message', message => {
   if (message.type === 'skymp:session') sessions.set(message.id, message);
   if (message.type === 'skymp:logout') sessions.delete(message.id);
+  if (message.type === 'skymp:scheduled-announcement') console.log('scheduled-warning-received: ' + message.message);
   if (message.type === 'skymp:shutdown') { udp.close(); server.close(() => process.exit(0)); }
 });
 process.on('disconnect', () => process.exit(0));

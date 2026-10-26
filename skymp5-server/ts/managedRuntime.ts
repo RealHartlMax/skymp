@@ -40,6 +40,7 @@ export const removeManagedSession = (id: string): void => publish({ type: 'skymp
 export const publishManagedReady = (port: number): void => publish({ type: 'skymp:ready', port });
 export const publishGamePerformance = (sample: GamePerformanceSample): void => publish({ type: 'skymp:performance', sample });
 export const notifyManagedSettingsChanged = (): void => publish({ type: 'skymp:settings-changed' });
+export const publishScheduledAnnouncement = (message: string): void => publish({ type: 'skymp:scheduled-announcement', message });
 export const publishDiscordNotification = (notification: DiscordNotification): void =>
   publish({ type: 'skymp:discord-notification', notification });
 export const publishDiscordBan = (ban: DiscordBan): void =>

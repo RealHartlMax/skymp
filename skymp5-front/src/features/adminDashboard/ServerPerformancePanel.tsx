@@ -25,7 +25,7 @@ export function performancePath(points: PerformancePoint[], metric: PerformanceM
 const number = (value: number | null | undefined, digits = 1): string => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
 const emptyTicks = { count: 0, totalMs: 0, maxMs: 0, buckets: [] as number[] };
 
-export function ServerPerformancePanel() {
+export function ServerPerformancePanel({ activity }: { activity?: React.ReactNode } = {}) {
   const { t, i18n } = useTranslation();
   const text = (key: string, options?: Record<string, unknown>) => t(`adminDashboard.performance.${key}`, options);
   const id = useId();
@@ -93,7 +93,7 @@ export function ServerPerformancePanel() {
     const value = point ? performanceValue(point, metric, secondary) : null;
     return point && value !== null ? <circle key={String(secondary)} cx={54 + Math.max(0, Math.min(1, (point.at - (data?.from || 0)) / Math.max(1, (data?.to || 0) - (data?.from || 0)))) * (chartWidth - 80)} cy={228 - Math.max(0, Math.min(1, value / maximum)) * 200} r="3" className={`server-performance__marker${secondary ? ' server-performance__marker--secondary' : ''}`} /> : null;
   });
-  return <section className="server-performance" data-testid="server-performance" aria-labelledby={`${id}-title`}>
+  return <section className={`server-performance${activity ? ' server-performance--overview' : ''}`} data-testid="server-performance" aria-labelledby={`${id}-title`}>
     <header className="server-performance__heading"><div><h3 id={`${id}-title`}>{text('title')}</h3><p>{text('subtitle')}</p></div>
       <div className="server-performance__controls">
         <span className={`server-performance__mode ${error ? 'is-error' : selectedAt === null ? 'is-live' : ''}`} role="status">{error ? text('disconnected') : selectedAt === null ? text('live') : date(selectedAt, true)}</span>
@@ -110,6 +110,7 @@ export function ServerPerformancePanel() {
         <article><span>{text('peakPlayers')}</span><strong>{number(data.summary.peakPlayers, 0)}</strong><p>{text('minuteSamples')}</p></article>
       </div>
       <div className="server-performance__top">
+        {activity}
         <section className="server-performance__card" aria-labelledby={`${id}-stats`}>
           <header><h4 id={`${id}-stats`}>{text('processStats')}</h4>{selectedAt === null ? <span className={`server-performance__state ${data.gameState === 'running' ? 'is-online' : ''}`}>{text(`state_${data.gameState}`)}</span> : <span className="server-performance__caption">{text('selectedMinute')}</span>}</header>
           <div className="server-performance__player-line"><span>{selectedAt === null ? text('playersNow') : text('playersSelected')}</span><strong>{number(runtime?.players, 0)}</strong></div>

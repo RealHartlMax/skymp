@@ -1,4 +1,5 @@
 .admin-dashboard {
+  background: #181b1e;
   font-size: 14px;
   line-height: 1.5;
 
@@ -14,7 +15,14 @@
   &__nav-item { font-size: 15px; padding: 12px; }
   &__sidebar-action { min-height: 40px; font-size: 13px; }
   &__sidebar-status-key, &__main-meta, &__summary-label { font-size: 13px; }
-  &__sidebar-card--brand { background: #17282b; border-color: #294342; }
+  &__sidebar-card--brand { background: #22272b; border-color: #354147; }
+  &__brand-mark { position: relative; overflow: hidden; }
+  &__brand-mark img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #20272b; }
+  &__topbar { background: #22272b; border-bottom-color: #354147; }
+  &__sidebar-card, &__summary-card { border-color: #303c43; background-color: #22272b; }
+  #admin-panel-cfg { display: flex; flex-direction: column; }
+  #admin-panel-cfg > .admin-dashboard__cfg-tabs { order: -1; padding-top: 0; }
+  &__mobile-tools { display: none; }
   &__sidebar-pill { padding: 3px 8px; }
   &__panel { min-width: 0; }
 
@@ -163,6 +171,19 @@
 }
 
 @media (max-width: 640px) {
+  .admin-dashboard__topbar { padding: 12px; gap: 12px; }
+  .admin-dashboard__topnav { min-width: 0; width: 100%; }
+  .admin-dashboard__topnav-tabs { flex-wrap: nowrap; overflow-x: auto; width: 100%; gap: 4px; padding: 3px; }
+  .admin-dashboard__topnav-item { flex-shrink: 0; white-space: nowrap; padding: 9px 10px; }
+  .admin-dashboard__topbar-meta { gap: 8px; }
+  .admin-dashboard__brand-mark { width: 36px; height: 36px; }
+  .admin-dashboard__title { font-size: 17px; }
+  .admin-dashboard__mobile-tools { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid #3b4b52; border-radius: 8px; background: #22272b; color: #e6edf0; font: inherit; text-align: left; }
+  .admin-dashboard__mobile-tools span { color: #7bdec0; }
+  .admin-dashboard__chrome:not(.is-mobile-tools-open) .admin-dashboard__sidebar-card:not(.admin-dashboard__sidebar-card--navigation), .admin-dashboard__sidebar-card--brand { display: none; }
+  .admin-dashboard__sidebar-card--navigation { padding: 8px; }
+  .admin-dashboard__sidebar-card--navigation .admin-dashboard__sidebar-section-title { display: none; }
+  .admin-dashboard__nav-item { padding: 9px 12px; }
   .admin-dashboard__main { container-type: normal; padding: 0 0 24px; }
   .admin-dashboard__main-title { font-size: 28px; }
   .admin-dashboard__main-meta { white-space: normal; }
