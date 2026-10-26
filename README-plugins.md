@@ -8,8 +8,8 @@ Das Plugin-System trennt den monolithischen Gamemode in kleinere Addons auf.
 
 - Plugins werden beim Start aus `Plugins/` erkannt.
 - Erkennung erfolgt ueber `plugin.json` (nicht ueber Ordnernamen).
-- Neue Plugins werden nie automatisch aktiviert.
-- Aktivierung erfolgt per Admin-Entscheidung (Prompt oder Panel-Workflow).
+- Neue Plugins bleiben standardmaessig deaktiviert.
+- Aktivierung erfolgt im Dashboard, per Prompt oder mit einem optionalen Automatikmodus.
 
 ## Pfade (Windows/Linux)
 
@@ -22,6 +22,90 @@ Konvention:
 
 - Ordnername ist exakt `Plugins` (Gross-/Kleinschreibung beibehalten).
 - Es werden nur direkte Unterordner von `Plugins` gescannt.
+
+## Fertige Plugins: Lieferformat und Abhaengigkeiten
+
+Ein Plugin wird als entpackter Ordner geliefert, zum Beispiel:
+
+```text
+Server/
+  Plugins/
+    HelloPlugin/
+      plugin.json
+      index.cjs
+      README.md
+```
+
+ZIP-Dateien werden vom Loader nicht entpackt. Die Erkennung richtet sich nach
+`plugin.json`, der darin enthaltene `name` muss eindeutig sein. Ein normales
+Server-Plugin benoetigt keine eigene `.dll`, `.esp` oder `.esm`.
+
+- `kind: gamemode`: Ein ausfuehrbarer CommonJS-JavaScript-Einstieg, empfohlen
+  `index.cjs`. TypeScript vorher in JavaScript uebersetzen. Der aktuelle Loader
+  kopiert nur die Entry-Datei in einen temporaeren Ordner und laedt sie dort als
+  `.js`. Deshalb lokale Module und npm-Abhaengigkeiten in die Entry-Datei
+  buendeln, beispielsweise mit esbuild und
+  `--bundle --platform=node --format=cjs`. Ein bloss danebenliegendes `node_modules/` oder
+  `require('./helper.cjs')` reicht bei diesem Loader nicht. Auch `__dirname`
+  zeigt nicht auf den installierten Plugin-Ordner; persistente Daten mit einem
+  ausdruecklich gewaehlten Pfad ablegen.
+- `kind: process`: Ein startfertiges Programm beziehungsweise Node-Skript mit
+  `command` und `args`. Der Prozess startet im Plugin-Ordner. Hier funktionieren
+  lokale Dateien und normale Node-Modulaufloesung; benoetigte Abhaengigkeiten
+  muessen mitgeliefert oder vorher installiert sein. Der Loader fuehrt kein
+  `npm install` und keinen Build aus. Fuer mehrere Betriebssysteme muessen
+  Befehl, Laufzeit und gegebenenfalls native Abhaengigkeiten dazu passen.
+
+Beim `process`-Plugin wird der Start allein durch `command` und `args`
+bestimmt. `main` ist dort kein automatisch gestartetes Skript.
+
+## Dashboard und benoetigte Neustarts
+
+Die Verwaltung befindet sich im Dashboard unter **Ressourcen → Server-Plugins**.
+Sie zeigt entdeckte Plugins mit Version, Pfad, aktuellem Laufzeitstatus und
+Freigabe fuer den naechsten Gameserver-Start. Die Liste aktualisiert den Status
+alle fuenf Sekunden; **Status aktualisieren** liest ihn sofort erneut ein.
+Das fuehrt keine neue Erkennung auf der Festplatte aus.
+
+Jedes Plugin hat einen Button **Aktivieren** beziehungsweise **Deaktivieren**.
+**Alle deaktivierten aktivieren** gibt alle bereits erkannten Plugins mit
+vorhandener `plugin.json` frei, unabhaengig vom aktuellen Suchfilter.
+Die Auswahl **Neue Plugins beim Gameserver-Start → Automatisch aktivieren**
+speichert `pluginDiscovery.mode: "auto"` in `server-settings.json`.
+Damit werden erstmals erkannte Plugins beim naechsten Start sofort geladen.
+Bereits bekannte, deaktivierte Plugins bleiben deaktiviert; fuer diese den
+einzelnen Button oder die Sammelaktivierung verwenden.
+
+Lesen benoetigt `canViewLogs`, Aendern benoetigt `canConsole`. Die Buttons
+speichern `startupEnabled` in `Plugins/.discovery-state.json`; sie laden oder
+entladen keinen Code im laufenden Server. Eine Freigabe bleibt gespeichert;
+ein Terminal-Hilfsskript muss nicht bei jedem Start ausgefuehrt werden.
+
+| Aenderung | Erforderlicher Neustart |
+| --- | --- |
+| Bekanntes Server-Plugin aktualisieren, aktivieren oder deaktivieren | Gameserver neu starten |
+| Neues Plugin im Modus `safe` installieren | Gameserver starten/neustarten, damit es erkannt wird; im Dashboard freigeben; anschliessend Gameserver erneut starten/neustarten |
+| Neues Plugin im vorher gewaehlten Modus `auto` installieren | Gameserver starten/neustarten; Erkennung und Aktivierung erfolgen in diesem Start |
+| `process`-Plugin unter `Plugins/` aktualisieren | Gameserver neu starten; dadurch wird auch der Plugin-Prozess neu gestartet |
+| Dashboard-/Serverpaket selbst aktualisieren | Nach der [Updateanleitung](docs/docs_packaged_server_update.md) auch den Starter mit Dashboard neu starten |
+| Zusaetzliche Skyrim-Mods oder SKSE-/Clientdateien aendern | Separat ueber Mod-/Laufzeitpakete verteilen; betroffene Clients mit passenden Dateien neu starten |
+
+Bei den aktuellen Paketen mit getrenntem Dashboard und Game-Prozess bleibt
+das Dashboard bei einem reinen Gameserver-Neustart erreichbar. Ein Neustart
+des Rechners oder VPS ist fuer Server-Plugins nicht erforderlich. Verbundene
+Spieler verlieren beim Gameserver-Neustart ihre Verbindung.
+
+Neue Plugins bleiben standardmaessig deaktiviert. In `prompt` kann die
+Freigabe beim ersten interaktiven Start erfolgen; beim Start als Dienst steht
+dieser Prompt normalerweise nicht zur Verfuegung. `auto` benoetigt kein
+Terminal. Die Freigabe bekannter Plugins bleibt bei Updates mit demselben
+`name` und bei Aenderungen des Discovery-Modus erhalten.
+
+Es gibt derzeit keinen Live-Upload, keinen Plugin-Marketplace und keine
+Funktion zum einzelnen Starten, Stoppen oder Hot-Reload eines Plugins.
+Der separate Datei-Watcher des Haupt-Gamemodes bietet keinen Plugin-Reload:
+Er laedt die Plugins nach `mp.clear()` nicht erneut. Bei installiertem
+Plugin-Satz deshalb einen vollstaendigen Gameserver-Neustart verwenden.
 
 ## Ersteinrichtung und Discovery-State
 
@@ -48,19 +132,24 @@ Die State-Datei trennt:
 
 Pflichtfelder:
 
-- `name`: Eindeutiger Schluessel
-- `version`: Versionsstring (empfohlen SemVer)
+- `name`: Eindeutiger Schluessel, 1 bis 64 Zeichen aus `a-z`, `A-Z`, `0-9`, `_`, `-`
+- `version`: Versionsstring, muss mit einer Ziffer beginnen (empfohlen SemVer)
 - `kind`: `gamemode` oder `process`
 - `displayName`: Anzeigename fuer Operatoren
 - `description`: Kurzbeschreibung fuer Entscheidung/Review
-- `main`: Relativer Einstiegspunkt (Default im Loader: `index.cjs`)
 
 Optionale Felder:
 
+- `main`: Relativer Einstiegspunkt (Default im Loader: `index.cjs`)
 - `optional`: Bei Fehler nicht als kritischer Startfehler behandeln
 - `startupDefault`: Dokumentationshinweis, wird bei neuen Plugins bewusst ignoriert
-- `command`: Nur fuer `kind: process`, auszufuehrender Befehl
+- `command`: Pflicht fuer `kind: process`, auszufuehrender Befehl
 - `args`: Nur fuer `kind: process`, Argumentliste
+
+`displayName` darf hoechstens 100, `description` hoechstens 512 Zeichen
+enthalten. `main` muss innerhalb des Plugin-Ordners liegen; absolute Pfade
+oder `..` als Pfadanfang werden abgewiesen. Manifestdateien sind auf 64 KiB
+Text begrenzt, `args` auf 128 String-Eintraege.
 
 ### Komplettbeispiel: gamemode
 
@@ -125,10 +214,10 @@ Konfiguration in `server-settings.json`:
 {
   "pluginDiscovery": {
     "mode": "safe",
-    "processCommandAllowlist": ["node", "node.exe"]
+    "processCommandAllowlist": ["node", "node.exe"],
+    "abortOnPluginError": true
   },
-  "pluginsLoadOrder": ["core", "chat-server", "emotewheel"],
-  "abortOnPluginError": true
+  "pluginsLoadOrder": ["core", "chat-server", "emotewheel"]
 }
 ```
 
@@ -136,6 +225,10 @@ Konfiguration in `server-settings.json`:
 
 - `safe`: Kein Prompt, neue Plugins bleiben deaktiviert
 - `prompt`: Bei interaktivem Start Ja/Nein-Prompt fuer neu entdeckte Plugins
+- `auto`: Neue Plugins beim ersten Erkennen automatisch aktivieren; bekannte Plugins behalten ihre gespeicherte Freigabe
+
+Ohne gueltige Einstellung gilt `safe`. `auto` eignet sich fuer Installationen,
+bei denen nur gepruefte Plugins in `Plugins/` abgelegt werden.
 
 `pluginDiscovery.processCommandAllowlist`:
 
@@ -144,14 +237,22 @@ Konfiguration in `server-settings.json`:
 - Vergleich erfolgt gegen kompletten `command` oder dessen Dateinamen (z. B. `node`).
 - Wenn nicht gesetzt, gibt es keine zusaetzliche Einschraenkung (Rueckwaertskompatibilitaet).
 
-`abortOnPluginError` (default `false`):
+`pluginDiscovery.abortOnPluginError` (default `false`):
 
 - `true`: Server bricht den Start ab, wenn ein nicht-`optional` Plugin einen Fehler wirft. Empfohlen fuer Produktivumgebungen.
 - `false`: Plugin-Fehler werden geloggt, Server startet dennoch.
 
+Aktuelle Einschraenkung: Der gemeinsame temporaere JavaScript-Loader faengt
+Ausfuehrungsfehler intern ab und loggt sie. Der Plugin-Bootstrap kann solche
+Fehler deshalb als erfolgreich geladen melden. Auch asynchrone Prozessfehler
+werden erst nach dem Start gemeldet. `running` und diese Option sind daher
+kein verlaesslicher Nachweis, dass jede Plugin-Funktion fehlerfrei arbeitet;
+die Serverlogs und das konkrete Verhalten mitpruefen.
+
 Hinweis fuer Daemon-Betrieb:
 
 - Mit `safe` starten und Freigabe per Panel/State-Workflow machen.
+- Alternativ im Dashboard `auto` waehlen, wenn neue Plugins ohne Terminalabfrage beim Start aktiviert werden sollen.
 
 ## Minimalbeispiele
 
@@ -165,8 +266,15 @@ Dateien:
 `index.cjs`:
 
 ```js
-mp.registerEvent("onInit", () => {
-  console.log("[HelloPlugin] loaded");
+// Die Entry-Datei wird beim Gameserver-Start einmal ausgefuehrt.
+console.log("[HelloPlugin] loaded");
+
+// Persistente Eigenschaft fuer einen moeglichen spaeteren RP-Gamemode.
+mp.makeProperty("helloPluginRank", {
+  isVisibleByOwner: false,
+  isVisibleByNeighbors: false,
+  updateOwner: "",
+  updateNeighbor: ""
 });
 ```
 
@@ -212,12 +320,34 @@ Alles unter `Plugins/` kann Host-Code ausfuehren.
 
 ## Runtime-Status im Admin-API
 
+`PATCH /api/admin/plugins/:name` mit JSON `{"startupEnabled": true}` oder
+`false` speichert die Freigabe fuer den naechsten Start. Die Antwort enthaelt
+`restartRequired: true`. Ein noch nicht beim Start entdecktes Plugin wird mit
+`404` abgewiesen. Die API fuehrt keinen neuen Ordnerscan und keinen Live-Start aus.
+
+`POST /api/admin/plugins/enable-all` mit JSON `{}` aktiviert alle bereits
+erkannten, deaktivierten Plugins mit vorhandener `plugin.json`. Die Antwort
+enthaelt `names`, `count` und `restartRequired` (bei mindestens einer Aenderung
+`true`). Fehlende Manifeste werden uebersprungen. Ein erneuter Aufruf ohne neue
+deaktivierte Plugins liefert `count: 0` und veraendert die State-Datei nicht.
+
+`GET /api/admin/plugins/settings` liefert `{ "mode": "safe" }`, `"prompt"`
+oder `"auto"`. `PUT` auf denselben Pfad mit beispielsweise `{ "mode": "auto" }`
+speichert den Modus fuer den naechsten Gameserver-Start. Andere Einstellungen,
+auch weitere Schluessel unter `pluginDiscovery`, bleiben erhalten. Diese
+Schreibzugriffe benoetigen wie die einzelne Freigabe `canConsole`.
+
 `GET /api/admin/plugins` enthaelt zusaetzlich `runtimeStatus` pro Plugin:
 
 - `starting`: Plugin-Start wurde initiiert
 - `running`: Plugin laeuft
 - `failed`: Start oder Laufzeitfehler erkannt
 - `stopped`: Nicht gestartet (`startupEnabled=false`) oder sauber beendet
+
+`runtimeStatus` kann `null` sein, wenn noch keine Laufzeitmeldung vorliegt.
+Die gespeicherte Startfreigabe und der Laufzeitstatus sind unabhaengig: Ein
+bereits laufendes Plugin kann bis zum naechsten Neustart weiterlaufen, obwohl
+seine Startfreigabe inzwischen deaktiviert wurde.
 
 Beispielauszug:
 
@@ -243,7 +373,49 @@ Beispielauszug:
 5. Neue Plugins einzeln freigeben (`startupEnabled=true`).
 6. Optional Reihenfolge ueber `pluginsLoadOrder` festlegen.
 
+## Was sich als Plugin umsetzen laesst
+
+`gamemode`-Plugins laufen mit dem globalen `mp` im Gameserver und koennen die
+vorhandenen Server-APIs nutzen. Beispiele fuer daraus entwickelbare Systeme:
+
+- Rollen, Fraktionen, Berufe, Waehrungen und Fortschritt mit eigenen
+  persistenten Properties (`mp.makeProperty`, `mp.get`, `mp.set`).
+- Inventar-/Beuteregeln, Teleports, Spawnpunkte, Werte von Actors und eigene
+  Wiederbelebungs- oder Respawnregeln innerhalb der angebotenen Hooks.
+- Eigene Spielereignisse und Clientreaktionen ueber `mp.makeEventSource`,
+  Property-Updates und die vorhandenen SkyrimPlatform-Funktionen.
+- Protokollierung und externe Integrationen, sofern das Plugin die dafuer
+  erforderliche Verbindung selbst implementiert.
+
+`process`-Plugins eignen sich beispielsweise fuer Bots, Webhooks, Chat-Bridges
+oder Hintergrunddienste. Sie erhalten **kein** gemeinsames `mp`-Objekt und
+keinen automatischen RPC-/IPC-Kanal zum Gamemode. Fuer Zugriff auf Spielzustand
+ist eine eigens implementierte, authentifizierte Schnittstelle erforderlich.
+
+Das Plugin-System liefert keine neue Engine-Funktion, keine automatische
+Dashboard-Oberflaeche pro Plugin und keine Verteilung beliebiger Clientdateien.
+Neue Modelle, Welten, native Funktionen oder eigene Clientmodule brauchen die
+passenden Skyrim-Mods beziehungsweise Clientpakete. Clientcode, der bereits
+ueber die Property-/Event-API uebertragen werden kann, ist davon zu unterscheiden.
+
+Gamemode-Plugins teilen denselben Prozess und globale Handler. Sie laufen
+ohne Sandbox; ueberschriebene Handler oder blockierender Code koennen andere
+Plugins und den Gameserver beeinflussen. Es gibt keine deklarative
+Abhaengigkeits-/Versionspruefung und keinen automatischen Neustart eines
+abgestuerzten `process`-Plugins. Die Ladereihenfolge allein prueft weder
+Abhaengigkeiten noch Betriebsbereitschaft externer Dienste.
+
+API-Details: [Serverside Scripting](docs/docs_serverside_scripting_reference.md),
+[Properties](docs/docs_properties_system.md),
+[Events](docs/docs_events_system.md) und
+[Respawn](docs/docs_respawn_control_system.md).
+
 ## Voice Activity Adapters (für Lipsync & Proximity Chat)
+
+Dieser Abschnitt beschreibt einen internen TypeScript-Adaptervertrag.
+Eine Datei unter `Plugins/` registriert einen solchen Adapter nicht automatisch;
+die Anbindung an den Voice Activity Manager muss ausdruecklich implementiert
+werden. Die Beispiele ersetzen keine fertig integrierte Voice-Loesung.
 
 Das Voice Activity Detection (VAD) System nutzt ein **Adapter-Pattern** für verschiedene Voice-Anbieter.
 

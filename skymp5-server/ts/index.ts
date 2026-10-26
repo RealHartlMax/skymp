@@ -20,6 +20,8 @@ import {
   PLUGIN_DISCOVERY_STATE_PATH,
   readDiscoveryState,
   writeDiscoveryState,
+  type PluginDiscoveryMode,
+  normalizePluginDiscoveryMode,
 } from './pluginDiscoveryState';
 import * as scampNative from './scampNative';
 import * as ui from './ui';
@@ -133,7 +135,7 @@ function requireUncached(
   }
 }
 
-const setupStreams = (scampNative: any, logDirPath: string) => {
+const setupStreams = (logDirPath: string) => {
   fs.mkdirSync(logDirPath, { recursive: true });
 
   cleanupServerLogs(logDirPath, 14, 30);
@@ -150,15 +152,15 @@ const setupStreams = (scampNative: any, logDirPath: string) => {
     constructor(
       private logLevel: string,
       private originalWrite: (
-        chunk: string,
-        encoding?: BufferEncoding,
-        cb?: (error?: Error | null) => void,
+        chunk: string | Uint8Array,
+        encoding?: BufferEncoding | ((error?: Error | null) => void),
+        callback?: (error?: Error | null) => void,
       ) => boolean,
     ) {}
 
-    write(chunk: Buffer, encoding: string, callback: () => void) {
-      // @ts-ignore
-      const str = chunk.toString(encoding);
+    write(chunk: string | Uint8Array, encoding?: BufferEncoding | ((error?: Error | null) => void), callback?: (error?: Error | null) => void): boolean {
+      const str = typeof chunk === 'string' ? chunk
+        : Buffer.from(chunk).toString(typeof encoding === 'string' ? encoding : undefined);
       if (str.trim().length > 0) {
         const lines = str.split(/\r?\n/).filter((line) => line.length > 0);
         for (const line of lines) {
@@ -170,11 +172,11 @@ const setupStreams = (scampNative: any, logDirPath: string) => {
           this.logLevel === 'error' ? 'error' : 'info',
           str,
         );
-        scampNative.writeLogs(this.logLevel, str);
+        // The original stream and JS logfile already receive this message.
+        // Native writeLogs would print a second copy of every console write.
       }
 
-      this.originalWrite(str, encoding as BufferEncoding);
-      callback();
+      return this.originalWrite(chunk, encoding, callback);
     }
   }
 
@@ -182,19 +184,19 @@ const setupStreams = (scampNative: any, logDirPath: string) => {
   const errorStream = new LogsStream('error', originalStderrWrite as any);
   // @ts-ignore
   process.stdout.write = (
-    chunk: Buffer,
-    encoding: string,
-    callback: () => void,
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void,
   ) => {
-    infoStream.write(chunk, encoding, callback);
+    return infoStream.write(chunk, encoding, callback);
   };
   // @ts-ignore
   process.stderr.write = (
-    chunk: Buffer,
-    encoding: string,
-    callback: () => void,
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void,
   ) => {
-    errorStream.write(chunk, encoding, callback);
+    return errorStream.write(chunk, encoding, callback);
   };
 };
 
@@ -264,7 +266,7 @@ interface DiscoveredPlugin {
 }
 
 interface PluginSetupOptions {
-  mode: 'prompt' | 'safe';
+  mode: PluginDiscoveryMode;
   loadOrder: string[];
   abortOnPluginError: boolean;
   processCommandAllowlist: string[] | null;
@@ -776,10 +778,12 @@ const bootstrapPlugins = async (
     let startupEnabled = false;
     if (isKnown) {
       startupEnabled = previous.startupEnabled;
+    } else if (options.mode === 'auto') {
+      startupEnabled = true;
     } else if (plugin.manifest.startupDefault === true) {
       startupEnabled = false;
       pluginsWarn(
-        `plugin "${plugin.manifest.name}" requests startupDefault=true, but new plugins are never auto-enabled`,
+        `plugin "${plugin.manifest.name}" requests startupDefault=true, but automatic activation is disabled`,
       );
     }
 
@@ -789,6 +793,8 @@ const bootstrapPlugins = async (
       );
       if (options.mode === 'prompt') {
         startupEnabled = await askToEnablePlugin(plugin);
+      } else if (options.mode === 'auto') {
+        pluginsLog(`automatically enabled new plugin "${plugin.manifest.name}"`);
       }
     } else if (isUpdated) {
       pluginsLog(
@@ -1001,7 +1007,7 @@ const main = async () => {
     new MovementDebugLogSystem(log),
   );
 
-  setupStreams(scampNative.getScampNative(), path.resolve('logs'));
+  setupStreams(path.resolve('logs'));
 
   try {
     manifestGen.generateManifest(settingsObject);
@@ -1250,8 +1256,7 @@ const main = async () => {
       ? (allSettings.pluginDiscovery as Record<string, unknown>)
       : null;
   const pluginDiscoveryModeRaw = pluginDiscoveryObject?.mode;
-  const pluginDiscoveryMode: 'prompt' | 'safe' =
-    pluginDiscoveryModeRaw === 'prompt' ? 'prompt' : 'safe';
+  const pluginDiscoveryMode = normalizePluginDiscoveryMode(pluginDiscoveryModeRaw);
 
   const pluginsLoadOrderRaw = allSettings?.pluginsLoadOrder;
   const pluginsLoadOrder = Array.isArray(pluginsLoadOrderRaw)

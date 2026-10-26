@@ -179,9 +179,13 @@ process.send = (message, ...args) => { if (message.type === 'skymp:ready') fs.wr
     denied.terminate(); assert.equal(deniedStatus, 401);
     assert.equal((await post('/api/admin/console', { command: 'log' })).status, 200);
     await wait('forwarded game log', async () => (await (await request('/api/admin/logs?type=server')).json()).some(entry => entry.message.includes('dashboard-log-')));
+    await wait('server log broadcast to the dashboard update socket', async () => wsMessages.some(message => message.type === 'log' && message.data?.entry?.message.includes('dashboard-log-')));
+    assert.equal(wsMessages.filter(message => message.type === 'log' && message.data?.entry?.message.includes('dashboard-log-')).length, 1);
+    checks.push('Game stdout reaches the Server Log WebSocket exactly once while the HTTP log list remains available');
 
     const stopped = await post('/api/admin/server/control', { action: 'stop' }); assert.equal(stopped.status, 200);
     await wait('game stop', async () => (await status()).gameState === 'stopped');
+    await wait('admin action broadcast to dashboard logs', async () => wsMessages.some(message => message.type === 'log' && message.data?.entry?.message.includes('Server stop requested through packaged process manager')));
     const afterStop = await status(); assert.equal(afterStop.gamePid, null); assert.equal(afterStop.dashboardPid, first.dashboardPid); assert.equal(afterStop.online, 0);
     const stoppedPerformance = await performance();
     assert.equal(stoppedPerformance.gameState, 'stopped');

@@ -1,0 +1,8 @@
+.admin-resources {
+  min-width: 0;
+  [role='tabpanel'][hidden] { display: none; }
+  &__tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  &__tabs button { min-height: 44px; padding: 10px 18px; color: #c0cbd2; background: #141e26; border: 1px solid #34434e; border-radius: 6px; font: 14px/1.5 'Segoe UI', Arial, sans-serif; cursor: pointer; }
+  &__tabs button[aria-selected='true'] { color: #172028; background: #c7a875; border-color: #c7a875; font-weight: 600; }
+  &__tabs button:focus-visible { outline: 2px solid #c7a875; outline-offset: 3px; }
+}

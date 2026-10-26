@@ -38,6 +38,7 @@ import {
   PluginStateEntry,
   readDiscoveryState,
   writeDiscoveryState,
+  normalizePluginDiscoveryMode,
 } from './pluginDiscoveryState';
 import {
   getAggregatedMetrics,
@@ -951,8 +952,10 @@ const ADMIN_ROLE_DEFAULT_CAPABILITIES: Record<AdminRole, AdminCapabilities> = {
 };
 
 const addAdminLog = (type: AdminLogEntry['type'], message: string): void => {
-  adminLog.push({ ts: Date.now(), type, message });
+  const entry = { ts: Date.now(), type, message };
+  adminLog.push(entry);
   if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
+  broadcastLogEntry(entry);
 };
 
 const getAdminMenuDebugLogPath = (dataDir: string): string =>
@@ -998,6 +1001,9 @@ const addServerLog = (level: ServerLogLevel, message: string): void => {
     serverLog.splice(0, serverLog.length - MAX_SERVER_LOG);
   }
   broadcastLiveConsoleLog(entry);
+  // Managed game stdout is relayed by the supervisor. Publish it once from
+  // the persistent dashboard, rather than through stdout and IPC in parallel.
+  if (!isManagedRuntime() || isDashboardRuntime()) broadcastLogEntry(entry);
 };
 
 const pushServerLogChunkInternal = (
@@ -4722,6 +4728,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const userIds = getOnlinePlayerIds();
       userIds.forEach((userId) => {
+        // Native Scamp exposes sendCustomPacket; the client renders this as a HUD banner.
+        safeCall(
+          () => gScampServer.sendCustomPacket(userId, JSON.stringify({
+            customPacketType: 'announcementToast', message, durationMs: 8000,
+          })),
+          undefined,
+        );
         safeCall(
           () => gScampServer.sendChatMessage?.(userId, message),
           undefined,
@@ -5460,8 +5473,58 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     });
 
     // ── Plugin management ───────────────────────────────────────────────
+    router.get('/api/admin/plugins/settings', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      ctx.set('Cache-Control', 'no-store');
+      try {
+        const discovery = readServerSettingsJson().pluginDiscovery as Record<string, unknown> | undefined;
+        ctx.body = { mode: normalizePluginDiscoveryMode(discovery?.mode) };
+      } catch { ctx.status = 503; ctx.body = { ok: false, code: 'PLUGIN_SETTINGS_UNAVAILABLE' }; }
+    });
+
+    router.put('/api/admin/plugins/settings', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+      ctx.set('Cache-Control', 'no-store');
+      const mode = ctx.request.body?.mode;
+      if (!['safe', 'prompt', 'auto'].includes(mode)) {
+        ctx.status = 400; ctx.body = { ok: false, code: 'INVALID_PLUGIN_MODE' }; return;
+      }
+      try {
+        const latest = readServerSettingsJson();
+        if (!latest || typeof latest !== 'object' || Array.isArray(latest)) throw Error('Invalid settings');
+        const previous = latest.pluginDiscovery;
+        latest.pluginDiscovery = {
+          ...(previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}), mode,
+        };
+        writeServerSettingsJson(latest);
+        settings.allSettings = latest;
+        addAdminLog('console', `Plugin discovery mode saved: ${mode}; effective at the next game start`);
+        ctx.body = { ok: true, mode, restartRequired: true };
+      } catch { ctx.status = 503; ctx.body = { ok: false, code: 'PLUGIN_SETTINGS_UNAVAILABLE' }; }
+    });
+
+    router.post('/api/admin/plugins/enable-all', (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+      ctx.set('Cache-Control', 'no-store');
+      try {
+        const state = readDiscoveryState();
+        const names: string[] = [];
+        const now = new Date().toISOString();
+        for (const [name, entry] of Object.entries(state.plugins)) {
+          if (entry.startupEnabled !== false || !fs.existsSync(path.resolve(process.cwd(), entry.pluginPath, 'plugin.json'))) continue;
+          entry.startupEnabled = true;
+          entry.updatedAt = now;
+          names.push(name);
+        }
+        if (names.length) writeDiscoveryState(state);
+        addAdminLog('console', `Enabled ${names.length} plugins for the next game start`);
+        ctx.body = { ok: true, names, count: names.length, restartRequired: names.length > 0 };
+      } catch { ctx.status = 503; ctx.body = { ok: false, code: 'PLUGIN_STATE_UNAVAILABLE' }; }
+    });
+
     router.get('/api/admin/plugins', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      ctx.set('Cache-Control', 'no-store');
 
       const state = readDiscoveryState();
       const result = Object.entries(state.plugins).map(
@@ -5496,6 +5559,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.patch('/api/admin/plugins/:name', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canConsole')) return;
+      ctx.set('Cache-Control', 'no-store');
 
       const pluginName = ctx.params?.name as string;
       const state = readDiscoveryState();
@@ -5525,6 +5589,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ok: true,
         name: pluginName,
         startupEnabled: body.startupEnabled,
+        restartRequired: true,
       };
     });
 

@@ -587,8 +587,14 @@ Controls how the server handles newly discovered plugins at startup.
 
 - `mode: "safe"` (recommended for daemon/production): new plugins are left disabled (`startupEnabled: false`) and require manual activation.
 - `mode: "prompt"`: an interactive yes/no prompt is shown for each newly discovered plugin when the server starts on a TTY.
+- `mode: "auto"`: newly discovered plugins are enabled and started during that same startup, without a terminal prompt.
 
-If omitted, defaults to `"safe"` mode.
+If omitted or invalid, defaults to `"safe"` mode. All modes preserve the saved
+startup setting of known plugins, including plugins explicitly disabled earlier.
+The dashboard at **Resources → Server plugins** can save this mode, enable or
+disable individual plugins, or enable all discovered disabled plugins whose
+manifest still exists. Changes take effect at the next game-server start.
+Use `auto` when the plugin directory contains only reviewed code.
 
 ```json5
 {
@@ -631,16 +637,19 @@ Explicit load order for plugins. Plugins listed here are started first (in the g
 }
 ```
 
-## abortOnPluginError
+## pluginDiscovery.abortOnPluginError
 
-When `true`, any non-`optional` plugin that fails to load will abort the server startup. Default is `false`.
+When `true`, a synchronous startup error propagated to the plugin bootstrap by a non-`optional` plugin aborts server startup. Default is `false`. This option belongs inside `pluginDiscovery`; a top-level `abortOnPluginError` is not read by the loader.
 
-Set to `true` in production to prevent a partially-loaded plugin set from running silently.
+The current temporary JavaScript loader logs execution errors internally, so those errors may not reach the bootstrap. Asynchronous process errors also arrive after startup. Check logs and actual plugin behavior in addition to the reported runtime status. See the [Plugin System guide](../README-plugins.md).
 
 ```json5
 {
   // ...
-  abortOnPluginError: true,
+  pluginDiscovery: {
+    mode: 'safe',
+    abortOnPluginError: true,
+  },
   // ...
 }
 ```

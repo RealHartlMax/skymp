@@ -12,7 +12,7 @@ import { DiscordSettingsPanel } from './DiscordSettingsPanel';
 import type { DiscordSettingsValue } from './DiscordSettingsPanel';
 import { PlayerAccessList } from './PlayerAccessList';
 import { ServerPerformancePanel } from './ServerPerformancePanel';
-import { ModLoadOrderPanel } from './ModLoadOrderPanel';
+import { ResourcesPanel, RESOURCE_TAB_STORAGE_KEY } from './ResourcesPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { RestartSchedulePanel, RestartScheduleSummary } from './RestartSchedulePanel';
 import type { ScheduleView } from './RestartSchedulePanel';
@@ -527,7 +527,7 @@ interface MenuDebugPayload {
 
 interface PersistedAdminDashboardState {
   activeMenuSurface?: ActiveMenuSurface;
-  activeTab?: Tab;
+  activeTab?: Tab | 'plugins';
   activeTopSection?: TopSection;
   playerSearch?: string;
   consoleSearch?: string;
@@ -1004,7 +1004,10 @@ const AdminDashboard = () => {
         setActiveMenuSurface(persisted.activeMenuSurface);
       }
 
-      if (
+      if (persisted.activeTab === 'plugins') {
+        setActiveTab('resources');
+        window.localStorage.setItem(RESOURCE_TAB_STORAGE_KEY, 'plugins');
+      } else if (
         persisted.activeTab &&
         [
           'overview',
@@ -8189,7 +8192,8 @@ const AdminDashboard = () => {
                 )}
 
                 {activeMenuSurface === 'sidebar' && activeTab === 'resources' && (
-                  <ModLoadOrderPanel canView={capabilities.canViewLogs} canEdit={adminRole === 'admin' && capabilities.canConsole} />
+                  <ResourcesPanel canView={capabilities.canViewLogs}
+                    canEditMods={adminRole === 'admin' && capabilities.canConsole} canEditPlugins={capabilities.canConsole} />
                 )}
 
                 {activeMenuSurface === 'sidebar' && activeTab === 'cfg' && (

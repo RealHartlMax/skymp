@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export type PluginDiscoveryMode = 'safe' | 'prompt' | 'auto';
+export const normalizePluginDiscoveryMode = (mode: unknown): PluginDiscoveryMode =>
+  mode === 'prompt' || mode === 'auto' ? mode : 'safe';
+
 export interface PluginStateEntry {
   pluginPath: string;
   fingerprint: string;

@@ -48,6 +48,9 @@ Command access is checked per action through admin capabilities:
 If a command is not recognized and the user still has `canConsole`, the server keeps the old JavaScript execution fallback for compatibility.
 
 `announce` is rendered as a top-screen HUD banner with a fade-in / fade-out animation instead of a chat message.
+The dashboard's **Send Announcement** quick action uses the same existing
+`announcementToast` client handler and displays its banner for eight seconds.
+The current client displays at most 240 characters of an announcement.
 
 ## Examples
 

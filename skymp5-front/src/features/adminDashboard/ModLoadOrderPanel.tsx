@@ -4,7 +4,8 @@ import './modLoadOrder.scss';
 
 const messages = {
   de: {
-    title:'Mod-Ladereihenfolge', intro:'Hochgeladene Spielplugins werden automatisch erkannt. Aktiviere die gewünschten Mods und verschiebe sie in die Reihenfolge, die Server und Launcher verwenden sollen.',
+    title:'Mod-Ladereihenfolge', intro:'Zusätzliche Spielmods werden automatisch erkannt. Aktiviere die gewünschten Mods und verschiebe sie in die Reihenfolge, die Server und Launcher verwenden sollen.',
+    baseFiles:'Die fünf benötigten Spieldateien bleiben automatisch vor allen zusätzlichen Mods geladen. Sie sind kein Teil der auswählbaren Modliste.',
     refresh:'Dateien neu einlesen', save:'Ladereihenfolge speichern', busy:'Wird geladen …', active:'Aktive Mods', available:'Weitere hochgeladene Mods', empty:'Keine weiteren Spielplugins gefunden.',
     search:'Mods nach Namen suchen', enabled:'Aktiv', up:'Nach oben', down:'Nach unten', server:'Spielserver', publication:'Download-Ordner', configured:'Konfiguration',
     directories:'Durchsuchte Ordner', master:'Masterdatei', plugin:'Plugin', dependencies:'Benötigt', readOnly:'Du kannst die Modliste ansehen. Änderungen benötigen ein Administratorkonto mit Konsolenberechtigung.',
@@ -17,7 +18,8 @@ const messages = {
     MASTER_ORDER:'Masterdateien müssen vor gewöhnlichen Plugins stehen: ', DEPENDENCY_ORDER:'Ein benötigter Master muss vor seinem Plugin aktiv sein: ', forbidden:'Speichern benötigt eine berechtigte Administratorsitzung.',
   },
   en: {
-    title:'Mod load order', intro:'Uploaded game plugins are detected automatically. Enable the mods you want and arrange the order that the server and launcher will use.',
+    title:'Mod load order', intro:'Additional game mods are detected automatically. Enable the mods you want and arrange the order that the server and launcher will use.',
+    baseFiles:'The five required game files are always loaded before additional mods. They are not part of the selectable mod list.',
     refresh:'Rescan files', save:'Save load order', busy:'Loading …', active:'Active mods', available:'Other uploaded mods', empty:'No other game plugins found.',
     search:'Search mod names', enabled:'Enabled', up:'Move up', down:'Move down', server:'Game server', publication:'Download directory', configured:'Configuration',
     directories:'Scanned directories', master:'Master file', plugin:'Plugin', dependencies:'Requires', readOnly:'You can view the mod list. Changes require an administrator account with console permission.',
@@ -30,7 +32,8 @@ const messages = {
     MASTER_ORDER:'Master files must precede ordinary plugins: ', DEPENDENCY_ORDER:'A required master must be enabled before its plugin: ', forbidden:'Saving requires an authorized administrator session.',
   },
   ru: {
-    title:'Порядок загрузки модов', intro:'Загруженные игровые плагины определяются автоматически. Включите нужные моды и задайте порядок для сервера и лаунчера.',
+    title:'Порядок загрузки модов', intro:'Дополнительные игровые моды определяются автоматически. Включите нужные моды и задайте порядок для сервера и лаунчера.',
+    baseFiles:'Пять обязательных игровых файлов всегда загружаются перед дополнительными модами. Они не входят в список выбираемых модов.',
     refresh:'Перечитать файлы', save:'Сохранить порядок', busy:'Загрузка …', active:'Активные моды', available:'Другие загруженные моды', empty:'Другие игровые плагины не найдены.',
     search:'Поиск модов по имени', enabled:'Включён', up:'Выше', down:'Ниже', server:'Игровой сервер', publication:'Каталог загрузки', configured:'Конфигурация',
     directories:'Проверяемые папки', master:'Мастер-файл', plugin:'Плагин', dependencies:'Требует', readOnly:'Список доступен для просмотра. Для изменений нужен аккаунт администратора с доступом к консоли.',
@@ -44,21 +47,26 @@ const messages = {
   },
 };
 type Entry = {name:string; source:'server'|'publication'|'configured'; size:number; masters:string[]; master:boolean; issue?:'missing'|'invalid'|'duplicate'|'publicationOnly'};
-type Snapshot = {revision:string; loadOrder:string[]; activeOrder:string[]; restartRequired:boolean; dataDirectory:string; publicationDirectory:string; entries:Entry[]};
+type Snapshot = {revision:string; loadOrder:string[]; baseLoadOrder:string[]; activeOrder:string[]; restartRequired:boolean; dataDirectory:string; publicationDirectory:string; entries:Entry[]};
 type Notice = {code:string; plugin?:string; dependency?:string};
+const editableOrder = (snapshot:Snapshot) => {
+  const baseFiles = new Set(snapshot.baseLoadOrder.map(name => name.toLowerCase()));
+  return snapshot.loadOrder.filter(name => !baseFiles.has(name.toLowerCase()));
+};
 export function ModLoadOrderPanel({canView,canEdit}:{canView:boolean;canEdit:boolean}) {
   const {i18n}=useTranslation(); const language=i18n.language.split('-')[0] as keyof typeof messages;
   const text=messages[language] || messages.en;
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[order,setOrder]=useState<string[]>([]),[busy,setBusy]=useState(false),[search,setSearch]=useState(''),[notice,setNotice]=useState<Notice|null>(null);
   const panel=useRef<HTMLElement|null>(null);
-  const dirty=Boolean(snapshot && JSON.stringify(snapshot.loadOrder)!==JSON.stringify(order));
+  const dirty=Boolean(snapshot && JSON.stringify(editableOrder(snapshot))!==JSON.stringify(order));
   const endpoint='/api/admin/resources/load-order';
   async function load(signal?:AbortSignal) {
     setBusy(true);setNotice(null);
     try {
       const response=await fetch(endpoint,{credentials:'same-origin',cache:'no-store',signal});
       if(!response.ok)throw Error();const data:Snapshot=await response.json();
-      if(!signal?.aborted){setSnapshot(data);setOrder(data.loadOrder);}
+      const customOrder=editableOrder(data);
+      if(!signal?.aborted){setSnapshot(data);setOrder(customOrder);}
     }catch {if(!signal?.aborted)setNotice({code:'error'});}finally{if(!signal?.aborted)setBusy(false);}
   }
   useEffect(()=>{if(!canView)return;const controller=new AbortController();void load(controller.signal);return()=>controller.abort();},[canView]);
@@ -67,7 +75,7 @@ export function ModLoadOrderPanel({canView,canEdit}:{canView:boolean;canEdit:boo
     try{
       const response=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:snapshot.revision,loadOrder:order})});
       const data=await response.json();if(!response.ok){setNotice(response.status===403?{code:'forbidden'}:data);return;}
-      setSnapshot(data);setOrder(data.loadOrder);setNotice({code:'restart'});
+      const customOrder=editableOrder(data);setSnapshot(data);setOrder(customOrder);setNotice({code:'restart'});
     }catch{setNotice({code:'error'});}finally{setBusy(false);}
   }
   const focusRow=(name:string,action='enabled')=>requestAnimationFrame(()=>{
@@ -81,7 +89,9 @@ export function ModLoadOrderPanel({canView,canEdit}:{canView:boolean;canEdit:boo
     const next=[...previous],before=entry.master?next.findIndex(name=>snapshot?.entries.find(value=>value.name.toLowerCase()===name.toLowerCase())?.master===false):-1;
     next.splice(before<0?next.length:before,0,entry.name);return next;
   });focusRow(entry.name);};
-  const entries=new Map(snapshot?.entries.map(entry=>[entry.name.toLowerCase(),entry])||[]);
+  const baseFiles = new Set(snapshot?.baseLoadOrder.map(name => name.toLowerCase()) || []);
+  const modEntries = (snapshot?.entries || []).filter(entry => !baseFiles.has(entry.name.toLowerCase()));
+  const entries=new Map(modEntries.map(entry=>[entry.name.toLowerCase(),entry]));
   const selected=new Set(order.map(name=>name.toLowerCase())),matches=(name:string)=>name.toLowerCase().includes(search.trim().toLowerCase());
   function row(entry:Entry,index:number|null){
     const active=index!==null;
@@ -101,12 +111,12 @@ export function ModLoadOrderPanel({canView,canEdit}:{canView:boolean;canEdit:boo
     {!canView?<p>{text.noPermission}</p>:<>
       {!canEdit&&<p>{text.readOnly}</p>}{notice&&<p className="mod-load-order__notice" role={notice.code==='restart'?'status':'alert'}>{noticeText}</p>}
       {busy&&!snapshot&&<p role="status">{text.busy}</p>}
-      {snapshot&&<><p className="mod-load-order__directories">{text.directories}: <code>{snapshot.dataDirectory}</code> · <code>{snapshot.publicationDirectory}</code></p><p>{text.hint}</p>
+      {snapshot&&<><p>{text.baseFiles}</p><p className="mod-load-order__directories">{text.directories}: <code>{snapshot.dataDirectory}</code> · <code>{snapshot.publicationDirectory}</code></p><p>{text.hint}</p>
         {snapshot.restartRequired&&notice?.code!=='restart'&&<p className="mod-load-order__notice" role="status">{text.pending}</p>}
         <label className="mod-load-order__search">{text.search}<input type="search" value={search} onChange={event=>setSearch(event.target.value)}/></label>
         <h3>{text.active} <span>({order.length})</span></h3><ol className="mod-load-order__list">{order.map((name,index)=>{const entry=entries.get(name.toLowerCase());return entry&&matches(name)?row(entry,index):null;})}</ol>
-        <h3>{text.available}</h3><ul className="mod-load-order__list">{snapshot.entries.filter(entry=>!selected.has(entry.name.toLowerCase())&&matches(entry.name)).map(entry=>row(entry,null))}</ul>
-        {!snapshot.entries.some(entry=>!selected.has(entry.name.toLowerCase())&&matches(entry.name))&&<p>{text.empty}</p>}
+        <h3>{text.available}</h3><ul className="mod-load-order__list">{modEntries.filter(entry=>!selected.has(entry.name.toLowerCase())&&matches(entry.name)).map(entry=>row(entry,null))}</ul>
+        {!modEntries.some(entry=>!selected.has(entry.name.toLowerCase())&&matches(entry.name))&&<p>{text.empty}</p>}
         <footer><button type="button" className="mod-load-order__save" disabled={!dirty||busy||!canEdit} onClick={()=>void save()}>{busy?text.busy:text.save}</button>{dirty&&<span role="status">{text.changed}</span>}</footer>
       </>}
     </>}

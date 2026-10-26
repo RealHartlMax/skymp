@@ -7,6 +7,40 @@ das mitgelieferte Serverlogo.
 
 ## Deutsch
 
+**Server-Log** erhält neue Konsolen- und Adminmeldungen auch über die aktive
+WebSocket-Verbindung. Die Live-Konsole und die HTTP-Logliste bleiben ebenfalls
+verfügbar. JavaScript-Konsolenmeldungen werden einmal ins Terminal und in die
+JavaScript-Logdatei geschrieben; die zusätzliche Kopie über den nativen Logger
+entfällt. Regelmäßige erfolgreiche Master-Heartbeats werden höchstens alle fünf
+Minuten protokolliert. Start, Shutdown, Fehler und Wiederherstellung werden
+weiterhin gemeldet; der eigentliche Heartbeat-Takt bleibt unverändert.
+
+**Ankündigung senden** in den Schnellaktionen sendet die Nachricht an alle
+verbundenen Spieler als Banner oben im Spielbild. Das Banner bleibt acht
+Sekunden sichtbar; die bestehende Client-Anzeige begrenzt den Text auf 240
+Zeichen. Der Dashboard-Aufruf verwendet dafür das vorhandene
+`announcementToast`-Paket. Optionale Chat-Adapter können die Nachricht zusätzlich
+im Chat ausgeben. Für diesen Fix müssen die Serverprogramme aktualisiert und
+neu gestartet werden; eine Änderung der nativen Client-DLL ist nicht nötig.
+Die lokale HTTP-/Browserprüfung ersetzt keinen Test in Skyrim/CEF.
+
+**Ressourcen → Server-Plugins** zeigt die beim Gameserver-Start
+erkannten Erweiterungen aus `Plugins/`. Pro Plugin stehen **Aktivieren** und
+**Deaktivieren** bereit. **Alle deaktivierten aktivieren** gibt alle erkannten
+Plugins mit vorhandener `plugin.json` frei, auch ausserhalb des Suchfilters.
+Unter **Neue Plugins beim Gameserver-Start** kann statt der standardmaessigen
+Dashboard-Freigabe **Automatisch aktivieren** gewaehlt werden. Dann werden neue
+Plugins beim ersten Erkennen direkt geladen. Bereits bekannte, deaktivierte
+Plugins bleiben deaktiviert, bis sie einzeln oder gemeinsam freigegeben werden.
+Die Freigabe bleibt gespeichert; ein Terminalbefehl ist nicht bei jedem Start
+erforderlich. Laufzeitstatus und Startfreigabe werden getrennt angezeigt.
+Fuer diese Plugin-Aenderungen reicht ein Gameserver-Neustart. Lieferformat,
+Erstinstallation und Einschraenkungen stehen im [Plugin-Leitfaden](../README-plugins.md).
+
+**Ressourcen → Spielmods** verwaltet zusaetzliche Mods. Die fuenf benoetigten
+Skyrim-Spieldateien erscheinen nicht als auswaehlbare Mods und bleiben beim
+Speichern automatisch am Anfang der Ladereihenfolge erhalten.
+
 **Dashboard** zeigt jetzt dieselben echten Prozess- und Tickmessungen wie
 **Metriken**, einschließlich Zeitverlauf und wählbarem Zeitpunkt. Dazu kommen
 erfasste Verbindungsabbrüche der letzten sechs Stunden, getrennt nach erwarteten

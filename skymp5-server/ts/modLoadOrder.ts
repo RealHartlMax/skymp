@@ -14,6 +14,8 @@ export class ModOrderError extends Error {
 const validName = (value: unknown): value is string => typeof value === 'string' && Buffer.byteLength('Data/' + value, 'utf8') <= 240 && !/[\\/<>:"|?*\x00-\x1f]/.test(value) && !/^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])\./i.test(value) && !/[. ]$/.test(value) && /\.(esm|esp|esl)$/i.test(value);
 const key = (value: string) => value.toLowerCase();
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((name, i) => key(name) === key(b[i] || ''));
+export const BASE_GAME_FILES = ['Skyrim.esm', 'Update.esm', 'Dawnguard.esm', 'HearthFires.esm', 'Dragonborn.esm'] as const;
+const baseGameNames = new Set<string>(BASE_GAME_FILES.map(key));
 
 async function header(file: string): Promise<{ masters: string[]; master: boolean; fingerprint: string; size: number }> {
   const handle = await fs.open(file, 'r');
@@ -81,17 +83,22 @@ export async function inspectModOrder(settings: Settings) {
   let activeOrder: string[] = [];
   try { const manifest = JSON.parse(await fs.readFile(path.join(dataDir, 'manifest.json'), 'utf8')); if (Array.isArray(manifest.loadOrder)) activeOrder = manifest.loadOrder.filter((value: unknown) => typeof value === 'string'); } catch {}
   const revision = createHash('sha256').update(JSON.stringify({configured, dataDir, publication, fingerprints})).digest('hex');
-  return {ok: true, revision, loadOrder: order, activeOrder, restartRequired: !same(order, activeOrder), dataDirectory: String(settings.dataDir || './data'), publicationDirectory: path.join(config?.directory || './client-resources', 'Data'), entries: [...entries.values()]};
+  const baseLoadOrder = BASE_GAME_FILES.map(name => entries.get(key(name))?.name || name);
+  return {ok: true, revision, loadOrder: order, baseLoadOrder, activeOrder, restartRequired: !same(order, activeOrder), dataDirectory: String(settings.dataDir || './data'), publicationDirectory: path.join(config?.directory || './client-resources', 'Data'), entries: [...entries.values()]};
 }
 
 export function validateModOrder(input: unknown, snapshot: Awaited<ReturnType<typeof inspectModOrder>>): string[] {
-  if (!Array.isArray(input) || !input.length || input.length > 4096 || !input.every(validName)) throw new ModOrderError('INVALID_ORDER');
-  const names = input as string[], positions = new Map<string, number>(), entries = new Map(snapshot.entries.map(entry => [key(entry.name), entry]));
-  if (key(names[0]) !== 'skyrim.esm') throw new ModOrderError('BASE_FIRST');
-  for (const [index, name] of names.entries()) {
-    if (positions.has(key(name))) throw new ModOrderError('DUPLICATE_PLUGIN', 400, name);
-    positions.set(key(name), index);
+  if (!Array.isArray(input) || input.length > 4096 || !input.every(validName)) throw new ModOrderError('INVALID_ORDER');
+  const requested = new Set<string>();
+  for (const name of input as string[]) {
+    if (requested.has(key(name))) throw new ModOrderError('DUPLICATE_PLUGIN', 400, name);
+    requested.add(key(name));
   }
+  // Required game files are always loaded first, independently of the editable mod selection.
+  const names = [...snapshot.baseLoadOrder, ...(input as string[]).filter(name => !baseGameNames.has(key(name)))];
+  if (names.length > 4096) throw new ModOrderError('INVALID_ORDER');
+  const positions = new Map(names.map((name, index) => [key(name), index]));
+  const entries = new Map(snapshot.entries.map(entry => [key(entry.name), entry]));
   let regular = false;
   for (const [index, name] of names.entries()) {
     const entry = entries.get(key(name));

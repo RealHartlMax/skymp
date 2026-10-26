@@ -49,7 +49,14 @@ try {
  assert.equal(logs.filter(line=>line.includes('accepted (HTTP 200')).length,acceptedBefore+1);
  await client.sendHeartbeat(4,'periodic');
  assert.equal(logs.filter(line=>line.includes('accepted (HTTP 200')).length,acceptedBefore+1);
- checks.push('Recovery is logged immediately; regular success messages are bounded to once per minute');
+ const realNow=Date.now,start=realNow();
+ try{
+  Date.now=()=>start+60000;await client.sendHeartbeat(4,'periodic');
+  assert.equal(logs.filter(line=>line.includes('accepted (HTTP 200')).length,acceptedBefore+1);
+  Date.now=()=>start+300000;await client.sendHeartbeat(4,'periodic');
+  assert.equal(logs.filter(line=>line.includes('accepted (HTTP 200')).length,acceptedBefore+2);
+ }finally{Date.now=realNow;}
+ checks.push('Recovery is logged immediately; regular success messages are bounded to once per five minutes without changing heartbeat delivery');
  const count=requests.length;
  for(const [url,privateKey,offline] of [[master,key,true],['http://user:secret@127.0.0.1',key,false],[master,'',false],[master,null,false],[master,undefined,false]]){
   await new MasterClient(line=>logs.push(String(line)),7777,'87.106.58.116',url,32,'Test',privateKey,15000,offline).initAsync();

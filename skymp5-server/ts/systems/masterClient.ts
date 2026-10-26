@@ -145,7 +145,7 @@ export class MasterClient implements System {
           maxContentLength: MAX_RESPONSE_BODY_BYTES,
         });
         const now = Date.now();
-        if (reason === 'initial' || this.hadHeartbeatFailure || now - this.lastSuccessLog >= 60000) {
+        if (reason !== 'periodic' || this.hadHeartbeatFailure || now - this.lastSuccessLog >= 5 * 60 * 1000) {
           this.log('[MasterClient] Heartbeat ' + reason + ' accepted (HTTP ' + response.status + ', public ID=' + (this.serverUid || 'dashboard') + ', host=' + this.serverIp + ':' + this.serverPort + ', players=' + online + ').');
           this.lastSuccessLog = now;
         }

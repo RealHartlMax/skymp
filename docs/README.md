@@ -10,6 +10,8 @@ Current server checkout audit: **24 October 2026**. Start with
 [Steam, guest access and Legacy in-game login](docs_ingame_login.md),
 [launcher mod packages](docs_launcher_modpacks.md), and
 [versioned client/SKSE packages](docs_launcher_runtime_updates.md).
+For server extensions, see the [Plugin System guide](../README-plugins.md),
+including packaging, dashboard management and the required game-server restarts.
 Local build/download checks and real Skyrim/CEF gameplay acceptance are recorded separately.
 
 ## Project Status (WIP Fork)

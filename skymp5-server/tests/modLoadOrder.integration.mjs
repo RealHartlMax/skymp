@@ -16,12 +16,14 @@ export function makePlugin(masters=[],master=false){
  const record=Buffer.alloc(24);record.write('TES4');record.writeUInt32LE(data.length,4);record.writeUInt32LE(master?1:0,8);return Buffer.concat([record,data]);
 }
 let server;const checks=[];
+const baseFiles=['Skyrim.esm','Update.esm','Dawnguard.esm','HearthFires.esm','Dragonborn.esm'];
 try{
  const data=path.join(root,'data'),publication=path.join(root,'client-resources/Data');fs.mkdirSync(data);fs.mkdirSync(publication,{recursive:true});
+ for(const [index,name]of baseFiles.entries())fs.writeFileSync(path.join(data,name),makePlugin(index?['Skyrim.esm']:[],true));
  for(const [name,masters,master]of [['Skyrim.esm',[],true],['World.esm',['Skyrim.esm'],true],['Alpha.esp',['World.esm'],false],['Patch.esp',['Alpha.esp'],false],['Unused.esl',['Skyrim.esm'],true]])fs.writeFileSync(path.join(data,name),makePlugin(masters,master));
  fs.writeFileSync(path.join(data,'broken.esp'),'corrupt');fs.writeFileSync(path.join(data,'Unrelated.dll'),'not a mod');fs.writeFileSync(path.join(publication,'OnlyDownload.esp'),makePlugin(['Skyrim.esm']));
  fs.mkdirSync(path.join(data,'nested'));fs.writeFileSync(path.join(data,'nested/NotDirect.esp'),makePlugin());
- const cfg=path.join(root,'server-settings.json');const settings={loadOrder:['Skyrim.esm','World.esm','Alpha.esp','Patch.esp'],dataDir:data,launcherResources:{directory:path.dirname(publication),runtimeSource:'https://fixture.invalid/catalog.json'},masterKey:'PRIVATE_FIXTURE_KEEP',other:{keep:true}};
+ const cfg=path.join(root,'server-settings.json');const settings={loadOrder:[...baseFiles,'World.esm','Alpha.esp','Patch.esp'],dataDir:data,launcherResources:{directory:path.dirname(publication),runtimeSource:'https://fixture.invalid/catalog.json'},masterKey:'PRIVATE_FIXTURE_KEEP',other:{keep:true}};
  fs.writeFileSync(cfg,JSON.stringify(settings));fs.writeFileSync(path.join(data,'manifest.json'),JSON.stringify({loadOrder:settings.loadOrder}));
  const read=()=>JSON.parse(fs.readFileSync(cfg,'utf8'));let writes=0,injectLatest=false,reads=0;
  const router=new Router();api.registerModLoadOrder(router,{read:()=>{reads++;if(injectLatest&&reads===2){const current=read();current.other.updated=true;fs.writeFileSync(cfg,JSON.stringify(current));}return read();},write:value=>{writes++;fs.writeFileSync(cfg,JSON.stringify(value));},authorize:(ctx,write)=>{if(ctx.get('x-test-role')==='admin'||!write&&ctx.get('x-test-role')==='viewer')return true;ctx.status=403;ctx.body={ok:false};return false;}});
@@ -29,18 +31,21 @@ try{
  const get=role=>fetch(origin+'/api/admin/resources/load-order',{headers:{'x-test-role':role||'admin'}});
  const post=(value,role='admin',site=origin)=>fetch(origin+'/api/admin/resources/load-order',{method:'POST',headers:{'Content-Type':'application/json',Origin:site,'x-test-role':role},body:JSON.stringify(value)});
  let response=await get(),snapshot=await response.json();assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(snapshot.restartRequired,false);
+ assert.deepEqual(snapshot.baseLoadOrder,baseFiles);
  assert.deepEqual(snapshot.loadOrder,settings.loadOrder);assert(snapshot.entries.some(entry=>entry.name==='Unused.esl'));assert(!snapshot.entries.some(entry=>entry.name==='Unrelated.dll'||entry.name==='NotDirect.esp'));
  assert.equal(snapshot.entries.find(entry=>entry.name==='broken.esp').issue,'invalid');assert.equal(snapshot.entries.find(entry=>entry.name==='OnlyDownload.esp').issue,'publicationOnly');assert(!JSON.stringify(snapshot).includes(settings.masterKey));
  checks.push('Automatic direct-directory ESM/ESP/ESL discovery, TES4 masters, inactive uploads and publication-only/invalid status; no secrets or unrelated files');
- const order=['Skyrim.esm','World.esm','Unused.esl','Alpha.esp','Patch.esp'];response=await post({revision:snapshot.revision,loadOrder:order});assert.equal(response.status,200,await response.clone().text());snapshot=await response.json();assert.equal(snapshot.restartRequired,true);assert.deepEqual(read().loadOrder,order);assert.equal(read().masterKey,settings.masterKey);assert.deepEqual(read().other,{keep:true});
+ const order=[...baseFiles,'World.esm','Unused.esl','Alpha.esp','Patch.esp'];response=await post({revision:snapshot.revision,loadOrder:order.slice(baseFiles.length)});assert.equal(response.status,200,await response.clone().text());snapshot=await response.json();assert.equal(snapshot.restartRequired,true);assert.deepEqual(read().loadOrder,order);assert.equal(read().masterKey,settings.masterKey);assert.deepEqual(read().other,{keep:true});
+ response=await post({revision:snapshot.revision,loadOrder:['World.esm','skyrim.esm','Unused.esl','Alpha.esp','Update.esm','Patch.esp']});assert.equal(response.status,200,await response.clone().text());snapshot=await response.json();assert.deepEqual(read().loadOrder,order);
+ checks.push('The five required game files are separate from editable mods and cannot be removed or reordered through mod-only or legacy full-order API requests');
  fs.writeFileSync(path.join(data,'manifest.json'),JSON.stringify({loadOrder:order}));assert.equal((await (await get()).json()).restartRequired,false);
  fs.writeFileSync(path.join(data,'NewUpload.esp'),makePlugin(['Skyrim.esm']));const unchanged=fs.readFileSync(cfg,'utf8');response=await post({revision:snapshot.revision,loadOrder:order});assert.equal(response.status,409);assert.equal(fs.readFileSync(cfg,'utf8'),unchanged);snapshot=await (await get()).json();assert(snapshot.entries.some(entry=>entry.name==='NewUpload.esp'));
  checks.push('Saving updates only loadOrder, preserves private settings, reports restart until the game manifest matches and rejects stale uploads/configuration');
  const failures=[
-  [['World.esm','Skyrim.esm'],'BASE_FIRST'],
   [['Skyrim.esm','World.esm','Patch.esp','Alpha.esp'],'DEPENDENCY_ORDER'],
   [['Skyrim.esm','World.esm','Alpha.esp','Unused.esl'],'MASTER_ORDER'],
   [['Skyrim.esm','Skyrim.esm'],'DUPLICATE_PLUGIN'],
+  [['SKYRIM.ESM','Skyrim.esm'],'DUPLICATE_PLUGIN'],
   [['Skyrim.esm','../Alpha.esp'],'INVALID_ORDER'],
   [['Skyrim.esm','CON.esp'],'INVALID_ORDER'],
   [['Skyrim.esm','broken.esp'],'INVALID_PLUGIN'],
@@ -53,5 +58,10 @@ try{
  reads=0;injectLatest=true;response=await post({revision:snapshot.revision,loadOrder:order});assert.equal(response.status,200,await response.clone().text());assert.equal(read().other.updated,true);assert.equal(read().masterKey,settings.masterKey);injectLatest=false;
  const legacy=read();legacy.loadOrder.push('Missing.esp');fs.writeFileSync(cfg,JSON.stringify(legacy));snapshot=await (await get()).json();assert.equal(snapshot.entries.find(entry=>entry.name==='Missing.esp').issue,'missing');
  checks.push('Concurrent unrelated configuration edits survive saves and missing configured plugins remain visible for repair');
+ response=await post({revision:snapshot.revision,loadOrder:[]});assert.equal(response.status,200,await response.clone().text());snapshot=await response.json();assert.deepEqual(read().loadOrder,baseFiles);
+ const baseOnly=fs.readFileSync(cfg,'utf8');
+ fs.renameSync(path.join(data,'Update.esm'),path.join(data,'Update.esm.fixture-backup'));snapshot=await (await get()).json();response=await post({revision:snapshot.revision,loadOrder:[]});assert.equal(response.status,400);assert.equal((await response.json()).plugin,'Update.esm');assert.equal(fs.readFileSync(cfg,'utf8'),baseOnly);fs.renameSync(path.join(data,'Update.esm.fixture-backup'),path.join(data,'Update.esm'));
+ fs.writeFileSync(path.join(data,'Update.esm'),'corrupt fixture');snapshot=await (await get()).json();response=await post({revision:snapshot.revision,loadOrder:[]});assert.equal(response.status,400);assert.equal(fs.readFileSync(cfg,'utf8'),baseOnly);
+ checks.push('An empty custom selection keeps all five base files; missing or corrupt required files reject saves without changing settings');
  console.log(JSON.stringify({ok:true,checks,writes,realGameStarted:false,serverBuild:false}));
 }finally{if(server)await new Promise(resolve=>server.close(resolve));assert.equal(path.dirname(root),path.resolve(os.tmpdir()));assert(path.basename(root).startsWith('skymp-mod-order-'));fs.rmSync(root,{recursive:true,force:true});}
