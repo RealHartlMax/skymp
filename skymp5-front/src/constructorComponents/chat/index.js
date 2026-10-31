@@ -1,391 +1,171 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import Draggable from 'react-draggable';
 import { ResizableBox } from 'react-resizable';
-
 import ChatCorner from '../../img/chat_corner.svg';
-import { replaceIfMoreThan20 } from '../../utils/replaceIfMoreThan20';
-import ChatCheckbox from './checkbox';
-import Dices from './dices';
 import ChatInput from './input';
-import SendButton from './sendButton';
-import Settings from './settings';
+import { sendChat, closeChat } from '../../features/chat/bridge';
 import './styles.scss';
 
-const MAX_LENGTH = 2000; // Max message length
-const TIME_LIMIT = 1; // Seconds
-const SHOUT_LIMIT = 180; // Seconds
-const MAX_LINES = 10;
-const MAX_SHOUT_LENGTH = 100;
 const MAX_HISTORY_LENGTH = 20;
-
-const SHOUTREGEXP = /№(.*?)№/gi;
-
-const Chat = (props) => {
-  const [input, updateInput] = useState('');
-  const [isInputFocus, changeInputFocus] = useState(false);
-  const [hideNonRP, changeNonRPHide] = useState(false);
-  const [disableDiceSounds, setDisableDiceSounds] = useState(false);
-  const [disableDiceColors, setDisableDiceColors] = useState(false);
-  const [isPouchOpened, setPouchOpened] = useState(0);
-  const [moveChat, setMoveChat] = useState(false);
-  const [showSendButton, setSendButtonShow] = useState(false);
-  const [isSettingsOpened, setSettingsOpened] = useState(false);
-  const [fontSize, setFontSize] = useState(16);
-  const placeholder = props.placeholder;
-  const isInputHidden = props.isInputHidden;
-  const send = props.send;
-  const [lastSendInputText, setLastSendInputText] = useState(0);
-
-  const [doesIncludeShout, setIncludeShout] = useState(false);
-
-  const [shoutLength, setShoutLength] = useState(0);
-
-  const inputRef = useRef();
-
-  const chatRef = useRef();
-
-  const isReset = useRef(true);
-
-  const shoutReset = useRef(true);
-
-  const messagesHistory = useRef([]);
-
-  const currentMessageInHistory = useRef(-1);
-
-  const writtenMessage = useRef('');
-
-  const handleScroll = () => {
-    if (chatRef.current) {
-      window.needToScroll =
-        chatRef.current.scrollTop ===
-        chatRef.current.scrollHeight - chatRef.current.offsetHeight;
-    }
+const ChatBody = (props) => {
+  const chat = useSelector(state => state.chatReducer);
+  const dispatch = useDispatch();
+  const { t: fallbackT, i18n } = useTranslation();
+  // Server-selected chat strings do not change the language of other game UI.
+  const t = key => {
+    const name = key.startsWith('chat.') ? key.slice(5) : null;
+    return name && typeof chat.ui?.[name] === 'string' ? chat.ui[name] : fallbackT(key);
   };
-
-  const setEndOfContenteditable = (elem) => {
-    const sel = window.getSelection();
-    sel.selectAllChildren(elem);
-    sel.collapseToEnd();
-  };
-
-  const addMessageToHistory = (message) => {
-    messagesHistory.current = [message, ...messagesHistory.current];
-    if (messagesHistory.length > MAX_HISTORY_LENGTH) {
-      messagesHistory.current = messagesHistory.current.slice(
-        0,
-        MAX_HISTORY_LENGTH,
-      );
-    }
-    currentMessageInHistory.current = -1;
-    writtenMessage.current = '';
-  };
-
-  const sendMessage = useCallback(
-    (text) => {
-      const shout = text.match(SHOUTREGEXP);
-      const shoutLen = shout
-        ? shout.reduce((acc, text) => {
-            acc += text.length;
-            return acc;
-          }, 0)
-        : 0;
-      if (
-        text !== '' &&
-        text.length <= MAX_LENGTH &&
-        isReset.current &&
-        shoutLen <= MAX_SHOUT_LENGTH &&
-        (shoutLen === 0 || shoutReset.current)
-      ) {
-        if (send !== undefined) {
-          const message = replaceIfMoreThan20(text.trim(), '\n', '', MAX_LINES);
-          send(message);
-          addMessageToHistory(message);
-        }
-        isReset.current = false;
-        updateInput('');
-        inputRef.current.innerHTML = '';
-        inputRef.current.focus();
-        if (shout) {
-          shoutReset.current = false;
-          setTimeout(() => {
-            shoutReset.current = true;
-          }, 1000 * SHOUT_LIMIT);
-          setIncludeShout(false);
-          setShoutLength(0);
-        }
-      }
-    },
-    [
-      send,
-      updateInput,
-      input,
-      isReset.current,
-      shoutReset.current,
-      shoutLength,
-      doesIncludeShout,
-    ],
-  );
+  const inputRef = useRef(null), chatRef = useRef(null), frameRef = useRef(null);
+  const atBottom = useRef(true), history = useRef([]), historyIndex = useRef(-1), draft = useRef('');
+  const [fontSize, setFontSize] = useState(16), [opacity, setOpacity] = useState(0.72);
+  const [settingsOpen, setSettingsOpen] = useState(false), [moveChat, setMoveChat] = useState(false);
+  const isInputHidden = props.isInputHidden === true || (chat.showInput !== 'true' && !chat.inputOpen);
+  const input = chat.input || '';
+  const list = Array.isArray(chat.list) ? chat.list : [];
+  const legacySend = typeof props.send === 'function' ? props.send : null;
+  const available = chat.status === 'ready' || legacySend !== null;
+  const hudHidden = isInputHidden && (chat.status === 'ready' ? !chat.hudVisible : !legacySend);
+  const changeInput = value => dispatch({ type: 'UPDATE_CHAT_INPUT', data: value });
 
   useEffect(() => {
-    window.needToScroll = true;
-    const interval = setInterval(() => {
-      isReset.current = true;
-    }, 1000 * TIME_LIMIT);
-    return () => clearInterval(interval);
-  }, []);
+    history.current = []; historyIndex.current = -1; draft.current = '';
+  }, [chat.epoch]);
 
   useEffect(() => {
-    const node = inputRef.current;
-    const listener = (event) => {
-      // Imitate message sending on Enter press
-      if (event.code === 'Enter' && !event.shiftKey && inputRef.current) {
-        event.preventDefault();
-        sendMessage(input);
-      }
-      if (event.key === 'ArrowUp' && event.ctrlKey) {
-        if (currentMessageInHistory.current === -1) {
-          writtenMessage.current = input;
-        }
-        if (
-          currentMessageInHistory.current + 1 <
-          messagesHistory.current.length
-        ) {
-          currentMessageInHistory.current = currentMessageInHistory.current + 1;
-          updateInput(messagesHistory.current[currentMessageInHistory.current]);
-          inputRef.current.innerHTML =
-            messagesHistory.current[currentMessageInHistory.current];
-          setEndOfContenteditable(inputRef.current);
-        }
-      }
-      if (event.key === 'ArrowDown' && event.ctrlKey) {
-        if (currentMessageInHistory.current >= 0) {
-          if (currentMessageInHistory.current === 0) {
-            updateInput(writtenMessage.current);
-            inputRef.current.innerHTML = writtenMessage.current;
-            setEndOfContenteditable(inputRef.current);
-            currentMessageInHistory.current = -1;
-          } else {
-            currentMessageInHistory.current =
-              currentMessageInHistory.current - 1;
-            updateInput(
-              messagesHistory.current[currentMessageInHistory.current],
-            );
-            inputRef.current.innerHTML =
-              messagesHistory.current[currentMessageInHistory.current];
-            setEndOfContenteditable(inputRef.current);
-          }
-        }
-      }
+    if (!isInputHidden || !chat.hudVisible || chat.hideAt === null) return;
+    const deadline = chat.hideAt;
+    const timer = setTimeout(() => dispatch({ type: 'SKYMP_CHAT_HIDE', data: deadline }), Math.max(0, deadline - Date.now()));
+    return () => clearTimeout(timer);
+  }, [chat.hideAt, chat.hudVisible, isInputHidden, dispatch]);
+
+  // Existing chat widgets feed the same Redux list, rather than another store.
+  useEffect(() => {
+    if (chat.status !== 'ready' && Array.isArray(props.messages)) dispatch({ type: 'UPDATE_CHAT_LIST', data: props.messages });
+  }, [props.messages, chat.status, dispatch]);
+  useEffect(() => {
+    if (!isInputHidden) inputRef.current?.focus();
+    else inputRef.current?.blur();
+  }, [isInputHidden]);
+  useLayoutEffect(() => {
+    if (atBottom.current && chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [chat.list]);
+  useEffect(() => {
+    if (!chat.pending) return;
+    const timer = setTimeout(() => dispatch({ type: 'SKYMP_CHAT_ERROR', data: 'timeout' }), 5000);
+    return () => clearTimeout(timer);
+  }, [chat.pending, dispatch]);
+  useEffect(() => {
+    if (isInputHidden) return;
+    const keydown = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeChat(); }
     };
-    node?.addEventListener('keydown', listener);
-    return () => node?.removeEventListener('keydown', listener);
-  }, [inputRef.current, input]);
-
-  useEffect(() => {
-    if (
-      inputRef !== undefined &&
-      inputRef.current !== undefined &&
-      !isInputHidden
-    ) {
-      inputRef.current.focus();
-    }
+    window.addEventListener('keydown', keydown, true);
+    return () => window.removeEventListener('keydown', keydown, true);
   }, [isInputHidden]);
 
-  useEffect(() => {
-    if (window.needToScroll) window.scrollToLastMessage();
-    if (inputRef !== undefined && inputRef.current !== undefined) {
-      inputRef.current.focus();
-    }
-  }, [props.messages]);
-
-  const handleInput = (value) => {
-    updateInput(value);
-    const shout = value.match(SHOUTREGEXP);
-    if (shout && shout[0] !== '') {
-      setIncludeShout(true);
-      setShoutLength(
-        shout.reduce((acc, text) => {
-          acc += text.length;
-          return acc;
-        }, 0),
-      );
-    } else {
-      setIncludeShout(false);
-      setShoutLength(0);
-    }
-  };
-
-  const getMessageSpans = (message) => {
-    let isNonRp = message.category === 'plain';
-    const result = message.text.map(({ text, color, opacity, type }, i) => {
-      if (i >= 1) {
-        isNonRp = type.includes('nonrp') && isNonRp;
+  function remember(text) {
+    if (history.current[0] !== text) history.current = [text, ...history.current].slice(0, MAX_HISTORY_LENGTH);
+    historyIndex.current = -1; draft.current = '';
+  }
+  function submit() {
+    if (!input.trim() || chat.pending) return;
+    if (input.length > chat.maxMessageLength) return dispatch({ type: 'SKYMP_CHAT_ERROR', data: 'tooLong' });
+    if (!available) return dispatch({ type: 'SKYMP_CHAT_ERROR', data: 'missingBridge' });
+    const requestId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    dispatch({ type: 'SKYMP_CHAT_PENDING', data: { requestId, text: input } });
+    try {
+      if (chat.status !== 'ready' && legacySend) {
+        // Preserve the supplied widget contract, with no fabricated network echo.
+        legacySend(input);
+        dispatch({ type: 'SKYMP_CHAT_ACK', data: { requestId, accepted: true } });
+      } else if (!sendChat(input, requestId)) {
+        dispatch({ type: 'SKYMP_CHAT_ERROR', data: 'missingBridge' });
+        return;
       }
-      return (
-        <span
-          key={`${text}_${i}`}
-          style={{ color: `${color}`, opacity: opacity }}
-          className={`${type.join(' ')}`}
-        >
-          {text}
-        </span>
-      );
-    });
-    return [result, isNonRp];
-  };
-
-  const getList = () => {
-    return window.chatMessages.map((msg, index) => {
-      const result = getMessageSpans(msg);
-      return (
-        <div
-          className={`msg ${result[1] ? 'nonrp' : ''}`}
-          key={`msg-${index}`}
-          style={{ marginLeft: '10px', opacity: msg.opacity }}
-        >
-          {result[0]}
-        </div>
-      );
-    });
-  };
+      remember(input);
+    } catch { dispatch({ type: 'SKYMP_CHAT_ERROR', data: 'missingBridge' }); }
+  }
+  function keydown(event) {
+    event.stopPropagation();
+    if (event.key === 'Enter' && chat.suppressEnter) { event.preventDefault(); return; }
+    if (event.nativeEvent.isComposing || event.repeat) return;
+    if (event.key === 'Enter') { event.preventDefault(); submit(); }
+    if (event.ctrlKey && event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (historyIndex.current === -1) draft.current = input;
+      if (historyIndex.current + 1 < history.current.length) changeInput(history.current[++historyIndex.current]);
+    }
+    if (event.ctrlKey && event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (historyIndex.current >= 0) changeInput(--historyIndex.current === -1 ? draft.current : history.current[historyIndex.current]);
+    }
+  }
+  function time(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    try { return date.toLocaleTimeString(chat.locale || i18n.language, { hour: '2-digit', minute: '2-digit' }); }
+    catch { return date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }); }
+  }
+  if (!chat.show) return null;
   return (
-    <div className="fullPage">
-      <Draggable handle="#handle" disabled={!moveChat} bounds={'.fullPage'}>
-        <div id="chat">
+    <div className="fullPage skymp-chat" style={{ '--chat-opacity': opacity }}>
+      <Draggable nodeRef={frameRef} handle=".chat-drag-handle" disabled={!moveChat || isInputHidden} bounds="parent">
+        <section id="chat" ref={frameRef} aria-label={t('chat.title')} aria-hidden={hudHidden}
+          style={{ visibility: hudHidden ? 'hidden' : undefined }}>
           <div className="chat-main">
-            <ResizableBox
-              height={320}
-              maxConstraints={[800, 1100]}
-              minConstraints={[320, 320]}
-              axis={'y'}
-              handle={
-                !isInputHidden && (
-                  <div className="chat-corner">
-                    <img src={ChatCorner} />
+            <div className="chat-drag-handle" aria-hidden="true">{t('chat.title')}</div>
+            <ResizableBox height={250} minConstraints={[280, 120]} maxConstraints={[800, 600]} axis="y"
+              handle={!isInputHidden ? <div className="chat-corner"><img src={ChatCorner} alt="" /></div> : <span />}
+              resizeHandles={['nw']} className="list">
+              <div className="chat-list" ref={chatRef} role="log" aria-live="polite" style={{ fontSize }}
+                onScroll={() => { const el = chatRef.current; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32; }}>
+                {list.map((msg, index) => (
+                  <div className={`msg chat-${msg.category || 'system'}`} key={msg.id || `legacy-${index}`}>
+                    {msg.timestamp && <time dateTime={new Date(msg.timestamp).toISOString()}>[{time(msg.timestamp)}] </time>}
+                    {msg.playerName && <strong>{msg.playerName}: </strong>}
+                    <span>{typeof msg.text === 'string' ? msg.text : ''}</span>
                   </div>
-                )
-              }
-              resizeHandles={['nw']}
-              className={`list ${hideNonRP ? 'hideNonRP' : ''}`}
-              id="handle"
-            >
-              <div
-                className="chat-list"
-                style={{ fontSize }}
-                ref={chatRef}
-                onScroll={(e) => handleScroll()}
-              >
-                {getList()}
+                ))}
               </div>
             </ResizableBox>
-            <div
-              style={{
-                height: '100px',
-                display: !isInputHidden ? 'none' : 'block',
-              }}
-            />
-            <div
-              className="input"
-              style={{
-                display: isInputHidden ? 'none' : 'block',
-              }}
-            >
-              <div className="chat-input">
-                <ChatInput
-                  id="chatInput"
-                  className={'show'}
-                  type="text"
-                  placeholder={placeholder !== undefined ? placeholder : ''}
-                  onChange={(value) => {
-                    handleInput(value);
-                    if (lastSendInputText + 1000 < Date.now()) {
-                      window.skyrimPlatform.sendMessage('onInput');
-                      setLastSendInputText(Date.now());
-                    }
-                  }}
-                  onFocus={(e) => changeInputFocus(true)}
-                  onBlur={(e) => changeInputFocus(false)}
-                  ref={inputRef}
-                  fontSize={fontSize}
-                  maxLines={MAX_LINES}
-                />
-                {showSendButton && (
-                  <SendButton onClick={() => sendMessage(input)} />
-                )}
+            {!isInputHidden && (
+              <div className="input">
+                <div className="chat-input">
+                  <ChatInput ref={inputRef} value={input} label={t('chat.title')}
+                    placeholder={chat.commandsOnly ? t('chat.commandsPlaceholder') : props.placeholder || t('chat.placeholder')} fontSize={fontSize} maxLength={chat.maxMessageLength}
+                    onChange={changeInput} onKeyDown={keydown} />
+                  <button type="button" onClick={submit} disabled={!available || !!chat.pending}>{t('chat.send')}</button>
+                </div>
+                <div className="chat-controls">
+                  <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>{t('chat.settings')}</button>
+                  <span>{input.length}/{chat.maxMessageLength}</span>
+                </div>
+                <div className="chat-hint">{t('chat.hint')}</div>
+                <div className="chat-status" role="status">{chat.error ? t(`chat.${chat.error}`) : chat.pending ? t('chat.pending') : !available ? t(`chat.${chat.status}`) : ''}</div>
+                {settingsOpen && <div className="chat-options">
+                  <label>{t('chat.font')} <input aria-label={t('chat.font')} type="range" min="14" max="24" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /></label>
+                  <label>{t('chat.opacity')} <input aria-label={t('chat.opacity')} type="range" min="0.25" max="1" step="0.05" value={opacity} onChange={e => setOpacity(Number(e.target.value))} /></label>
+                  <label><input type="checkbox" checked={moveChat} onChange={e => setMoveChat(e.target.checked)} /> {t('chat.move')}</label>
+                </div>}
               </div>
-              <div className="chat-checkboxes">
-                <ChatCheckbox
-                  id={'nonrp'}
-                  text={'non-rp'}
-                  isChecked={hideNonRP}
-                  onChange={(e) => {
-                    inputRef.current.focus();
-                    changeNonRPHide(e.target.checked);
-                  }}
-                />
-                <ChatCheckbox
-                  id={'settings'}
-                  text={'settings'}
-                  isChecked={isSettingsOpened}
-                  onChange={(e) => {
-                    inputRef.current.focus();
-                    setSettingsOpened(e.target.checked);
-                  }}
-                />
-                {/* Maybe we will need it later: <ChatCheckbox id={'diceColor'} text={'dice colors'} isChecked={!disableDiceColors} onChange={(e) => setDisableDiceColors(!e.target.checked)} /> */}
-                <ChatCheckbox
-                  id={'moveChat'}
-                  text={'move chat'}
-                  isChecked={moveChat}
-                  onChange={(e) => {
-                    inputRef.current.focus();
-                    setMoveChat(e.target.checked);
-                  }}
-                />
-                {doesIncludeShout && (
-                  <span
-                    className={`chat-message-limit shout-limit ${
-                      shoutLength > MAX_SHOUT_LENGTH ? 'limit' : ''
-                    } text`}
-                  >
-                    {shoutLength}/{MAX_SHOUT_LENGTH}
-                  </span>
-                )}
-                <span
-                  className={`chat-message-limit ${
-                    input.length > MAX_LENGTH ? 'limit' : ''
-                  } text`}
-                >
-                  {input.length}/{MAX_LENGTH}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
-          {isInputHidden ? (
-            <></>
-          ) : (
-            <Dices
-              isOpened={isPouchOpened}
-              setOpened={setPouchOpened}
-              send={props.send}
-              disableSound={disableDiceSounds}
-              inputRef={inputRef}
-            />
-          )}
-        </div>
+        </section>
       </Draggable>
-      {isSettingsOpened && !isInputHidden && (
-        <Settings
-          fontSize={fontSize}
-          setFontSize={setFontSize}
-          isSoundsDisabled={disableDiceSounds}
-          setDisableSounds={setDisableDiceSounds}
-          showSendButton={showSendButton}
-          setShowSendButton={setSendButtonShow}
-        />
-      )}
     </div>
   );
 };
-
-export default Chat;
+export default function Chat(props) {
+  const isManaged = () => window.SkyMPPluginRuntime?.managed === true || window.SkyMPPluginRuntime?.has('skymp-chat') === true;
+  const [managed, setManaged] = useState(isManaged);
+  useEffect(() => {
+    const changed = () => setManaged(isManaged());
+    window.addEventListener('skympPluginUi:changed', changed);
+    return () => window.removeEventListener('skympPluginUi:changed', changed);
+  }, []);
+  return managed && props.runtimeModule !== true ? null : <ChatBody {...props} />;
+}

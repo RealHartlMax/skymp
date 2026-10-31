@@ -28,25 +28,25 @@ function write(root, relative, bytes) {
 }
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skymp-mod-publication-'));
-  const data = path.join(root, 'data'), publication = path.join(root, 'client-resources');
+  const data = path.join(root, 'data'), publication = path.join(root, 'data/mods/Assets');
   write(root, 'data/Skyrim.esm', 'TES4-owned-base');
   write(root, 'data/Community.esp', 'TES4-custom-plugin');
   write(root, 'data/Community.bsa', 'custom archive');
   write(root, 'data/Community - Textures.bsa', 'custom textures archive');
   write(root, 'data/admin-auth.json', '{"passwordHash":"must never be published"}');
   write(root, 'data/scripts/ServerOnly.pex', 'server-only script');
-  write(root, 'client-resources/Data/Scripts/ClientScript.pex', 'client script');
-  write(root, 'client-resources/Data/textures/first/shared.dds', 'first texture');
-  write(root, 'client-resources/Data/textures/second/shared.dds', 'second texture');
-  write(root, 'client-resources/Data/meshes/Community/Schwert.nif', 'mesh bytes');
-  write(root, 'client-resources/Data/SKSE/Plugins/Community.ini', '[community]\nenabled=true');
+  write(root, 'data/mods/Assets/Scripts/ClientScript.pex', 'client script');
+  write(root, 'data/mods/Assets/textures/first/shared.dds', 'first texture');
+  write(root, 'data/mods/Assets/textures/second/shared.dds', 'second texture');
+  write(root, 'data/mods/Assets/meshes/Community/Schwert.nif', 'mesh bytes');
+  write(root, 'data/mods/Assets/SKSE/Plugins/Community.ini', '[community]\nenabled=true');
   const loadOrder = ['Skyrim.esm', 'Community.esp'];
   const mods = loadOrder.map(filename => {
     const bytes = fs.readFileSync(path.join(data, filename));
     return { filename, size: bytes.length, crc32: crc32.buf(bytes) };
   });
   write(data, 'manifest.json', JSON.stringify({ versionMajor: 1, loadOrder, mods }));
-  return { root, data, publication, options: { dataDir: data, directory: publication, loadOrder } };
+  return { root, data, publication, options: { dataDir: data, loadOrder } };
 }
 async function serve(options) {
   const app = new Koa(), router = new Router();
@@ -108,18 +108,14 @@ async function run() {
   await check('changed files invalidate the old revision', async (f, server) => {
     const original = await (await fetch(server.base + 'api/launcher/manifest')).json();
     const file = original.resources.find(file => file.path.endsWith('first/shared.dds'));
-    write(f.publication, 'Data/textures/first/shared.dds', 'changed texture with a different size');
+    write(f.publication, 'textures/first/shared.dds', 'changed texture with a different size');
     assert.equal((await fetch(server.base + file.downloadPath)).status, 409);
     const changed = await (await fetch(server.base + 'api/launcher/manifest')).json();
     assert.notEqual(changed.revision, original.revision);
     assert.equal((await fetch(server.base + file.downloadPath)).status, 404);
   });
   for (const [name, mutate] of [
-    ['mismatching plugin', f => write(f.publication, 'Data/Community.esp', 'different plugin')],
     ['missing plugin', f => fs.unlinkSync(path.join(f.data, 'Community.esp'))],
-    ['runtime code', f => write(f.publication, 'Data/SKSE/Plugins/Other.dll', 'runtime code belongs in runtime package')],
-    ['official game file', f => write(f.publication, 'Data/Skyrim.esm', 'not distributable')],
-    ['private settings', f => write(f.publication, 'Data/Platform/Plugins/skymp5-client-settings.txt', 'private')],
     ['stale game manifest', f => { const file = path.join(f.data, 'manifest.json'); const json = JSON.parse(fs.readFileSync(file)); json.loadOrder.reverse(); fs.writeFileSync(file, JSON.stringify(json)); }],
   ]) {
     const f = fixture(); let server;
@@ -130,12 +126,13 @@ async function run() {
     } finally { await dispose(f, server); }
   }
   await check('disabled uploaded plugins are excluded from the active manifest', async (f, server) => {
-    write(f.publication, 'Data/Unused.esl', 'TES4-inactive-upload');
+    write(f.data, 'mods/Unused/Unused.esl', 'TES4-inactive-upload');
+    write(f.data, 'mods/Unused/textures/unused.dds', 'inactive mod asset');
     const response = await fetch(server.base + 'api/launcher/manifest');
     assert.equal(response.status, 200);
     const manifest = await response.json();
     assert.deepEqual(manifest.loadOrder, f.options.loadOrder);
-    assert(!manifest.resources.some(entry => entry.name === 'Unused.esl'));
+    assert(!manifest.resources.some(entry => entry.name === 'Unused.esl' || entry.name === 'unused.dds'));
     assert(manifest.resources.some(entry => entry.name === 'Community.esp'));
   });
   await check('disabled endpoint returns 404', async (f) => {
@@ -158,16 +155,74 @@ async function run() {
   });
   if (process.platform !== 'win32') {
     await check('case collisions are rejected for Windows clients', async (f, server) => {
-      write(f.publication, 'Data/textures/first/SHARED.dds', 'case collision');
-      assert.equal((await fetch(server.base + 'api/launcher/manifest')).status, 503);
+      write(f.publication, 'textures/first/SHARED.dds', 'case collision');
+      const manifest = await (await fetch(server.base + 'api/launcher/manifest')).json();
+      assert.equal(manifest.resources.filter(file => file.path.toLowerCase() === 'data/textures/first/shared.dds').length, 1);
     });
   } else skipped.push('Case-only duplicate files cannot be created on this Windows filesystem; exercised by Linux run');
   await check('symlink escape', async (f, server) => {
     const outside = path.join(f.root, 'outside'); fs.mkdirSync(outside); write(outside, 'secret.dds', 'must remain private');
-    try { fs.symlinkSync(outside, path.join(f.publication, 'Data/textures/linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    try { fs.symlinkSync(outside, path.join(f.publication, 'textures/linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
     catch (error) { if (['EPERM', 'EACCES'].includes(error.code)) { skipped.push('OS does not allow test symlink'); return; } throw error; }
     assert.equal((await fetch(server.base + 'api/launcher/manifest')).status, 503);
     assert.equal(fs.readFileSync(path.join(outside, 'secret.dds'), 'utf8'), 'must remain private');
+  });
+  const raceMenu = f => {
+    write(f.data, 'mods/RaceMenu/RaceMenu.esp', 'TES4-race');
+    write(f.data, 'mods/RaceMenu/RaceMenuPlugin.esp', 'TES4-plugin');
+    write(f.data, 'mods/RaceMenu/RaceMenu.bsa', 'race archive');
+    write(f.data, 'mods/RaceMenu/SKSE/Plugins/skee64.dll', 'dll bytes');
+    write(f.data, 'mods/RaceMenu/SKSE/Plugins/skee64.ini', '[Features]');
+    write(f.data, 'mods/RaceMenu/SKSE/Plugins/skee64.pdb', 'debug symbols');
+    write(f.data, 'mods/RaceMenu/ModderResource/NiOverride.h', 'header');
+    const loadOrder = ['Skyrim.esm', 'mods/RaceMenu/RaceMenu.esp', 'mods/RaceMenu/RaceMenuPlugin.esp'];
+    const names = loadOrder.map(name => path.basename(name));
+    write(f.data, 'manifest.json', JSON.stringify({ versionMajor: 1, loadOrder: names, mods: JSON.parse(fs.readFileSync(path.join(f.data, 'manifest.json'))).mods.filter(mod => mod.filename === 'Skyrim.esm') }));
+    return { ...f.options, loadOrder };
+  };
+  await check('a mod folder installs into the flat Data layout and never leaks its source path', async (f) => {
+    const server = await serve(raceMenu(f));
+    try {
+      const manifest = await (await fetch(server.base + 'api/launcher/manifest')).json();
+      assert.equal(manifest.version, '2');
+      assert.deepEqual(manifest.loadOrder, ['Skyrim.esm', 'RaceMenu.esp', 'RaceMenuPlugin.esp']);
+      const paths = manifest.resources.map(file => file.path);
+      for (const expected of ['Data/RaceMenu.esp', 'Data/RaceMenuPlugin.esp', 'Data/RaceMenu.bsa', 'Data/SKSE/Plugins/skee64.ini']) assert(paths.includes(expected), expected);
+      assert(!paths.some(value => /\.(?:dll|pdb|h)$/.test(value) || value.includes('mods/')));
+      const file = manifest.resources.find(entry => entry.name === 'RaceMenu.bsa');
+      assert.equal(await (await fetch(server.base + file.downloadPath)).text(), 'race archive');
+      const scan = await loadApi().scanModFolders(raceMenu(f));
+      assert.deepEqual(scan.skipped, [{ mod: 'RaceMenu', file: 'SKSE/Plugins/skee64.dll' }]);
+    } finally { await server.close(); }
+  });
+  await check('SKSE DLLs need an operator opt-in and a game version, and raise the manifest version', async (f) => {
+    const options = { ...raceMenu(f), skseFolders: ['RaceMenu'] };
+    const missing = await serve(options);
+    try { assert.equal((await fetch(missing.base + 'api/launcher/manifest')).status, 503); } finally { await missing.close(); }
+    const server = await serve({ ...options, skseGameVersion: '1.6.1170.0' });
+    try {
+      const manifest = await (await fetch(server.base + 'api/launcher/manifest')).json();
+      assert.equal(manifest.version, '4'); assert.equal(manifest.skseGameVersion, '1.6.1170.0');
+      const dll = manifest.resources.find(file => file.name === 'skee64.dll');
+      assert.equal(dll.kind, 'skse-plugin'); assert.equal(dll.path, 'Data/SKSE/Plugins/skee64.dll');
+    } finally { await server.close(); }
+  });
+  await check('runtime DLLs and protected files in a mod folder are skipped, not fatal', async (f) => {
+    write(f.data, 'mods/Bad/SKSE/Plugins/SkyrimPlatform.dll', 'replacement');
+    write(f.data, 'mods/Bad/Skyrim.esm', 'not distributable');
+    write(f.data, 'mods/Bad/Platform/Plugins/skymp5-client-settings.txt', 'private');
+    write(f.data, 'mods/Bad/tool.exe', 'installer');
+    const manifest = await new (loadApi().LauncherResourceStore)({ ...f.options, skseFolders: ['Bad'], skseGameVersion: '1.6.1170.0' }).manifest();
+    assert.equal(manifest.version, '2');
+    assert(!manifest.resources.some(file => /SkyrimPlatform|skymp5-client-settings|tool\.exe/.test(file.path)));
+    const scan = await loadApi().scanModFolders({ ...f.options, skseFolders: ['Bad'] });
+    assert.equal(scan.skipped.filter(item => item.mod === 'Bad').length, 4);
+  });
+  await check('later folders win conflicts and modFolders sets the order', async (f) => {
+    write(f.data, 'mods/First/textures/same.dds', 'first'); write(f.data, 'mods/Second/textures/same.dds', 'second');
+    const value = async modFolders => { const scan = await loadApi().scanModFolders({ ...f.options, modFolders }); return { source: scan.sources.get('data/textures/same.dds').mod, conflicts: scan.conflicts.filter(item => item.file.endsWith('same.dds')) }; };
+    assert.deepEqual(await value(undefined), { source: 'Second', conflicts: [{ file: 'Data/textures/same.dds', winner: 'Second', loser: 'First' }] });
+    assert.equal((await value(['Assets', 'Second', 'First'])).source, 'First');
   });
   const api = loadApi();
   for (const bad of ['../Data/Foo.esp', 'Data/../secret.dds', 'Data/a:stream.dds', 'Data/NUL.dds', 'Data/COM1/test.dds', 'Data/a./file.dds', 'Data\\x.dds', 'Data/Platform/settings.txt']) assert.throws(() => api.validateClientPath(bad));

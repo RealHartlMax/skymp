@@ -8,7 +8,7 @@
     launcher: {
       steamApiKey: $('steamApiKey').value.trim(), authMode: $('authMode').value, master: $('master').value.trim(), serverUid: $('serverUid').value.trim(),
       masterKey: $('masterKey').value, resourcesEnabled: $('resourcesEnabled').value === 'true',
-      resourceDirectory: $('resourceDirectory').value.trim(), runtimeSource: $('runtimeSource').value.trim(),
+      runtimeSource: $('runtimeSource').value.trim(),
     },
   });
   function authNote() {

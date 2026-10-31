@@ -93,7 +93,18 @@
       "running": "Cargado / en ejecución",
       "failed": "Error",
       "stopped": "Detenido",
-      "unknown": "Sin informe de ejecución"
+      "unknown": "Sin informe de ejecución",
+      "orderTitle": "Orden de carga de plugins",
+      "orderHint": "Carga servicios como UI Core antes de los plugins que los utilizan. Se aplica al próximo inicio del servidor de juego.",
+      "orderSave": "Guardar orden de carga",
+      "orderDiscard": "Descartar cambios",
+      "orderChanged": "Orden de carga sin guardar.",
+      "orderSaved": "Orden guardado. Reinicia el servidor de juego para aplicarlo.",
+      "orderStale": "El orden o la lista de plugins cambió. Descarta los cambios, actualiza y guarda de nuevo.",
+      "orderUnavailable": "Orden no disponible. Actualiza el panel/servidor o revisa la configuración.",
+      "orderUp": "Subir",
+      "orderDown": "Bajar",
+      "orderPosition": "Posición {{position}}"
     },
     "close": "Cerrar",
     "profileTitle": "Perfil del jugador",
@@ -812,7 +823,65 @@
       "observedSince": "Observed since {{time}}. Game restarts preserve this history.",
       "activityMemoryOnly": "History is currently in memory only. Check permissions for the data folder.",
       "metricsPermission": "Your account cannot view server metrics."
-    }
+    },
+    "playerOnline": "En línea",
+    "playerOfflineLabel": "Desconectado",
+    "playerOffline": "El jugador está desconectado. Las acciones en vivo estarán disponibles al reconectarse.",
+    "playerSessionChanged": "La sesión del jugador ha cambiado. Actualiza la lista.",
+    "inventoryProfileMissing": "Esta entrada aún no tiene un perfil de personaje. Inténtalo tras el próximo inicio de sesión.",
+    "inventoryNotSaved": "Todavía no se ha guardado el inventario de este personaje.",
+    "inventoryUnsupportedStorage": "Este tipo de base de datos no ofrece instantáneas de archivos. Los personajes cargados siguen disponibles.",
+    "inventoryUnavailable": "No se pudo leer el inventario. Revisa el registro y la configuración de la base de datos.",
+    "inventorySourceOnline": "Jugador actual",
+    "inventorySourceMemory": "Personaje desconectado cargado",
+    "inventorySourceFile": "Personaje guardado",
+    "consoleSecurity": {
+      "title": "Console and cheat protection",
+      "intro": "Core policy for the native Skyrim console. Chat commands keep their independent plugin permissions.",
+      "configuration": "Saved policy",
+      "mode": "Console mode",
+      "restricted": "Restricted",
+      "development": "Development",
+      "blockVanillaCheats": "Block vanilla cheats",
+      "blockUnauthorizedServerCommands": "Require server command authorization",
+      "monitorMovement": "Observe movement",
+      "movementEnforcement": "Movement analysis",
+      "logViolations": "Log denied commands and observations",
+      "logAllowedAdminCommands": "Log authorized admin commands",
+      "off": "Off",
+      "monitor": "Monitor",
+      "yes": "Yes",
+      "no": "No",
+      "unknown": "Not confirmed",
+      "developmentWarning": "Development mode: local debug commands can be enabled explicitly. This never grants administrative server rights.",
+      "nativeUnknown": "The active native protection cannot be confirmed. Update the native server component and start the game server.",
+      "legacyWarning": "The legacy enableConsoleCommandsForAll setting is ignored. Grant character permissions on the server; development mode does not bypass authorization.",
+      "configurationWarning": "The configuration contains invalid or unknown security values. Safe defaults apply; check the server log and configuration.",
+      "restartRequired": "Saved and active policies differ. Restart the game server to apply the saved policy.",
+      "activeMatches": "The saved policy matches the active native server policy.",
+      "inactive": "No active native policy is available. Saved changes take effect at the next game-server start.",
+      "movementLimit": "Speed and upward-movement checks only report observations. Enforce retains proven coordinate, cell and position-step rules. Latency, falling, mounts and scripted movement may explain an observation. This is not complete noclip detection; no automatic bans.",
+      "authorizationAlways": "Server authorization is always enforced. Core protection works without the Chat plugin.",
+      "effectiveConfiguration": "Saved and active policy",
+      "setting": "Setting",
+      "stored": "Saved",
+      "active": "Active in native server",
+      "clientReports": "Client hook reports",
+      "clientReportsUnverified": "These reports come from clients and are not proof of active protection. Modified clients can forge them. Unsupported commands are listed explicitly.",
+      "noReports": "No client hook report is available.",
+      "reportedHooks": "Reported hooks",
+      "unsupported": "Unsupported",
+      "player": "Player",
+      "save": "Save security policy",
+      "saving": "Saving…",
+      "savedNextStart": "Saved. Activation requires a game-server restart.",
+      "saveFailed": "Could not save. Check your permissions and the configuration.",
+      "loadFailed": "Could not load Console Security. Administrator access with console permission is required.",
+      "conflict": "Another administrator changed this policy. Reload this page before saving.",
+      "loading": "Loading security status…"
+    },
+    "cfgTab_security": "Seguridad",
+    "legacyBanUnbound": "Legacy entry without profile binding"
   },
   "serverList": {
     "title": "Lista de servidores",
@@ -1349,5 +1418,42 @@
     "NON_RP": "No RP",
     "SETTINGS": "Ajustes",
     "MOVE_CHAT": "Mover chat"
+  },
+  "sessionEnd": {
+    "kick": {
+      "title": "Desconectado por el servidor",
+      "body": "El servidor ha finalizado tu sesión."
+    },
+    "ban": {
+      "title": "Expulsado del servidor",
+      "body": "Se ha bloqueado el acceso a este servidor."
+    },
+    "restart": {
+      "title": "Reinicio del servidor",
+      "body": "Tu sesión ha finalizado. Podrás volver a conectarte cuando el servidor esté disponible."
+    },
+    "shutdown": {
+      "title": "Servidor detenido",
+      "body": "El servidor se ha apagado. Tu sesión ha finalizado."
+    },
+    "connectionLost": {
+      "title": "Conexión perdida",
+      "body": "Se interrumpió la conexión con el servidor. Tu sesión ha finalizado."
+    },
+    "connectionFailed": {
+      "title": "No se pudo conectar",
+      "body": "No se pudo acceder al servidor. Comprueba tu conexión e inténtalo de nuevo."
+    },
+    "connectionDenied": {
+      "title": "Conexión rechazada",
+      "body": "El servidor no aceptó la conexión. Comprueba el acceso y la disponibilidad del servidor."
+    },
+    "until": "La expulsión termina:",
+    "permanent": "Esta expulsión no tiene fecha de finalización.",
+    "reconnecting": "Conexión interrumpida. Reconectando…",
+    "returning": "Volviendo al menú principal…",
+    "sessionEnded": "Ya no estás conectado al servidor.",
+    "mainMenu": "Menú principal",
+    "retry": "Volver a conectar"
   }
 }

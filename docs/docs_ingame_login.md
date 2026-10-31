@@ -1,5 +1,7 @@
 # Spielerzugang, Steam und Legacy-Anmeldung
 
+> **Quellstand 30. Oktober 2026:** Die vorbereitete neue Server-/Clientfassung beendet bei einer Steam-Sperre über `POST /api/admin/player-access` auch die zu dieser verifizierten SteamID gehörenden aktiven Spielsitzungen. Der Client zeigt den Sperrhinweis und kehrt ins Skyrim-Hauptmenü zurück; spätere Anmeldungen bleiben ebenfalls gesperrt. Diese Änderung benötigt den späteren gemeinsamen Build und die Auslieferung. Die folgenden r8-Prüfberichte bleiben historische Nachweise; eine echte Skyrim-/CEF-Abnahme wird damit nicht behauptet.
+
 Stand: 24. Oktober 2026, Serverrevision r8. Server, Desktop-Launcher und
 `skymp5-client.js` müssen gemeinsam aktualisiert werden. Die Serverarchive
 enthalten keine Launcher-EXE und kein vollständiges natives Clientpaket.
@@ -68,8 +70,9 @@ automatisch die Registrierung für die globale Serverliste.
    Im Launcher muss Steam laufen und angemeldet sein.
 5. Bei Freigabemodus unter **Zugriff & Discord → Steam-Spieler** freigeben.
    Die wartende Spielsitzung fragt den Status zehn Minuten lang ab; danach über
-   den Launcher erneut verbinden. Eine Sperre verhindert weitere Anmeldungen.
-   Eine laufende Sitzung bei Bedarf zusätzlich über Spieler/Kick beenden.
+   den Launcher erneut verbinden. Eine Sperre verhindert weitere Anmeldungen. In der vorbereiteten neuen Fassung
+   werden auch aktive Sitzungen derselben verifizierten SteamID beendet;
+   siehe Quellstand-Hinweis oben.
 
 Ohne gültigen API-Key bleibt die Verwaltung erreichbar; neue Spieleranmeldungen
 werden abgewiesen. Öffentlich HTTPS verwenden, damit Ticket und Sitzung beim
@@ -140,8 +143,8 @@ Keep `data/player-access.json`: it holds approvals, stable guest profile IDs,
 account bindings and hashed sessions. Existing account profiles and new guest
 profiles are separate; characters are not migrated automatically. One active
 game session per Steam ID is allowed on a server instance. A master account is
-bound to its verified Steam identity. Blocking prevents future login; kick an
-already connected player separately. Pending guests poll for ten minutes.
+bound to its verified Steam identity. Blocking prevents future login. The prepared update also terminates matching
+active verified-Steam sessions; see the source-state note above. Pending guests poll for ten minutes.
 
 The native ticket request passed locally without starting Skyrim or replacing
 its Steam DLL. Server validation uses simulated Valve responses; real API-key
@@ -183,7 +186,8 @@ Worlds/skymp.net не нужен; вход в Steam нужен во всех р�
 привязки аккаунтов и хеши сессий. Гостевые и прежние аккаунтные персонажи не
 объединяются автоматически. На одном сервере разрешена одна активная сессия
 для SteamID. Аккаунт мастера привязывается к проверенной SteamID. Блокировка
-запрещает последующие входы; уже подключённого игрока отключают отдельно.
+запрещает последующие входы; подготовленное обновление также завершает активные
+сеансы той же проверенной SteamID, см. примечание об исходниках выше.
 Ожидающий одобрения клиент проверяет статус десять минут.
 
 Локально получен настоящий билет без запуска Skyrim и замены Steam DLL.

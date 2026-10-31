@@ -19,7 +19,7 @@ function url(value, field, optional = false) {
 }
 function normalize(input, current = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('form', 'Invalid connection fields.');
-  for (const field of ['master', 'serverUid', 'publicHost', 'resourceDirectory', 'runtimeSource']) {
+  for (const field of ['master', 'serverUid', 'publicHost', 'runtimeSource']) {
     if (input[field] !== undefined && typeof input[field] !== 'string') fail(field, 'Expected a text field.');
   }
   const oldResources = current.launcherResources || {};
@@ -43,15 +43,13 @@ function normalize(input, current = {}) {
   if (!/^\d+$/.test(String(port)) || Number(port) < 1 || Number(port) > 65535) fail('port', 'Game port must be an integer from 1 to 65535.');
   const enabled = input.resourcesEnabled ?? oldResources.enabled ?? true;
   if (typeof enabled !== 'boolean') fail('resourcesEnabled', 'Invalid resource switch.');
-  const directory = String(input.resourceDirectory ?? oldResources.directory ?? './client-resources').trim().replace(/\\/g, '/');
-  const parts = directory.replace(/^\.\//, '').split('/');
-  if (!directory || directory.length > 240 || path.posix.isAbsolute(directory) || parts.some(part => !part || part === '.' || part === '..' || /[<>:"|?*\x00-\x1f]/.test(part) || /[. ]$/.test(part) || /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(part))) fail('resourceDirectory', 'Use a relative resource directory within the server folder.');
+  const { directory: _removedDirectory, ...keptResources } = oldResources;
   const runtimeSource = url(input.runtimeSource ?? oldResources.runtimeSource ?? DEFAULT_RUNTIME, 'runtimeSource', true);
   if (input.steamApiKey !== undefined && typeof input.steamApiKey !== 'string') fail('steamApiKey', 'Invalid Steam API key.');
   const steamApiKey = String(input.steamApiKey?.trim() || oldAccess.steamApiKey || current.steam_webApiKey || '');
   if (steamApiKey && !/^[a-f0-9]{32}$/i.test(steamApiKey)) fail('steamApiKey', 'Use a 32-character Steam Web API key.');
   return { master, masterKey, serverUid, offlineMode: authMode === 'offline', publicHost, port: Number(port),
-    launcherResources: { ...oldResources, enabled, directory, runtimeSource },
+    launcherResources: { ...keptResources, enabled, runtimeSource },
     playerAccess: { ...oldAccess, mode: authMode === 'online' ? 'account' : 'guest', approvalRequired: authMode === 'guestApproval', steamApiKey, steamAppId: oldAccess.steamAppId || 489830 } };
 }
 function read(file) {
@@ -67,7 +65,6 @@ function describe(settings) {
     authMode: settings.offlineMode === true ? 'offline' : settings.playerAccess?.mode === 'guest' ? (settings.playerAccess.approvalRequired ? 'guestApproval' : 'guestOpen') : 'online', publicHost: String(settings.publicHost || ''),
     port: settings.port || 7777, hasMasterKey: Boolean(settings.masterKey), hasSteamApiKey: Boolean(settings.playerAccess?.steamApiKey || settings.steam_webApiKey),
     resourcesEnabled: settings.launcherResources?.enabled !== false,
-    resourceDirectory: String(settings.launcherResources?.directory || './client-resources'),
     runtimeSource: String(settings.launcherResources?.runtimeSource ?? DEFAULT_RUNTIME), revision: revision(settings) };
 }
 function atomicWrite(file, settings) {

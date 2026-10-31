@@ -553,6 +553,7 @@ class App extends React.Component {
     } else if (this.state.widgets) {
       return (
         <div style={{ position: 'static' }}>
+          {!this.state.widgets.some(widget => widget.type === 'chat') && <Chat />}
           {this.state.widgets.map((widget, index) => (
             <Constructor
               key={
@@ -567,7 +568,7 @@ class App extends React.Component {
         </div>
       );
     } else {
-      return <></>;
+      return <Chat />;
     }
   }
 }

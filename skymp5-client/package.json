@@ -6,7 +6,12 @@
   "scripts": {
     "build": "webpack",
     "watch": "webpack -w",
-    "test:voice-sync": "tsx tests/voiceActivitySyncPacket.test.ts"
+    "test:voice-sync": "tsx tests/voiceActivitySyncPacket.test.ts",
+    "test:server-js": "node --test tests/serverJsVerification.test.cjs",
+    "test:spawn-location": "node --test tests/playerSpawnLocation.test.cjs",
+    "test:chat": "node --test tests/chatBridge.test.cjs",
+    "test:session-end": "node --test ../misc/session-end/tests/client.test.cjs ../misc/session-end/tests/server.test.cjs ../misc/session-end/tests/bans.test.cjs ../misc/session-end/tests/admission.test.cjs",
+    "test:console-security": "node --test ../misc/console-security/tests/client.test.cjs ../misc/console-security/tests/policy-api.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

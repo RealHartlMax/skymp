@@ -1,5 +1,7 @@
 # SkyMP Server-Testversion
 
+> **Neu:** Mods liegen jetzt in `data/mods/<Mod>/`; `client-resources` wird nicht mehr gelesen. Angaben dazu auf dieser Seite sind überholt. Siehe [Mods in data/mods](../../../docs/docs_mod_folders.md).
+
 Windows und Linux enthalten denselben Backend-, Frontend- und Gamemode-Stand.
 `build-manifest.json` nennt Quellstand, Plattform und SHA256 jeder Paketdatei.
 Die native Erweiterung ist pro Betriebssystem separat gebaut.

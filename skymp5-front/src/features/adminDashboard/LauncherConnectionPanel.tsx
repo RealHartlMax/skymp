@@ -13,7 +13,6 @@ const messages = {
     "port": "Spielport (UDP)",
     "authMode": "Anmeldung",
     "runtimeSource": "Clientpaket / Versionskatalog",
-    "resourceDirectory": "Mod-Verzeichnis auf dem Server",
     "resourcesEnabled": "Mod-Synchronisation",
     "online": "Mit Ingame-Login",
     "guestOpen": "Open · ohne Ingame-Login",
@@ -48,7 +47,6 @@ const messages = {
     "port": "Game port (UDP)",
     "authMode": "Authentication",
     "runtimeSource": "Client package / version catalog",
-    "resourceDirectory": "Server mod directory",
     "resourcesEnabled": "Mod synchronization",
     "online": "With in-game login",
     "guestOpen": "Open · no in-game login",
@@ -83,7 +81,6 @@ const messages = {
     "port": "Игровой порт (UDP)",
     "authMode": "Авторизация",
     "runtimeSource": "Клиентский пакет / каталог версий",
-    "resourceDirectory": "Папка модов на сервере",
     "resourcesEnabled": "Синхронизация модов",
     "online": "Со входом в игре",
     "guestOpen": "Открыто · без входа в игре",
@@ -111,7 +108,7 @@ const messages = {
 };
 type Fields = {
   master: string; serverUid: string; masterKey: string; publicHost: string; port: number | string;
-  authMode: string; runtimeSource: string; resourceDirectory: string;
+  authMode: string; runtimeSource: string;
   resourcesEnabled: boolean; revision: string; hasMasterKey: boolean;
 };
 export function LauncherConnectionPanel({ onSaved }: { onSaved?: () => void }) {
@@ -122,7 +119,7 @@ export function LauncherConnectionPanel({ onSaved }: { onSaved?: () => void }) {
   const [form, setForm] = useState<Fields | null>(null);
   const [busy, setBusy] = useState(false), [status, setStatus] = useState('');
   const [visible, setVisible] = useState(false), [dirty, setDirty] = useState(false);
-  const fields = ['master', 'serverUid', 'masterKey', 'publicHost', 'port', 'resourceDirectory', 'runtimeSource'] as const;
+  const fields = ['master', 'serverUid', 'masterKey', 'publicHost', 'port', 'runtimeSource'] as const;
   async function load(signal?: AbortSignal) {
     setBusy(true); setStatus('');
     try {
@@ -169,8 +166,8 @@ export function LauncherConnectionPanel({ onSaved }: { onSaved?: () => void }) {
           <span className={key === 'masterKey' ? 'launcher-connection__password' : undefined}>
             <input id={id + '-' + key} name={key} type={key === 'masterKey' ? (visible ? 'text' : 'password') : key === 'port' ? 'number' : ['master','runtimeSource'].includes(key) ? 'url' : 'text'}
               value={form[key]} aria-labelledby={id + '-' + key + '-label'} autoComplete="off" min={key === 'port' ? 1 : undefined} max={key === 'port' ? 65535 : undefined}
-              maxLength={key === 'masterKey' || key === 'serverUid' ? 128 : key === 'resourceDirectory' ? 240 : 2048}
-              required={['master','port','resourceDirectory'].includes(key) || form.authMode === 'online' && (key === 'serverUid' || key === 'publicHost' || key === 'masterKey' && !form.hasMasterKey)}
+              maxLength={key === 'masterKey' || key === 'serverUid' ? 128 : 2048}
+              required={['master','port'].includes(key) || form.authMode === 'online' && (key === 'serverUid' || key === 'publicHost' || key === 'masterKey' && !form.hasMasterKey)}
               placeholder={key === 'masterKey' ? form.hasMasterKey ? text.stored : text.empty : undefined}
               aria-describedby={['masterKey','runtimeSource'].includes(key) ? id + '-' + key + '-hint' : undefined}
               onChange={event => update(key,event.target.value)} />

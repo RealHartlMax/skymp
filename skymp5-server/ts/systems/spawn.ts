@@ -1,5 +1,7 @@
 import { Settings } from '../settings';
 import { Log, System, SystemContext } from './system';
+import { getAdminBans } from '../adminBans';
+import { endPlayerSession } from '../playerSessionEnd';
 
 type Mp = any; // TODO
 
@@ -32,6 +34,9 @@ export class Spawn implements System {
       discordRoleIds: string[],
       discordId?: string,
     ) => {
+      // profileId comes from verified Login/Steam admission, never a client claim.
+      const ban = getAdminBans(String(settingsObject.allSettings.dataDir || 'data')).forProfile(userProfileId);
+      if (ban) { endPlayerSession(ctx.svr, userId, 'ban', ban.reason, ban.expiresAt); return; }
       const { startPoints, starterInventory } = settingsObject;
       // TODO: Show race menu if character is not created after relogging
       const previousActorId = ctx.svr.getUserActor(userId);

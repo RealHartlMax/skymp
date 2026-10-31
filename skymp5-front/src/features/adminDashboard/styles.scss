@@ -4444,3 +4444,11 @@ $admin-line: #2c4552;
 }
 
 .admin-dashboard input::placeholder { font-family: inherit; font-size: 13px; }
+.admin-dashboard__player-online,
+.admin-dashboard__player-offline {
+  display: inline-block;
+  margin-left: .5rem;
+  font-size: .78rem;
+}
+.admin-dashboard__player-online { color: #65d9b3; }
+.admin-dashboard__player-offline { color: #bdc7cc; }

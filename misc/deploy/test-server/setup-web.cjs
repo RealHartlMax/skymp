@@ -21,7 +21,7 @@ function inspectInstallation(root, settings) {
   const data = path.resolve(root, settings.dataDir || 'data');
   const files = (settings.loadOrder || []).map(name => {
     // The shipped configuration supplies these names, never an HTTP path.
-    if (path.basename(name) !== name) return { name, status: 'invalid' };
+    if (path.basename(name) !== name && !/^mods\/(?!\.)[^/\\]+\/[^/\\]+$/.test(name)) return { name, status: 'invalid' };
     let descriptor;
     try {
       descriptor = fs.openSync(path.join(data, name), 'r');

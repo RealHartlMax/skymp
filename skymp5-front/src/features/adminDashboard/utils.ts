@@ -4,6 +4,17 @@ export interface AdminPlayerSearchEntry {
   ip?: string;
 }
 
+export const isAdminPlayerOnline = (player: { online?: boolean; actorId?: number } | undefined): boolean =>
+  !!player && (player.online === true || (player.online !== false && Number(player.actorId) > 0));
+
+export const inventoryFailureKey = (code: unknown): string => ({
+  PROFILE_NOT_RESOLVED: 'inventoryProfileMissing',
+  INVENTORY_NOT_SAVED: 'inventoryNotSaved',
+  INVENTORY_STORAGE_UNSUPPORTED: 'inventoryUnsupportedStorage',
+  INVENTORY_UNAVAILABLE: 'inventoryUnavailable',
+  PLAYER_SESSION_CHANGED: 'playerSessionChanged',
+} as Record<string, string>)[typeof code === 'string' ? code : ''] || 'apiError';
+
 export interface AdminPosition {
   x: number;
   y: number;

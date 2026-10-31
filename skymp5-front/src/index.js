@@ -3,12 +3,17 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import App from './App';
+import { UiCoreHost } from './features/uiCore';
+import './features/uiCore/index.css';
+import { installPluginRuntimeHost, LegacyPluginUi } from './features/pluginRuntime';
 import { AppErrorBoundary } from './components/AppErrorBoundary/AppErrorBoundary';
 import './i18n';
 import './main.scss';
 import { store } from './redux/store';
 import { Widgets } from './utils/Widgets';
 import { initPerformanceMonitoring } from './utils/performanceMonitoring';
+import { installChatBridge } from './features/chat/bridge';
+import { installSessionEndUi } from './features/sessionEnd';
 
 if (!window.skyrimPlatform) {
   window.skyrimPlatform = {};
@@ -20,12 +25,16 @@ if (!window.skyrimPlatform.widgets) {
 }
 
 initPerformanceMonitoring();
+installChatBridge();
+installPluginRuntimeHost();
+installSessionEndUi();
 
 ReactDOM.render(
   <React.StrictMode>
     <AppErrorBoundary>
       <Provider store={store}>
         <App elem={window.skyrimPlatform.widgets.get()} />
+        <LegacyPluginUi><UiCoreHost /></LegacyPluginUi>
       </Provider>
     </AppErrorBoundary>
   </React.StrictMode>,

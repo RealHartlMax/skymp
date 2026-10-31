@@ -1,3 +1,5 @@
+[Deutsch](i18n/de/docs/README.md) · [English](i18n/en/docs/README.md) · [Русский](i18n/ru/docs/README.md)
+
 # SkyMP Docs
 
 Welcome to the SkyMP documentation portal. Here you will find practical guides, API references, server manuals, and maintenance notes.
@@ -12,7 +14,12 @@ Current server checkout audit: **24 October 2026**. Start with
 [versioned client/SKSE packages](docs_launcher_runtime_updates.md).
 For server extensions, see the [Plugin System guide](../README-plugins.md),
 including packaging, dashboard management and the required game-server restarts.
+For voice chat, see the [Lipsync status and required information](docs_voice_lipsync_status.md)
+and the [Voice Activity API](docs_voice_api.md). The current path is partial and
+still needs real Skyrim/TeamSpeak acceptance.
 Local build/download checks and real Skyrim/CEF gameplay acceptance are recorded separately.
+
+For sessions that end by kick, ban, restart or connection loss, see [session end](docs_session_end.md). For console protection, see [console security](docs_console_security.md).
 
 ## Project Status (WIP Fork)
 

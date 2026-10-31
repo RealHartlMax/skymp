@@ -1,3 +1,5 @@
+[Deutsch](docs/i18n/de/README.md) · [English](docs/i18n/en/README.md) · [Русский](docs/i18n/ru/README.md)
+
 # SkyMP Worlds
 
 Skyrim-Multiplayer mit einem globalen Launcher, eigenen Community-Servern und einer
@@ -311,12 +313,11 @@ unabhängig vom Launcher aktualisieren.
 
 ### Mods und Clientpakete veröffentlichen
 
-- Eigene `.esp`-/`.esm`-/`.esl`-Plugins nach `data/` legen und in `loadOrder`
-  aufnehmen. Zugehörige BSA-Dateien werden ebenfalls angeboten.
-- Zusätzliche Clientdateien mit fertiger Skyrim-Verzeichnisstruktur unter
-  `client-resources/Data/` bereitstellen, etwa Texturen, Meshes oder `Scripts/*.pex`.
+- Jede Mod mit ihrer fertigen Skyrim-Verzeichnisstruktur nach `data/mods/<Mod>/` legen,
+  etwa Plugins, BSA-Dateien, Texturen, Meshes, `Scripts/*.pex` und `SKSE/`. Plugins im
+  Dashboard aktivieren. Details stehen unter [Mods in data/mods](docs/docs_mod_folders.md).
 - Serverseitige Papyrus-Dateien unter `data/scripts/` werden dadurch nicht automatisch
-  beim Spieler installiert. Benötigte Clientskripte zusätzlich als Clientressourcen bereitstellen.
+  beim Spieler installiert. Benötigte Clientskripte gehören in den Mod-Ordner.
 - `GET /api/launcher/manifest` liefert Zielpfade, Größen, SHA-256, lokale Voraussetzungen,
   Downloadadressen und Ladereihenfolge. Der Launcher verarbeitet die veröffentlichten Dateien vor dem Start.
 - SkyMP, SKSE, Address Library und Ingame-UI als vollständigen, zur Spielversion passenden

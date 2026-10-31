@@ -1,8 +1,67 @@
 #include "NetworkingMock.h"
 #include <catch2/catch_all.hpp>
 #include <cstring>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace Networking;
+
+TEST_CASE("Mock transport consumes rejected packets once and preserves "
+          "following packets",
+          "[Networking][ConsoleSecurity]")
+{
+  MockServer server;
+  auto client = server.CreateClient().first;
+  std::vector<std::string> received;
+  auto onServerPacket = [](void* state, UserId, PacketType type,
+                           PacketData bytes, size_t length) {
+    if (type != PacketType::Message)
+      return;
+    auto& messages = *static_cast<std::vector<std::string>*>(state);
+    messages.emplace_back(reinterpret_cast<const char*>(bytes), length);
+    if (messages.back() == "bad")
+      throw std::runtime_error("rejected fixture");
+  };
+  server.Tick(onServerPacket, &received);
+  client->Send(reinterpret_cast<const uint8_t*>("before"), 6, true);
+  client->Send(reinterpret_cast<const uint8_t*>("bad"), 3, true);
+  client->Send(reinterpret_cast<const uint8_t*>("after"), 5, true);
+  REQUIRE_THROWS(server.Tick(onServerPacket, &received));
+  REQUIRE(received == std::vector<std::string>{ "before", "bad" });
+  REQUIRE_NOTHROW(server.Tick(onServerPacket, &received));
+  REQUIRE(received == std::vector<std::string>{ "before", "bad", "after" });
+  server.Tick(onServerPacket, &received);
+  REQUIRE(received.size() == 3);
+}
+
+TEST_CASE(
+  "Mock client does not replay packets after a throwing receive handler",
+  "[Networking][ConsoleSecurity]")
+{
+  MockServer server;
+  auto [client, user] = server.CreateClient();
+  std::vector<std::string> received;
+  auto onClientPacket = [](void* state, PacketType type, PacketData bytes,
+                           size_t length, const char*) {
+    if (type != PacketType::Message)
+      return;
+    auto& messages = *static_cast<std::vector<std::string>*>(state);
+    messages.emplace_back(reinterpret_cast<const char*>(bytes), length);
+    if (messages.back() == "bad")
+      throw std::runtime_error("rejected fixture");
+  };
+  client->Tick(onClientPacket, &received);
+  server.Send(user, reinterpret_cast<const uint8_t*>("before"), 6, true);
+  server.Send(user, reinterpret_cast<const uint8_t*>("bad"), 3, true);
+  server.Send(user, reinterpret_cast<const uint8_t*>("after"), 5, true);
+  REQUIRE_THROWS(client->Tick(onClientPacket, &received));
+  REQUIRE(received == std::vector<std::string>{ "before", "bad" });
+  REQUIRE_NOTHROW(client->Tick(onClientPacket, &received));
+  REQUIRE(received == std::vector<std::string>{ "before", "bad", "after" });
+  client->Tick(onClientPacket, &received);
+  REQUIRE(received.size() == 3);
+}
 
 TEST_CASE("MockServer - IsConnected is always true for clients",
           "[Networking]")

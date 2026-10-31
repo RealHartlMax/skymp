@@ -1242,11 +1242,6 @@ void WorldState::SetForbiddenRelootTypes(const std::set<std::string>& types)
   pImpl->forbiddenRelootTypes = types;
 }
 
-void WorldState::SetEnableConsoleCommandsForAllSetting(bool enable)
-{
-  enableConsoleCommandsForAll = enable;
-}
-
 void WorldState::SetItemPickupMode(ItemPickupMode mode)
 {
   pImpl->itemPickupMode = mode;

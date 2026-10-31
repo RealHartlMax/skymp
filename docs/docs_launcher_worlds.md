@@ -1,5 +1,7 @@
 # SkyMP Worlds: Launcher und Online-Master
 
+> **Neu:** Mods liegen jetzt in `data/mods/<Mod>/`; `client-resources` wird nicht mehr gelesen. Angaben dazu auf dieser Seite sind überholt. Siehe [Mods in data/mods](docs_mod_folders.md).
+
 Vollständige Anleitung: https://docs.skymp-worlds.net/ (Deutsch, Englisch, Russisch).
 Dieser Fork stellt /api/launcher/manifest und die zugehörigen Moddownloads bereit.
 Client-/SKSE-Dateien werden separat über runtimeSource angeboten. Es gibt keine

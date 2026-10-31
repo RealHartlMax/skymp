@@ -25,6 +25,8 @@ let gameState: ManagedGameState = {
 };
 export const getManagedGameState = (): ManagedGameState => gameState;
 const listeners = new Set<(message: any) => void>();
+let shutdownKind: 'restart' | 'shutdown' = 'shutdown';
+export const getManagedShutdownKind = () => shutdownKind;
 export const onManagedMessage = (listener: (message: any) => void): void => { listeners.add(listener); };
 const pendingControls = new Map<string, { resolve: (value: { ok: boolean; error?: string }) => void; timer: NodeJS.Timeout }>();
 
@@ -60,15 +62,16 @@ export const requestManagedControl = (action: 'start' | 'stop' | 'restart'): Pro
 
 if (isManagedRuntime()) {
   let stopping = false;
-  const stop = () => {
+  const stop = (reason?: unknown) => {
     if (stopping) return;
     stopping = true;
+    shutdownKind = reason === 'restart' ? 'restart' : 'shutdown';
     // Give existing heartbeat/plugin shutdown listeners time to finish on both OSes.
     process.emit('SIGTERM', 'SIGTERM');
     setTimeout(() => process.exit(0), 1500);
   };
   process.on('message', (message: any) => {
-    if (message?.type === 'skymp:shutdown') stop();
+    if (message?.type === 'skymp:shutdown') stop(message.reason);
     if (message?.type === 'skymp:game-state') gameState = message.value;
     if (message?.type === 'skymp:control-result') {
       const pending = pendingControls.get(message.id);

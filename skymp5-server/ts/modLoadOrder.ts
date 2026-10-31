@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { orderedModFolders, scanModFolders } from './launcherResources';
 
 type Settings = Record<string, unknown>;
-type Issue = 'missing' | 'invalid' | 'duplicate' | 'publicationOnly';
+type Issue = 'missing' | 'invalid' | 'duplicate';
 export interface ModEntry {
-  name: string; source: 'server' | 'publication' | 'configured'; size: number;
-  masters: string[]; master: boolean; issue?: Issue;
+  name: string; source: 'server' | 'mod' | 'configured'; size: number;
+  masters: string[]; master: boolean; issue?: Issue; folder?: string;
 }
 export class ModOrderError extends Error {
   constructor(readonly code: string, readonly status = 400, readonly plugin = '', readonly dependency = '') { super(code); }
@@ -51,12 +52,11 @@ async function header(file: string): Promise<{ masters: string[]; master: boolea
 
 export async function inspectModOrder(settings: Settings) {
   const dataDir = path.resolve(String(settings.dataDir || './data'));
-  const config = settings.launcherResources as {directory?: string} | undefined;
-  const publication = path.join(path.resolve(config?.directory || './client-resources'), 'Data');
+  const config = settings.launcherResources as {skseFolders?: unknown; skseGameVersion?: unknown} | undefined;
   const configured = Array.isArray(settings.loadOrder) ? settings.loadOrder.filter((value): value is string => typeof value === 'string') : [];
   const order = configured.map(value => path.basename(value));
   const entries = new Map<string, ModEntry>(), fingerprints: string[] = [];
-  const scan = async (root: string, source: 'server' | 'publication') => {
+  const scan = async (root: string, source: 'server' | 'mod', folder?: string) => {
     let files: import('node:fs').Dirent[];
     try { if ((await fs.lstat(root)).isSymbolicLink()) throw new ModOrderError('INVALID_DIRECTORY', 503); files = await fs.readdir(root, {withFileTypes: true}); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
@@ -65,26 +65,29 @@ export async function inspectModOrder(settings: Settings) {
       if (!validName(file.name) || !file.isFile() || file.isSymbolicLink()) continue;
       if (entries.size >= 4096) throw new ModOrderError('SCAN_LIMIT', 503);
       const id = key(file.name), prior = entries.get(id);
-      if (prior && source === 'publication') continue;
       if (prior) { prior.issue = 'duplicate'; fingerprints.push('duplicate:' + file.name); continue; }
-      const entry: ModEntry = {name: file.name, source, size: 0, masters: [], master: /\.(esm|esl)$/i.test(file.name)};
+      const entry: ModEntry = {name: file.name, source, size: 0, masters: [], master: /\.(esm|esl)$/i.test(file.name), ...(folder ? {folder} : {})};
       try {
         const info = await header(path.join(root, file.name));
         entry.size = info.size; entry.masters = info.masters; entry.master = info.master; fingerprints.push(file.name + ':' + info.fingerprint);
-        if (source === 'publication') entry.issue = 'publicationOnly';
       } catch { entry.issue = 'invalid'; fingerprints.push('invalid:' + file.name); }
       entries.set(id, entry);
     }
   };
-  await scan(dataDir, 'server'); if (publication !== dataDir) await scan(publication, 'publication');
+  await scan(dataDir, 'server');
+  const folders = await orderedModFolders(dataDir, settings.modFolders);
+  for (const folder of folders) await scan(path.join(dataDir, 'mods', folder), 'mod', folder);
   for (const name of order) {
     if (!entries.has(key(name))) entries.set(key(name), {name, source: 'configured', size: 0, masters: [], master: /\.(esm|esl)$/i.test(name), issue: 'missing'});
   }
   let activeOrder: string[] = [];
   try { const manifest = JSON.parse(await fs.readFile(path.join(dataDir, 'manifest.json'), 'utf8')); if (Array.isArray(manifest.loadOrder)) activeOrder = manifest.loadOrder.filter((value: unknown) => typeof value === 'string'); } catch {}
-  const revision = createHash('sha256').update(JSON.stringify({configured, dataDir, publication, fingerprints})).digest('hex');
+  const mods = await scanModFolders({dataDir, loadOrder: order, modFolders: settings.modFolders, skseFolders: config?.skseFolders});
+  const skseFolders = Array.isArray(config?.skseFolders) ? config!.skseFolders.filter((name: unknown) => folders.includes(String(name))) : [];
+  const skseGameVersion = String(config?.skseGameVersion || '');
+  const revision = createHash('sha256').update(JSON.stringify({configured, dataDir, folders, skseFolders, skseGameVersion, fingerprints})).digest('hex');
   const baseLoadOrder = BASE_GAME_FILES.map(name => entries.get(key(name))?.name || name);
-  return {ok: true, revision, loadOrder: order, baseLoadOrder, activeOrder, restartRequired: !same(order, activeOrder), dataDirectory: String(settings.dataDir || './data'), publicationDirectory: path.join(config?.directory || './client-resources', 'Data'), entries: [...entries.values()]};
+  return {ok: true, revision, loadOrder: order, baseLoadOrder, activeOrder, restartRequired: !same(order, activeOrder), dataDirectory: String(settings.dataDir || './data'), modsDirectory: path.join(String(settings.dataDir || './data'), 'mods'), modFolders: mods.folders, conflicts: mods.conflicts, skipped: mods.skipped, skseFolders, skseGameVersion, entries: [...entries.values()]};
 }
 
 export function validateModOrder(input: unknown, snapshot: Awaited<ReturnType<typeof inspectModOrder>>): string[] {
@@ -102,7 +105,7 @@ export function validateModOrder(input: unknown, snapshot: Awaited<ReturnType<ty
   let regular = false;
   for (const [index, name] of names.entries()) {
     const entry = entries.get(key(name));
-    if (!entry || entry.issue) throw new ModOrderError(entry?.issue === 'publicationOnly' ? 'SERVER_COPY_REQUIRED' : 'INVALID_PLUGIN', 400, name);
+    if (!entry || entry.issue) throw new ModOrderError('INVALID_PLUGIN', 400, name);
     if (regular && entry.master) throw new ModOrderError('MASTER_ORDER', 400, name);
     if (!entry.master) regular = true;
     for (const master of entry.masters) {
@@ -132,7 +135,7 @@ export function registerModLoadOrder(router: any, options: {read: () => Settings
     try { const url = new URL(ctx.get('origin')); origin = ['http:', 'https:'].includes(url.protocol) && url.host === ctx.host; } catch {}
     if (!origin || ctx.get('content-type').split(';')[0].trim() !== 'application/json' || !['', 'same-origin', 'none'].includes(ctx.get('sec-fetch-site'))) { ctx.status = 403; ctx.body = {ok: false, code: 'SAME_ORIGIN_REQUIRED'}; return; }
     const body = ctx.request.body;
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(name => !['revision', 'loadOrder'].includes(name)) || typeof body.revision !== 'string' || !/^[a-f0-9]{64}$/.test(body.revision) || JSON.stringify(body).length > 1024 * 1024) { ctx.status = 400; ctx.body = {ok: false, code: 'INVALID_ORDER'}; return; }
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(name => !['revision', 'loadOrder', 'modFolders', 'skseFolders', 'skseGameVersion'].includes(name)) || typeof body.revision !== 'string' || !/^[a-f0-9]{64}$/.test(body.revision) || JSON.stringify(body).length > 1024 * 1024) { ctx.status = 400; ctx.body = {ok: false, code: 'INVALID_ORDER'}; return; }
     const before = queue; let release!: () => void; queue = new Promise<void>(resolve => { release = resolve; });
     await before;
     try {
@@ -143,10 +146,26 @@ export function registerModLoadOrder(router: any, options: {read: () => Settings
       const original = new Map((Array.isArray(settings.loadOrder) ? settings.loadOrder : []).filter((value): value is string => typeof value === 'string').map(value => [key(path.basename(value)), value]));
       const latest = options.read();
       if (JSON.stringify([latest.loadOrder, latest.dataDir, latest.launcherResources]) !== JSON.stringify([settings.loadOrder, settings.dataDir, settings.launcherResources])) throw new ModOrderError('STALE_ORDER', 409);
+      const folderOf = new Map(snapshot.entries.filter(entry => entry.folder).map(entry => [key(entry.name), entry.folder!]));
       latest.loadOrder = order.map(name => {
+        const folder = folderOf.get(key(name));
+        if (folder) return 'mods/' + folder + '/' + name;
         const prior = original.get(key(name));
         return prior && (path.isAbsolute(prior) || /[\\/]/.test(prior)) ? prior : name;
       });
+      const known = snapshot.modFolders.map(folder => folder.name);
+      const folderList = (value: unknown) => {
+        if (!Array.isArray(value) || value.some(name => !known.includes(name))) throw new ModOrderError('INVALID_ORDER');
+        return [...new Set(value as string[])];
+      };
+      if (body.modFolders !== undefined) latest.modFolders = folderList(body.modFolders);
+      if (body.skseFolders !== undefined || body.skseGameVersion !== undefined) {
+        if (body.skseGameVersion !== undefined && (typeof body.skseGameVersion !== 'string' || !/^(?:\d+\.\d+\.\d+\.\d+)?$/.test(body.skseGameVersion))) throw new ModOrderError('INVALID_GAME_VERSION');
+        const resources = {...(latest.launcherResources as object | undefined)} as Record<string, unknown>;
+        if (body.skseFolders !== undefined) resources.skseFolders = folderList(body.skseFolders);
+        if (body.skseGameVersion !== undefined) resources.skseGameVersion = body.skseGameVersion;
+        latest.launcherResources = resources;
+      }
       options.write(latest);
       ctx.body = {...await inspectModOrder(latest), restartRequired: true};
     } catch (error) { failure(ctx, error); } finally { release(); }

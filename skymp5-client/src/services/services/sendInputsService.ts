@@ -37,9 +37,9 @@ export class SendInputsService extends ClientListener {
 
   private onUpdate() {
     if (!this.singlePlayerService.isSinglePlayer) {
-      this.sendInputs();
-
       const player = this.sp.Game.getPlayer()!;
+      if (!player) return;
+      this.sendInputs();
       const isPlayerCasting =
         player.getAnimationVariableBool('IsCastingRight') ||
         player.getAnimationVariableBool('IsCastingLeft') ||
@@ -119,6 +119,9 @@ export class SendInputsService extends ClientListener {
   }
 
   private sendMovement(_refrId?: number, form?: FormModel) {
+    if (this.controller.lookupListener(RemoteServer).isPlayerSpawning()) {
+      return;
+    }
     const owner = this.getInputOwner(_refrId);
     if (!owner) {
       return;

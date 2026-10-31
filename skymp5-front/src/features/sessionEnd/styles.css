@@ -1,0 +1,17 @@
+#skymp-session-end {
+  position: fixed; inset: 0; z-index: 2147483647; place-items: center;
+  padding: 24px; box-sizing: border-box; background: rgba(8, 13, 17, .97);
+  color: #eef4f2; pointer-events: auto; font-family: inherit; overflow-y: auto;
+}
+#skymp-session-reconnecting { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483646; padding: 12px 20px; border: 1px solid #44796b; border-radius: 8px; background: #172328; color: #eef4f2; font-family: inherit; pointer-events: none; }
+.session-end__dialog { width: min(620px, 100%); padding: 30px; box-sizing: border-box; border: 1px solid #44796b; border-radius: 12px; background: #172328; box-shadow: 0 18px 80px #0009; }
+.session-end__label { color: #80c6b1; font-size: 14px; letter-spacing: .15em; }
+.session-end__dialog h1 { font-size: clamp(24px, 3vw, 36px); margin: 12px 0 22px; }
+.session-end__dialog p { line-height: 1.6; }
+.session-end__dialog blockquote { margin: 20px 0; padding: 14px; border-left: 3px solid #d7ad6b; background: #ffffff08; white-space: pre-wrap; overflow-wrap: anywhere; }
+.session-end__actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+.session-end__actions button { border: 1px solid #53736b; background: #263d39; color: #eef4f2; border-radius: 6px; padding: 12px 18px; font: inherit; cursor: pointer; }
+.session-end__actions .session-end__retry { background: #24604f; }
+.session-end__actions button:disabled { opacity: .45; cursor: wait; }
+.session-end__actions button:focus-visible { outline: 3px solid #9bd7c4; outline-offset: 3px; }
+@media (max-width: 540px) { #skymp-session-end { padding: 12px; } .session-end__dialog { padding: 20px; } .session-end__actions button { flex: 1 1 100%; } }

@@ -2,6 +2,7 @@
 
 #include "Bot.h"
 #include "ConditionsEvaluator.h"
+#include "ConsoleSecurity.h"
 #include "FormCallbacks.h"
 #include "FormDesc.h"
 #include "GamemodeApi.h"
@@ -105,6 +106,9 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
 
       InstanceMethod("getLocalizedString", &ScampServer::GetLocalizedString),
       InstanceMethod("getServerSettings", &ScampServer::GetServerSettings),
+      InstanceMethod("getConsoleSecurityState", &ScampServer::GetConsoleSecurityState),
+      InstanceMethod("setConsoleCommandAuthorizer", &ScampServer::SetConsoleCommandAuthorizer),
+      InstanceMethod("grantMovementAllowance", &ScampServer::GrantMovementAllowance),
       InstanceMethod("clear", &ScampServer::Clear),
       InstanceMethod("makeProperty", &ScampServer::MakeProperty),
       InstanceMethod("makeEventSource", &ScampServer::MakeEventSource),
@@ -361,20 +365,13 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       spdlog::info(msg.str());
     }
 
-    if (serverSettings.find("enableConsoleCommandsForAll") !=
-        serverSettings.end()) {
-      if (serverSettings.at("enableConsoleCommandsForAll").is_boolean()) {
-        bool enableConsoleCommandsForAll =
-          serverSettings["enableConsoleCommandsForAll"].get<bool>();
-        spdlog::info("enableConsoleCommandsForAll is explicitly set to {}",
-                     enableConsoleCommandsForAll);
-        partOne->worldState.SetEnableConsoleCommandsForAllSetting(
-          enableConsoleCommandsForAll);
-      } else {
-        spdlog::error("Unexpected value of enableConsoleCommandsForAll "
-                      "setting, should be true or false");
-      }
-    }
+    const auto consoleSecurity = ConsoleSecurity::Parse(serverSettings);
+    partOne->worldState.consoleSecurity.policy = consoleSecurity.policy;
+    partOne->worldState.consoleSecurity.diagnostics = consoleSecurity.diagnostics;
+    for (const auto& diagnostic : consoleSecurity.diagnostics)
+      spdlog::warn("[security] console configuration diagnostic: {}", diagnostic);
+    if (serverSettings.contains("enableConsoleCommandsForAll") && serverSettings["enableConsoleCommandsForAll"] != false)
+      spdlog::warn("[security] enableConsoleCommandsForAll is ignored. Grant consoleCommandsAllowed only to authorized actors or install a server-side authorizer.");
 
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&

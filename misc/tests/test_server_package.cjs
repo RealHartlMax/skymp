@@ -22,9 +22,9 @@ for (const file of manifest.files) assert.equal(hash(path.join(source, file.path
 fs.cpSync(source, root, { recursive: true });
 const modFixture = Buffer.from('launcher-publication-native-server-smoke-test');
 const modFixturePath = 'Data/textures/launcher-validation/test.dds';
-assert(!fs.existsSync(path.join(root, 'client-resources', modFixturePath)), 'Mod fixture must be new');
-fs.mkdirSync(path.dirname(path.join(root, 'client-resources', modFixturePath)), { recursive: true });
-fs.writeFileSync(path.join(root, 'client-resources', modFixturePath), modFixture);
+assert(!fs.existsSync(path.join(root, 'data/mods/Validation', modFixturePath.slice('Data/'.length))), 'Mod fixture must be new');
+fs.mkdirSync(path.dirname(path.join(root, 'data/mods/Validation', modFixturePath.slice('Data/'.length))), { recursive: true });
+fs.writeFileSync(path.join(root, 'data/mods/Validation', modFixturePath.slice('Data/'.length)), modFixture);
 const settings = JSON.parse(fs.readFileSync(path.join(root, 'server-settings.json'), 'utf8'));
 assert.equal(settings.offlineMode, false, 'New packages must use verified Steam access');
 assert.equal(settings.playerAccess.mode, 'guest');

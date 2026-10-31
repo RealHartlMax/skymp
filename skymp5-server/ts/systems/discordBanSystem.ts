@@ -2,6 +2,7 @@ import { Settings } from '../settings';
 import { isManagedRuntime, onManagedMessage } from '../managedRuntime';
 import { resolveDiscordSettings, isDiscordId } from '../discordConfig';
 import { System, SystemContext } from './system';
+import { endPlayerSession } from '../playerSessionEnd';
 
 type Mp = any; // TODO
 
@@ -29,7 +30,7 @@ export class DiscordBanSystem implements System {
         if (Number.isInteger(userId) && userId >= 0 && ctx.svr.isConnected(userId)) users.add(userId);
         ctx.svr.setEnabled(formId, false);
       }
-      for (const userId of users) ctx.svr.kick(userId);
+      for (const userId of users) endPlayerSession(ctx.svr, userId, 'ban');
       console.log(`[Discord] Ban role applied: ${forms.length} characters disabled, ${users.size} connections closed.`);
     });
   }

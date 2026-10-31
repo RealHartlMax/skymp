@@ -1,0 +1,3 @@
+[Deutsch](../../../../de/docs/release/dev/sp-plugins-path-override-folder.md) · [English](sp-plugins-path-override-folder.md) · [Русский](../../../../ru/docs/release/dev/sp-plugins-path-override-folder.md)
+
+New optional argument `overrideFolder` for `writePlugin` and `getPluginSourceCode` methods: An optional argument `overrideFolder` is now available. This folder can be outside the list of plugin folders defined in `PluginFolders`. While this folder will be writable and readable, SkyrimPlatform will not monitor or load plugins from it. `overrideFolder` is relative to `Data/Platform`.

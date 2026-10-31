@@ -1,5 +1,10 @@
 import * as chokidar from 'chokidar';
 import { createGamemodeReloader } from './gamemodeReload';
+import { ConsoleSecurityService } from './consoleSecurity';
+import { installPlayerSessionEnd } from './playerSessionEnd';
+import { getManagedShutdownKind } from './managedRuntime';
+import { publishManagedUpdate } from './managedRuntime';
+import { publishPluginRuntimeSelection, publishStartedPluginRuntime, removePublishedPluginRuntime, validatePluginRuntime } from './pluginRuntimePackages';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 
@@ -52,6 +57,8 @@ import {
   type VoiceActivityState,
 } from './voiceActivityApi';
 import { createYacaTeamSpeakAdapter } from './adapters/YacaTeamSpeakAdapter';
+
+let coreConsoleSecurity: ConsoleSecurityService | null = null;
 
 sourceMapSupport.install({
   retrieveSourceMap: function (source: string) {
@@ -256,6 +263,7 @@ interface PluginManifest {
   startupDefault?: boolean;
   command?: string;
   args?: string[];
+  runtime?: 'Runtime/manifest.json';
 }
 
 interface DiscoveredPlugin {
@@ -266,6 +274,7 @@ interface DiscoveredPlugin {
 }
 
 interface PluginSetupOptions {
+  dataDir: string;
   mode: PluginDiscoveryMode;
   loadOrder: string[];
   abortOnPluginError: boolean;
@@ -471,6 +480,11 @@ const readPluginManifest = (manifestPath: string): PluginManifest | null => {
     return null;
   }
 
+  if (parsed.runtime !== undefined && parsed.runtime !== 'Runtime/manifest.json') {
+    pluginsWarn(`Skipping "${manifestPath}": runtime must be Runtime/manifest.json`);
+    return null;
+  }
+
   return {
     name,
     version,
@@ -483,6 +497,7 @@ const readPluginManifest = (manifestPath: string): PluginManifest | null => {
     command:
       typeof parsed.command === 'string' ? parsed.command.trim() : undefined,
     args: parsed.args,
+    runtime: parsed.runtime,
   };
 };
 
@@ -691,6 +706,7 @@ const runGamemodePlugin = (
 const runProcessPlugin = (
   plugin: DiscoveredPlugin,
   processCommandAllowlist: string[] | null,
+  dataDir: string,
 ) => {
   const command = plugin.manifest.command;
   if (!command) {
@@ -724,6 +740,7 @@ const runProcessPlugin = (
     process.stderr.write(`[plugin:${plugin.manifest.name}] ${chunk}`);
   });
   child.on('exit', (code, signal) => {
+    removePublishedPluginRuntime(dataDir, plugin.manifest.name);
     const stoppedStatus = code === 0 ? 'stopped' : 'failed';
     ui.updatePluginRuntimeStatus(plugin.manifest.name, stoppedStatus, {
       pid: child.pid || undefined,
@@ -734,6 +751,7 @@ const runProcessPlugin = (
     );
   });
   child.on('error', (e) => {
+    removePublishedPluginRuntime(dataDir, plugin.manifest.name);
     ui.updatePluginRuntimeStatus(plugin.manifest.name, 'failed', {
       pid: child.pid || undefined,
       message: e instanceof Error ? e.message : String(e),
@@ -751,6 +769,7 @@ const bootstrapPlugins = async (
   server: scampNative.ScampServer,
   options: PluginSetupOptions,
 ): Promise<void> => {
+  publishPluginRuntimeSelection(options.dataDir, []);
   const discovered = discoverPlugins();
   if (discovered.length === 0) {
     return;
@@ -824,13 +843,16 @@ const bootstrapPlugins = async (
 
     try {
       ui.updatePluginRuntimeStatus(plugin.manifest.name, 'starting');
+      const publication = { name: plugin.manifest.name, version: plugin.manifest.version, pluginDir: plugin.pluginDir };
+      validatePluginRuntime(publication);
       if (plugin.manifest.kind === 'gamemode') {
         runGamemodePlugin(plugin, server);
         ui.updatePluginRuntimeStatus(plugin.manifest.name, 'running');
         pluginsLog(`loaded gamemode plugin "${plugin.manifest.name}"`);
       } else {
-        runProcessPlugin(plugin, options.processCommandAllowlist);
+        runProcessPlugin(plugin, options.processCommandAllowlist, options.dataDir);
       }
+      publishStartedPluginRuntime(options.dataDir, publication);
     } catch (e) {
       const msg =
         e instanceof Error ? `${e.message}\n${e.stack || ''}` : String(e);
@@ -869,7 +891,7 @@ const setupGamemode = async (
   gamemodePath: string,
   pluginOptions: PluginSetupOptions,
 ) => {
-  const clear = () => server.clear();
+  const clear = () => { coreConsoleSecurity?.resetPermissions(); server.clear(); };
 
   const absoluteGamemodePath = resolveExistingPath(gamemodePath);
   console.log(`Gamemode path is "${absoluteGamemodePath}"`);
@@ -1028,7 +1050,19 @@ const main = async () => {
 
   try {
     server = createScampServer(settingsObject.allSettings);
+    const playerSessions = installPlayerSessionEnd(server);
+    process.once('SIGTERM', () => playerSessions.shutdown(getManagedShutdownKind()));
+    // Registered SIGINT listeners suppress Node's default exit, and the notice needs time to leave.
+    process.once('SIGINT', () => { playerSessions.shutdown('shutdown'); setTimeout(() => process.exit(0), 500); });
     ui.setServer(server);
+    coreConsoleSecurity = new ConsoleSecurityService(server, settingsObject.allSettings ?? {});
+    Object.defineProperty(globalThis, 'skympConsoleSecurity', { value: coreConsoleSecurity.api, writable: false, configurable: false });
+    ui.setConsoleSecurityService(coreConsoleSecurity);
+    const publishSecurity = () => publishManagedUpdate('consoleSecurity', coreConsoleSecurity?.status());
+    publishSecurity();
+    const securityTimer = setInterval(publishSecurity, 2000);
+    securityTimer.unref();
+    process.once('SIGTERM', () => clearInterval(securityTimer));
   } catch (e) {
     console.error(e);
     console.error(`Stopping the server due to the previous error`);
@@ -1402,6 +1436,7 @@ const main = async () => {
   }
 
   await setupGamemode(server, gamemodePath, {
+    dataDir: settingsObject.dataDir,
     mode: pluginDiscoveryMode,
     loadOrder: pluginsLoadOrder,
     abortOnPluginError,

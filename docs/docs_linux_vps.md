@@ -1,5 +1,7 @@
 # Linux-VPS: Build und Betrieb
 
+> **Neu:** Mods liegen jetzt in `data/mods/<Mod>/`; `client-resources` wird nicht mehr gelesen. Angaben dazu auf dieser Seite sind überholt. Siehe [Mods in data/mods](docs_mod_folders.md).
+
 Diese Anleitung ergänzt den [Serverbetrieb](docs_running_a_server.md) für einen
 **Ubuntu-26.04-VPS mit 12 vCores und 24 GB RAM**. Das ist eine Ausgangskonfiguration für
 Build und Lasttests; eine belastbare Spielerzahl ergibt sich erst aus Messungen

@@ -3,6 +3,7 @@ import { MsgType } from '../../messages';
 // TODO: refactor this out
 import { localIdToRemoteId } from '../../view/worldViewMisc';
 import { ClientListener, CombinedController, Sp } from './clientListener';
+import { ConsoleSecurityClient } from './consoleSecurityClient';
 
 enum CmdArgument {
   ObjectReference,
@@ -14,11 +15,15 @@ enum CmdArgument {
 type CmdName = 'additem' | 'equipitem' | 'placeatme' | 'disable' | 'mp';
 
 export class ConsoleCommandsService extends ClientListener {
+  private security: ConsoleSecurityClient;
+  private registeredForwarded = new Set<string>();
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
+    this.security = new ConsoleSecurityClient(sp, controller);
     this.schemas = ConsoleCommandsService.createSchemas();
     this.setupMpCommand();
     this.setupVanilaCommands();
+    this.security.installHooks(Array.from(this.registeredForwarded));
   }
 
   private static createSchemas() {
@@ -52,11 +57,13 @@ export class ConsoleCommandsService extends ClientListener {
 
     command.shortName = 'mp';
     command.execute = this.getCommandExecutor('mp');
+    this.registeredForwarded.add('disable');
   }
 
   private setupVanilaCommands() {
     logTrace(this, `Setting up vanila commands`);
     this.schemas.forEach((_, commandName) => {
+      if (this.nonVanilaCommands.includes(commandName)) return;
       logTrace(this, `Setting up command`, commandName);
       const command = this.sp.findConsoleCommand(commandName);
       if (command === null) {
@@ -73,6 +80,7 @@ export class ConsoleCommandsService extends ClientListener {
         return;
       }
       command.execute = this.getCommandExecutor(commandName);
+      this.registeredForwarded.add(commandName);
     });
     logTrace(this, `Vanila commands set up`);
   }
@@ -81,6 +89,9 @@ export class ConsoleCommandsService extends ClientListener {
     commandName: CmdName,
   ): (...args: unknown[]) => boolean {
     return (...args: unknown[]) => {
+      const operation = commandName === 'mp' ? 'disable' : commandName;
+      if (commandName === 'mp' && (args.length !== 2 || typeof args[1] !== 'string' || args[1].toLowerCase() !== 'disable')) return false;
+      if (!this.security.canForward(operation)) { this.security.deny(operation); return false; }
       // TODO: handle possible exceptions in this function
       const schema = this.schemas.get(commandName);
       if (schema === undefined) {
@@ -89,8 +100,7 @@ export class ConsoleCommandsService extends ClientListener {
       }
 
       if (
-        args.length !== schema.length &&
-        !this.immuneSchema.includes(commandName)
+        args.length !== schema.length
       ) {
         logError(
           this,
@@ -103,7 +113,15 @@ export class ConsoleCommandsService extends ClientListener {
       for (let i = 0; i < args.length; ++i) {
         switch (schema[i]) {
           case CmdArgument.ObjectReference:
-            args[i] = localIdToRemoteId(parseInt(`${args[i]}`));
+            if (typeof args[i] !== 'number' || !Number.isSafeInteger(args[i]) || Number(args[i]) < 0 || Number(args[i]) > 0xffffffff) return false;
+            try { args[i] = localIdToRemoteId(Number(args[i])); } catch { return false; }
+            break;
+          case CmdArgument.BaseForm:
+          case CmdArgument.Int:
+            if (typeof args[i] !== 'number' || !Number.isSafeInteger(args[i]) || Number(args[i]) <= 0 || Number(args[i]) > (schema[i] === CmdArgument.Int ? 1000000 : 0xffffffff)) return false;
+            break;
+          case CmdArgument.String:
+            if (typeof args[i] !== 'string' || String(args[i]).length > 64) return false;
             break;
         }
       }
@@ -139,6 +157,5 @@ export class ConsoleCommandsService extends ClientListener {
   }
 
   private readonly schemas: Map<CmdName, CmdArgument[]>;
-  private readonly immuneSchema = ['mp'];
   private readonly nonVanilaCommands = ['mp'];
 }

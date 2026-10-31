@@ -12,10 +12,10 @@ const file = path.join(root,'server-settings.json');
 const privateKey = 'skymp_live_only_for_fixture_123456789';
 const base = { name:'ÄÖÜ World', offlineMode:true, master:'https://api.skymp-worlds.net', masterKey:privateKey,
   port:7777, loadOrder:['Skyrim.esm'], world:{keep:42}, adminUiMasterUser:'owner',
-  launcherResources:{enabled:true,directory:'./client-resources',runtimeSource:connection.DEFAULT_RUNTIME,custom:'preserve'} };
+  launcherResources:{enabled:true,runtimeSource:connection.DEFAULT_RUNTIME,custom:'preserve'} };
 const fields = { master:connection.DEFAULT_MASTER, serverUid:'srv_public_fixture', masterKey:privateKey,
   authMode:'online',publicHost:'203.0.113.10',port:'7777',resourcesEnabled:true,
-  resourceDirectory:'./client-resources',runtimeSource:connection.DEFAULT_RUNTIME };
+  runtimeSource:connection.DEFAULT_RUNTIME };
 const checks = [];
 let server;
 (async()=>{
@@ -26,7 +26,7 @@ let server;
     {serverUid:'../key'},{serverUid:''},{masterKey:'bad key'},{masterKey:[]},{authMode:'anything'},
     {publicHost:'http://127.0.0.1:8080/'},{publicHost:'999.999.999.999'},{publicHost:'0.0.0.0'},
     {port:0},{port:65536},{port:'1.2'},{resourcesEnabled:'true'},
-    {resourceDirectory:'../data'},{resourceDirectory:'D:/data'},{resourceDirectory:'mods/CON'},
+    
     {runtimeSource:'https://example.com/not-a-manifest.zip'},
   ]) {
     assert.throws(()=>connection.save(file,{...fields,...invalid,revision:connection.describe(base).revision}));

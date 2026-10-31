@@ -1,5 +1,10 @@
 #include "LocalizationProvider.h"
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <fstream>
+#include <set>
+#include <vector>
 
 DirectoryEntry::DirectoryEntry(uint32_t stringId, uint32_t stringOffset)
   : stringId(stringId)
@@ -101,23 +106,53 @@ void LocalizationProvider::Parse(const std::filesystem::directory_entry& file)
   }
 }
 
+namespace {
+// data/strings first, then each mod folder alphabetically
+std::vector<std::filesystem::path> ListStringsDirectories(
+  const std::string& dataDir)
+{
+  std::vector<std::filesystem::path> directories;
+  const std::filesystem::path root(dataDir);
+  if (std::filesystem::exists(root / "strings")) {
+    directories.push_back(root / "strings");
+  }
+
+  std::set<std::filesystem::path> mods;
+  if (std::filesystem::is_directory(root / "mods")) {
+    for (const auto& mod :
+         std::filesystem::directory_iterator(root / "mods")) {
+      if (mod.is_directory()) {
+        mods.insert(mod.path());
+      }
+    }
+  }
+  for (const auto& mod : mods) {
+    for (const auto& entry : std::filesystem::directory_iterator(mod)) {
+      auto name = entry.path().filename().string();
+      std::transform(name.begin(), name.end(), name.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (entry.is_directory() && name == "strings") {
+        directories.push_back(entry.path());
+      }
+    }
+  }
+  return directories;
+}
+}
+
 LocalizationProvider::LocalizationProvider(const std::string& dataDir,
                                            const std::string& language)
 {
-  std::filesystem::path stringsPath =
-    std::filesystem::path(dataDir) / "strings";
+  for (const auto& stringsPath : ListStringsDirectories(dataDir)) {
+    for (const auto& entry :
+         std::filesystem::directory_iterator(stringsPath)) {
+      std::string filename = entry.path().filename().string();
 
-  if (!std::filesystem::exists(stringsPath)) {
-    return;
-  }
+      if (!entry.is_directory() &&
+          filename.find(language) != std::string::npos) {
 
-  for (const auto& entry : std::filesystem::directory_iterator(stringsPath)) {
-    std::string filename = entry.path().filename().string();
-
-    if (!entry.is_directory() &&
-        filename.find(language) != std::string::npos) {
-
-      Parse(entry);
+        Parse(entry);
+      }
     }
   }
 }
@@ -131,29 +166,25 @@ const std::string& LocalizationProvider::Get(const std::string& file,
 std::vector<std::string> LocalizationProvider::GetAvailableLanguages(
   const std::string& dataDir)
 {
-  std::filesystem::path stringsPath =
-    std::filesystem::path(dataDir) / "strings";
-
-  if (!std::filesystem::exists(stringsPath)) {
-    return {};
-  }
-
   std::set<std::string> languages;
 
-  for (const auto& entry : std::filesystem::directory_iterator(stringsPath)) {
-    if (entry.is_directory()) {
-      continue;
-    }
+  for (const auto& stringsPath : ListStringsDirectories(dataDir)) {
+    for (const auto& entry :
+         std::filesystem::directory_iterator(stringsPath)) {
+      if (entry.is_directory()) {
+        continue;
+      }
 
-    std::string stem = entry.path().stem().string(); // e.g. "skyrim_russian"
-    size_t lastUnderscore = stem.find_last_of("_");
-    if (lastUnderscore == std::string::npos) {
-      continue;
-    }
+      std::string stem = entry.path().stem().string(); // e.g. "skyrim_russian"
+      size_t lastUnderscore = stem.find_last_of("_");
+      if (lastUnderscore == std::string::npos) {
+        continue;
+      }
 
-    std::string lang = stem.substr(lastUnderscore + 1);
-    if (!lang.empty()) {
-      languages.insert(lang);
+      std::string lang = stem.substr(lastUnderscore + 1);
+      if (!lang.empty()) {
+        languages.insert(lang);
+      }
     }
   }
 

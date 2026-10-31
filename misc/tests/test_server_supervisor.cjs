@@ -40,7 +40,7 @@ server.on('upgrade',(req,socket)=>{
   socket.on('data',()=>socket.end(Buffer.from([0x88,0])));
 });
 server.listen(0,'127.0.0.1',()=>process.send({type:'skymp:ready',port:server.address().port}));
-process.on('message',value=>{if(value.type==='skymp:shutdown')process.exit(0)});
+process.on('message',value=>{if(value.type==='skymp:shutdown'){require('node:fs').appendFileSync('shutdown-reasons.jsonl',JSON.stringify(value)+'\\n');process.exit(0)}});
 process.on('disconnect',()=>process.exit(0));
 `);
     manager = createSupervisor({ root, entry: 'fixture.cjs', args: [], stopTimeout: 1500 });
@@ -100,6 +100,8 @@ process.on('disconnect',()=>process.exit(0));
     assertWebListenerRetained();
     assert.equal((await post('/api/admin/supervisor/control', { action: 'restart' })).status, 202);
     const restarted = await wait('running', second.pid); assert(restarted.pid);
+    const notices = fs.readFileSync(path.join(root,'shutdown-reasons.jsonl'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+    assert.equal(notices[0].reason,'shutdown'); assert.equal(notices.at(-1).reason,'restart');
     assertWebListenerRetained();
     checks.push('Stop, start and restart retain one uninterrupted public web listener; restart replaces only the child PID');
     await request('/crash'); await wait('crashed');

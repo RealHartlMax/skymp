@@ -2,6 +2,7 @@
 #include "AnimationSystem.h"
 #include "ConditionsEvaluator.h"
 #include "ConsoleCommands.h"
+#include "ConsoleSecurity.h"
 #include "CropRegeneration.h"
 #include "Exceptions.h"
 #include "GetBaseActorValues.h"
@@ -22,6 +23,7 @@
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 #include <unordered_set>
+#include <cmath>
 
 #include "CustomPacketMessage.h"
 #include "HostStartMessage.h"
@@ -40,7 +42,7 @@ uint32_t LongToNormal(uint64_t longFormId)
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           Networking::UserId userId,
                                           Networking::PacketData data,
-                                          size_t length, bool reliable)
+                                          size_t length, bool reliable, bool forward)
 {
   MpActor* myActor = partOne.serverState.ActorByUser(userId);
   // The old behavior is doing nothing in that case. This is covered by tests
@@ -86,7 +88,7 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
     }
   }
 
-  for (auto listener : actor->GetActorListeners()) {
+  if (forward) for (auto listener : actor->GetActorListeners()) {
     auto targetuserId = partOne.serverState.UserByActor(listener);
     if (targetuserId != Networking::InvalidUserId) {
       partOne.GetSendTarget().Send(targetuserId, data, length, reliable);
@@ -98,10 +100,10 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
 
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           const RawMessageData& rawMsgData,
-                                          bool reliable)
+                                          bool reliable, bool forward)
 {
   return SendToNeighbours(idx, rawMsgData.userId, rawMsgData.unparsed,
-                          rawMsgData.unparsedLength, reliable);
+                          rawMsgData.unparsedLength, reliable, forward);
 }
 
 void ActionListener::OnCustomPacket(const RawMessageData& rawMsgData,
@@ -117,30 +119,20 @@ void ActionListener::OnCustomPacket(const RawMessageData& rawMsgData,
 void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
                                       const UpdateMovementMessage& msg)
 {
-  auto actor = SendToNeighbours(msg.idx, rawMsgData);
+  // Resolve ownership first, but do not relay unvalidated positions to peers.
+  auto actor = SendToNeighbours(msg.idx, rawMsgData, false, false);
   if (actor) {
     auto myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
 
-    // Keep a rider->horse mapping from authoritative self movement updates.
-    if (myActor && actor == myActor) {
-      const auto riderId = myActor->GetFormId();
-      if (msg.data.isMounted && msg.data.mountRemoteId.has_value() &&
-          msg.data.mountRemoteId.value() != 0) {
-        partOne.worldState.ridingHorseByRider[riderId] =
-          msg.data.mountRemoteId.value();
-      } else {
-        partOne.worldState.ridingHorseByRider.erase(riderId);
+    for (const float value : msg.data.rot) {
+      if (!std::isfinite(value)) {
+        partOne.worldState.consoleSecurity.Audit("movement_rejected", actor->GetFormId(),
+          "movement", "non_finite_rotation", "movement", true);
+        return;
       }
     }
-
     bool teleportFlag = actor->GetTeleportFlag();
     actor->SetTeleportFlag(false);
-
-    static const NiPoint3 kInfinityPos = {
-      std::numeric_limits<float>::infinity(),
-      std::numeric_limits<float>::infinity(),
-      std::numeric_limits<float>::infinity()
-    };
 
     auto& espmFiles = actor->GetParent()->espmFiles;
 
@@ -150,12 +142,18 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
 
     if (!MovementValidation::Validate(
           partOne, currentPos, currentRot, currentCellOrWorld,
-          teleportFlag
-            ? kInfinityPos
-            : NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
+          NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
           FormDesc::FromFormId(msg.data.worldOrCell, espmFiles),
-          rawMsgData.userId, actor, espmFiles)) {
+          rawMsgData.userId, actor, espmFiles, teleportFlag)) {
       return;
+    }
+
+    if (myActor && actor == myActor) {
+      const auto riderId = myActor->GetFormId();
+      if (msg.data.isMounted && msg.data.mountRemoteId.has_value() &&
+          msg.data.mountRemoteId.value() != 0) {
+        partOne.worldState.ridingHorseByRider[riderId] = msg.data.mountRemoteId.value();
+      } else partOne.worldState.ridingHorseByRider.erase(riderId);
     }
 
     if (!msg.data.isBlocking) {
@@ -195,6 +193,7 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
     }
     partOne.worldState.lastMovUpdateByIdx[msg.idx] =
       std::chrono::system_clock::now();
+    SendToNeighbours(msg.idx, rawMsgData);
   }
 }
 
@@ -658,7 +657,17 @@ void ActionListener::OnConsoleCommand(const RawMessageData& rawMsgData,
                                       const ConsoleCommandMessage& msg)
 {
   MpActor* me = partOne.serverState.ActorByUser(rawMsgData.userId);
+  if (!me || !partOne.serverState.IsConnected(rawMsgData.userId)) {
+    partOne.worldState.consoleSecurity.Audit("console_command_denied", 0,
+      "unknown", "connection_not_authenticated", "native_console", true);
+    return;
+  }
   if (me) {
+    if (msg.data.args.size() > 3) {
+      partOne.worldState.consoleSecurity.Audit("console_command_denied", me->GetFormId(),
+        "unknown", "invalid_argument_count", "native_console", true);
+      throw std::runtime_error("invalid_argument_count");
+    }
     std::vector<ConsoleCommands::Argument> consoleArgs;
     consoleArgs.resize(msg.data.args.size());
     for (size_t i = 0; i < msg.data.args.size(); i++) {
@@ -806,6 +815,14 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
 
   if (actor->ShouldSkipRestoration()) {
     return;
+  }
+
+  for (const auto& value : { msg.data.health, msg.data.magicka, msg.data.stamina }) {
+    if (value && (!std::isfinite(*value) || *value < 0.f || *value > 1.f)) {
+      partOne.worldState.consoleSecurity.Audit("attribute_update_rejected", actor->GetFormId(),
+        "attributes", "invalid_percentage", "actor_values", true);
+      return;
+    }
   }
 
   const auto now = std::chrono::steady_clock::now();

@@ -4,7 +4,13 @@ Our build system is CMake-based. This document describes some caveats of our CMa
 
 When you switch between commits, you should run `cmake ..` in the `build` directory. This action is called "CMake re-generation".
 
-Only `Visual Studio 16 2019` generator is supported on Windows.
+The local Windows configuration verified on 29 October 2026 uses the
+`Visual Studio 18 2026` generator (Community, MSVC 14.51). Targeted native
+unit-test and server-addon builds succeeded with that configuration. Older
+instructions mentioning only Visual Studio 2019 describe an earlier toolchain;
+they are not a restriction on the current checkout. Use the repository's
+`build` directory: the root CMake configuration requires the binary directory
+to be exactly `<repository>/build`.
 
 ## Adding Source Files
 

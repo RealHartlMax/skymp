@@ -1,5 +1,7 @@
 # Server-ZIPs für Ersteinrichtung und bestehende Installationen
 
+> **Neu:** Mods liegen jetzt in `data/mods/<Mod>/`; `client-resources` wird nicht mehr gelesen. Angaben dazu auf dieser Seite sind überholt. Siehe [Mods in data/mods](docs_mod_folders.md).
+
 Stand: 26. Oktober 2026, r12. Für Linux x64 und Windows x64 gibt es je zwei ZIPs mit
 Dateien direkt im Archivwurzelverzeichnis:
 

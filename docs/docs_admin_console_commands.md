@@ -2,6 +2,12 @@
 
 The server admin console now supports a small command dispatcher with explicit permissions and a legacy JavaScript fallback.
 
+This is the authenticated **dashboard/server admin console**. It is separate
+from native Skyrim console commands and the optional Chat plugin's registered
+`/`-commands. [Console Security](docs_console_security.md) controls the native
+client console and validates native command requests in the Core. It does not
+replace this admin dispatcher or the Chat plugin's existing command registry.
+
 ## Supported Commands
 
 - `help [command]` - show the command list or a short description.

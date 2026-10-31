@@ -5,9 +5,10 @@ import { chatReducer } from '../features/chat/reducer';
 import { appReducer } from '../reducers/app';
 import { commandReducer } from '../reducers/command';
 
-export const rootReducer = combineReducers({
+export const baseReducers = {
   commandReducer,
   appReducer,
   chatReducer,
   animListReducer,
-});
+};
+export const rootReducer = combineReducers(baseReducers);

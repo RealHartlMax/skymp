@@ -33,6 +33,9 @@ export interface ScampServer {
   getUserActor(userId: number): number;
   getUserGuid(userId: number): string;
   isConnected(userId: number): boolean;
+  getConsoleSecurityState(userId?: number): { apiVersion: number; policy: Record<string, unknown>; diagnostics: string[]; serverAuthorization: string; authenticated?: boolean; allowedServerCommands?: string[] };
+  setConsoleCommandAuthorizer(resolver: ((context: { userId: number; actorId: number; profileId: number; targetId: number; permission: string; source: string }) => boolean | null) | null): void;
+  grantMovementAllowance(actorId: number, milliseconds: number): void;
   getActorName(actorId: number): string;
   getActorPos(actorId: number): number[];
   getActorCellOrWorld(actorId: number): number;

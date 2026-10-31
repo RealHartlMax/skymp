@@ -1,10 +1,17 @@
 import * as crypto from 'crypto';
+import { registerPluginLoadOrder } from './pluginLoadOrder';
+import { registerConsoleSecurity, validateConsoleSecuritySettings, type ConsoleSecurityService } from './consoleSecurity';
+import { endPlayerSession } from './playerSessionEnd';
+import { AdminBans, getAdminBans, banConnectedPlayer } from './adminBans';
+import { InventoryError, readAdminInventory, requireOnlinePlayer, validProfileId } from './adminInventory';
+import { latestReleaseUrl, releaseRepository } from './serverRelease';
+import { registerPluginRuntimes } from './pluginRuntimePackages';
 const launcherConnection = require('../../misc/deploy/test-server/launcher-connection.cjs');
 import { renderAdminLoginPage } from './adminLoginPage';
 import { registerLauncherResources } from './launcherResources';
 import { registerModLoadOrder } from './modLoadOrder';
 import { registerServerAssets } from './serverAssets';
-import { registerPlayerAccess, validatePlayerAccess, getSteamPlayerInfo } from './playerAccess';
+import { registerPlayerAccess, validatePlayerAccess, getSteamPlayerInfo, getVerifiedSteamUsers, listPlayerAccess } from './playerAccess';
 import { getManagedGameState, isDashboardRuntime, isManagedRuntime, notifyManagedSettingsChanged, onManagedMessage, publishAdminSession, publishManagedReady, publishManagedUpdate, publishDiscordNotification, removeManagedSession, requestManagedControl } from './managedRuntime';
 import { normalizeDiscordSettings, resolveDiscordSettings, validateDiscordSettings } from './discordConfig';
 import { discordStatusDefaults } from './discordStatus';
@@ -67,6 +74,9 @@ const auth = require('koa-basic-auth');
 let gScampServer: any = null;
 let managedGameStatus: any = null;
 let managedPlayers: any[] = [];
+let consoleSecurityService: ConsoleSecurityService | null = null;
+let managedConsoleSecurity: any = null;
+export const setConsoleSecurityService = (service: ConsoleSecurityService): void => { consoleSecurityService = service; };
 let dashboardDiscordBot: DashboardDiscordBot | null = null;
 let restartScheduler: RestartScheduler | null = null;
 let dashboardActivity: DashboardActivity | null = null;
@@ -203,6 +213,7 @@ interface InstalledReleaseInfo {
 
 interface CachedLatestReleaseInfo {
   fetchedAt: number;
+  repository: string;
   payload: {
     latestVersion: string | null;
     releaseUrl: string;
@@ -671,16 +682,18 @@ const getRuntimeReadinessReport = (): RuntimeReadinessReport => {
   return payload;
 };
 
-const fetchLatestReleaseInfo = async (): Promise<CachedLatestReleaseInfo['payload']> => {
+const fetchLatestReleaseInfo = async (repositorySetting?: unknown): Promise<CachedLatestReleaseInfo['payload']> => {
+  const repository = releaseRepository(repositorySetting);
   if (
     latestReleaseCache &&
+    latestReleaseCache.repository === repository &&
     Date.now() - latestReleaseCache.fetchedAt < LATEST_RELEASE_CACHE_MS
   ) {
     return latestReleaseCache.payload;
   }
 
   const response = await Axios.get(
-    'https://api.github.com/repos/skyrim-multiplayer/skymp/releases/latest',
+    latestReleaseUrl(repository),
     {
       timeout: GITHUB_API_TIMEOUT_MS,
       maxContentLength: GITHUB_MAX_RESPONSE_BYTES,
@@ -708,6 +721,7 @@ const fetchLatestReleaseInfo = async (): Promise<CachedLatestReleaseInfo['payloa
 
   latestReleaseCache = {
     fetchedAt: Date.now(),
+    repository,
     payload,
   };
 
@@ -732,6 +746,8 @@ interface AdminResourceEntry {
 
 interface AdminPlayerStatsEntry {
   userId: number;
+  profileId: number | null;
+  lastActorId: number | null;
   firstJoinedAt: number;
   lastConnectionAt: number;
   totalPlayMs: number;
@@ -1227,17 +1243,13 @@ const summarizeClientRuntimeEvents = (entries: ClientRuntimeEventEntry[]) => {
   };
 };
 
-// bannedUsers: null = permanent ban; number = expiresAt timestamp (timed ban)
-const bannedUsers = new Map<number, number | null>();
+let adminBans: AdminBans | null = null;
 const mutedUsers = new Map<number, number>(); // userId -> expiresAt (ms timestamp)
 const adminPlayerStats = new Map<number, AdminPlayerStatsEntry>();
 let lastPlayerStatsPersistAt = 0;
 
 const cleanupExpiredBans = (): void => {
-  const now = Date.now();
-  bannedUsers.forEach((expiresAt, userId) => {
-    if (expiresAt !== null && expiresAt <= now) bannedUsers.delete(userId);
-  });
+  adminBans?.cleanupExpired();
 };
 
 const cleanupExpiredMutes = (): void => {
@@ -1250,20 +1262,6 @@ const cleanupExpiredMutes = (): void => {
 // ---------------------------------------------------------------------------
 // Persistence helpers – ban/mute lists survive server restarts
 // ---------------------------------------------------------------------------
-const saveBans = (dataDir: string): void => {
-  try {
-    cleanupExpiredBans();
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dataDir, 'admin-bans.json'),
-      JSON.stringify(Array.from(bannedUsers.entries())),
-      'utf8',
-    );
-  } catch (e) {
-    console.error('Failed to persist ban list:', e);
-  }
-};
-
 const saveMutes = (dataDir: string): void => {
   try {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -1280,26 +1278,8 @@ const saveMutes = (dataDir: string): void => {
 
 const loadModerationState = (dataDir: string): void => {
   try {
-    const bansPath = path.join(dataDir, 'admin-bans.json');
-    if (fs.existsSync(bansPath)) {
-      const raw = JSON.parse(fs.readFileSync(bansPath, 'utf8'));
-      if (Array.isArray(raw)) {
-        if (raw.length === 0 || typeof raw[0] === 'number') {
-          // Old format: plain number[] — migrate to permanent bans
-          (raw as number[]).forEach((id) => bannedUsers.set(id, null));
-        } else {
-          // New format: [userId, expiresAt | null][]
-          const now = Date.now();
-          (raw as [number, number | null][]).forEach(([userId, expiresAt]) => {
-            if (expiresAt === null || expiresAt > now)
-              bannedUsers.set(userId, expiresAt);
-          });
-        }
-      }
-      console.log(
-        `Loaded ${bannedUsers.size} banned userId(s) from ${bansPath}`,
-      );
-    }
+    adminBans = getAdminBans(dataDir);
+    console.log(`Loaded ${adminBans.list().length} admin ban(s).`);
   } catch (e) {
     console.error('Failed to load ban list:', e);
   }
@@ -1335,6 +1315,8 @@ const savePlayerStats = (dataDir: string, force = false): void => {
     fs.mkdirSync(dataDir, { recursive: true });
     const entries = Array.from(adminPlayerStats.values()).map((entry) => ({
       userId: entry.userId,
+      profileId: entry.profileId,
+      lastActorId: entry.lastActorId,
       firstJoinedAt: entry.firstJoinedAt,
       lastConnectionAt: entry.lastConnectionAt,
       totalPlayMs: Math.max(0, Math.floor(entry.totalPlayMs)),
@@ -1380,6 +1362,8 @@ const loadPlayerStats = (dataDir: string): void => {
 
       adminPlayerStats.set(Math.floor(userId), {
         userId: Math.floor(userId),
+        profileId: validProfileId((value as any).profileId) ? (value as any).profileId : null,
+        lastActorId: Number.isSafeInteger((value as any).lastActorId) && (value as any).lastActorId > 0 ? (value as any).lastActorId : null,
         firstJoinedAt: Math.floor(firstJoinedAt),
         lastConnectionAt: Number.isFinite(lastConnectionAt)
           ? Math.floor(lastConnectionAt)
@@ -1422,6 +1406,7 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
     if (safeUserId < 0) return;
 
     const actorId = safeCall(() => gScampServer.getUserActor(safeUserId), 0);
+    const currentProfileId = actorId ? safeCall(() => gScampServer.get(actorId, 'profileId'), null) : null;
     const actorName = actorId
       ? String(safeCall(() => gScampServer.getActorName(actorId), '') || '')
       : '';
@@ -1430,6 +1415,8 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
     if (!existing) {
       adminPlayerStats.set(safeUserId, {
         userId: safeUserId,
+        profileId: validProfileId(currentProfileId) ? currentProfileId : null,
+        lastActorId: actorId || null,
         firstJoinedAt: now,
         lastConnectionAt: now,
         totalPlayMs: 0,
@@ -1444,6 +1431,12 @@ const updatePlayerStatsSnapshot = (dataDir: string): void => {
 
     if (existing.activeSessionStartedAt === null) {
       existing.activeSessionStartedAt = now;
+      changed = true;
+    }
+
+    if (validProfileId(currentProfileId) && (existing.profileId !== currentProfileId || existing.lastActorId !== actorId)) {
+      existing.profileId = currentProfileId;
+      existing.lastActorId = actorId;
       changed = true;
     }
 
@@ -1856,68 +1849,6 @@ const listAdminResources = (
     if (left.kind !== right.kind) return left.kind === 'mod' ? -1 : 1;
     return left.name.localeCompare(right.name);
   });
-};
-
-const getInventoryEntriesCount = (inventory: unknown): number => {
-  if (!inventory || typeof inventory !== 'object') return 0;
-
-  const entries = (inventory as Record<string, unknown>).entries;
-  return Array.isArray(entries) ? entries.length : 0;
-};
-
-const getOfflineInventorySnapshot = (
-  dataDir: string,
-  profileId: number,
-): OfflineInventorySnapshot | null => {
-  const changeFormsDir = path.resolve(dataDir, 'changeForms');
-  const entries = safeCall(
-    () => fs.readdirSync(changeFormsDir, { withFileTypes: true }),
-    [] as fs.Dirent[],
-  );
-
-  let best: OfflineInventorySnapshot | null = null;
-
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    if (!entry.name.toLowerCase().endsWith('.json')) continue;
-
-    const filePath = path.join(changeFormsDir, entry.name);
-    const text = safeCall(() => fs.readFileSync(filePath, 'utf8'), '');
-    if (!text) continue;
-
-    const parsed = safeCall(
-      () => JSON.parse(text) as Record<string, unknown>,
-      null as Record<string, unknown> | null,
-    );
-    if (!parsed) continue;
-
-    const parsedProfileId = Number(parsed.profileId);
-    if (!Number.isFinite(parsedProfileId) || parsedProfileId !== profileId)
-      continue;
-
-    const inventory = parsed.inv;
-    if (!inventory || typeof inventory !== 'object') continue;
-
-    const stat = safeCall(() => fs.statSync(filePath), null as fs.Stats | null);
-    const updatedAt = stat?.mtimeMs ?? 0;
-    const formDesc =
-      typeof parsed.formDesc === 'string'
-        ? parsed.formDesc
-        : entry.name.replace(/\.json$/i, '').replace(/_/g, ':');
-    const snapshot: OfflineInventorySnapshot = {
-      profileId,
-      formDesc,
-      inventory: inventory as Record<string, unknown>,
-      updatedAt,
-      filePath,
-    };
-
-    if (!best || snapshot.updatedAt >= best.updatedAt) {
-      best = snapshot;
-    }
-  }
-
-  return best;
 };
 
 const cloneLocaleRoutingDefaults = (): LocaleRoutingSettings => ({
@@ -2578,14 +2509,15 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         if (message.updateType === 'status') managedGameStatus = message.data;
         else if (message.updateType === 'playerDrop') dashboardActivity?.record(message.data);
         else if (message.updateType === 'players') managedPlayers = message.data?.players || [];
+        else if (message.updateType === 'consoleSecurity') managedConsoleSecurity = message.data;
         else if (message.updateType === 'log' && message.data?.entry) {
           adminLog.push(message.data.entry); if (adminLog.length > MAX_ADMIN_LOG) adminLog.shift();
         }
         else if (message.updateType === 'plugin') updatePluginRuntimeStatus(message.data.name, message.data.status, message.data.options);
         // Status/players are emitted by this dashboard with process state attached.
-        if (!['status', 'players', 'playerDrop'].includes(message.updateType)) broadcastAdminUpdate(message.updateType, message.data);
+        if (!['status', 'players', 'playerDrop', 'consoleSecurity'].includes(message.updateType)) broadcastAdminUpdate(message.updateType, message.data);
       } else if (isDashboardRuntime() && message?.type === 'skymp:game-state') {
-        if (message.value.state !== 'running') { managedGameStatus = null; managedPlayers = []; }
+        if (message.value.state !== 'running') { managedGameStatus = null; managedPlayers = []; managedConsoleSecurity = null; }
         if (['stopped', 'crashed'].includes(message.value.state)) {
           loadModerationState(dataDir); loadPlayerStats(dataDir); loadHistory(dataDir);
           for (const entry of pluginRuntimeStatuses.values()) { entry.status = 'stopped'; delete entry.pid; }
@@ -2751,7 +2683,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const reason = commandArgText(1);
       const playerName =
         adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
-      safeCall(() => gScampServer.kick(userId), undefined);
+      endPlayerSession(gScampServer, userId, 'kick', reason);
 
       addAdminLog(
         'kick',
@@ -2781,7 +2713,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const reason = commandArgText(0);
       const userIds = getOnlinePlayerIds();
       userIds.forEach((userId) => {
-        safeCall(() => gScampServer.kick(userId), undefined);
+        endPlayerSession(gScampServer, userId, 'kick', reason);
       });
 
       addAdminLog(
@@ -2821,9 +2753,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ? null
         : Date.now() + durationMinutes * 60 * 1000;
 
-      bannedUsers.set(userId, expiresAt);
-      saveBans(dataDir);
-      safeCall(() => gScampServer.kick(userId), undefined);
+      banConnectedPlayer(gScampServer, dataDir, userId, expiresAt, reason);
+      endPlayerSession(gScampServer, userId, 'ban', reason, expiresAt);
 
       const playerName =
         adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
@@ -2856,25 +2787,24 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const denied = denyIfMissing('canUnban', 'unban');
       if (denied) return denied;
 
-      const userId = parseCommandUserId(parsed.args[0]);
-      if (userId === null) {
+      const selector = String(parsed.args[0] ?? '');
+      if (!/^(?:(?:profile|legacy):)?\d{1,10}$/.test(selector)) {
         return {
           ok: false,
           status: 400,
-          error: 'usage: unban <userId>',
+          error: 'usage: unban <profile:profileId|userId>',
         };
       }
 
-      const existed = bannedUsers.delete(userId);
-      saveBans(dataDir);
-      addAdminLog('ban', `Unbanned userId=${userId}`);
+      const existed = getAdminBans(dataDir).remove(selector);
+      addAdminLog('ban', `Unbanned ${selector}`);
       return {
         ok: true,
         command: parsed.raw,
         executedAs: 'command',
         resultText: existed
-          ? `Unbanned userId=${userId}`
-          : `userId=${userId} was not banned`,
+          ? `Unbanned ${selector}`
+          : `${selector} was not banned`,
       };
     }
 
@@ -3851,6 +3781,18 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       await next();
     });
 
+    registerConsoleSecurity(router, {
+      read: readServerSettingsJson,
+      write: (value) => { writeServerSettingsJson(value); settings.allSettings = value; },
+      authorize: (ctx, write) => {
+        if (!ensureAdminCapability(settings, ctx, 'canConsole')) return false;
+        if (getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, code: 'ADMIN_REQUIRED' }; return false; }
+        return true;
+      },
+      status: () => isDashboardRuntime() ? managedConsoleSecurity : consoleSecurityService?.status(),
+      log: (message) => addAdminLog('console', message),
+    });
+
     launcherConnection.register(router, {
       file: getServerSettingsPath,
       authorize: (ctx: any): boolean => {
@@ -3887,7 +3829,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const runtimeReadiness = getRuntimeReadinessReport();
 
       try {
-        const latest = await fetchLatestReleaseInfo();
+        const latest = await fetchLatestReleaseInfo(settings.allSettings?.releaseRepository);
         ctx.body = {
           ok: true,
           installedVersion: installed.version,
@@ -3911,7 +3853,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           releaseUrl: '',
           publishedAt: null,
           changelog: '',
-          error: error?.message || 'failed to fetch latest release',
+          code: 'LATEST_RELEASE_UNAVAILABLE',
+          error: 'Latest release information is temporarily unavailable.',
           runtimeReadiness,
         };
       }
@@ -4198,6 +4141,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
       const accessError = validatePlayerAccess(parsed);
       if (accessError) { ctx.status = 400; ctx.body = { ok: false, error: accessError }; return; }
+      const consoleError = validateConsoleSecuritySettings(parsed);
+      if (consoleError) { ctx.status = 400; ctx.body = { ok: false, code: consoleError }; return; }
       ensureDiscordBotSettingsInObject(parsed);
       const discordError = validateDiscordSettings(parsed);
       if (discordError) { ctx.status = 400; ctx.body = { ok: false, error: discordError }; return; }
@@ -4364,6 +4309,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           userId,
           actorId,
           online: true,
+          profileId: actorId ? safeCall(() => gScampServer.get(actorId, 'profileId'), null) : null,
           ...getSteamPlayerInfo(gScampServer, userId),
           actorName: actorId
             ? safeCall(() => gScampServer.getActorName(actorId), '') ||
@@ -4391,6 +4337,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
           userId,
           actorId: 0,
           online: false,
+          profileId: stats.profileId ?? null,
           actorName: stats.lastDisplayName || `userId=${userId}`,
           ip: '',
           pos: [],
@@ -4416,67 +4363,28 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       ctx.body = players;
     });
 
-    router.get('/api/admin/players/:userId/inventory', (ctx: any) => {
+    router.get('/api/admin/players/:userId/inventory', async (ctx: any) => {
+      if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
+      ctx.set('Cache-Control', 'no-store');
       const userId = Number(ctx.params.userId);
-      if (!Number.isFinite(userId)) {
-        ctx.status = 400;
-        ctx.body = { ok: false, error: 'invalid userId' };
-        return;
+      if (!Number.isSafeInteger(userId) || userId < 0) {
+        ctx.status = 400; ctx.body = { ok: false, code: 'INVALID_USER_ID' }; return;
       }
-
-      const actorId = safeCall(() => gScampServer.getUserActor(userId), 0);
-      const onlineInventory = actorId
-        ? safeCall(
-            () => gScampServer.get(actorId, 'inventory'),
-            null as unknown,
-          )
-        : null;
-      const onlineProfileId = actorId
-        ? safeCall(() => Number(gScampServer.get(actorId, 'profileId')), NaN)
-        : NaN;
-
-      if (onlineInventory && typeof onlineInventory === 'object') {
-        ctx.body = {
-          ok: true,
-          userId,
-          actorId,
-          profileId: Number.isFinite(onlineProfileId) ? onlineProfileId : null,
-          source: 'online',
-          entryCount: getInventoryEntriesCount(onlineInventory),
-          inventory: onlineInventory,
-        };
-        return;
+      if (isDashboardRuntime()) loadPlayerStats(dataDir);
+      const online = getOnlinePlayerIds().includes(userId);
+      const actorId = online ? safeCall(() => gScampServer.getUserActor(userId), 0) : 0;
+      const liveProfile = actorId ? safeCall(() => gScampServer.get(actorId, 'profileId'), null) : null;
+      const stats = adminPlayerStats.get(userId);
+      const profileId = validProfileId(liveProfile) ? liveProfile : stats?.profileId ?? null;
+      if (ctx.query.profileId !== undefined && (!validProfileId(Number(ctx.query.profileId)) || Number(ctx.query.profileId) !== profileId)) {
+        ctx.status = 409; ctx.body = { ok: false, code: 'PLAYER_SESSION_CHANGED' }; return;
       }
-
-      const requestedProfileId = Number(ctx.query?.profileId);
-      const candidateProfileId = Number.isFinite(requestedProfileId)
-        ? requestedProfileId
-        : Number.isFinite(onlineProfileId)
-        ? onlineProfileId
-        : userId;
-
-      const offlineSnapshot = getOfflineInventorySnapshot(
-        dataDir,
-        candidateProfileId,
-      );
-      if (!offlineSnapshot) {
-        ctx.status = 404;
-        ctx.body = { ok: false, error: 'inventory snapshot not found' };
-        return;
+      try {
+        ctx.body = await readAdminInventory({ server: gScampServer, settings: settings.allSettings, userId, online, profileId, lastActorId: stats?.lastActorId });
+      } catch (error) {
+        ctx.status = error instanceof InventoryError ? error.status : 503;
+        ctx.body = { ok: false, code: error instanceof InventoryError ? error.code : 'INVENTORY_UNAVAILABLE' };
       }
-
-      ctx.body = {
-        ok: true,
-        userId,
-        actorId,
-        profileId: offlineSnapshot.profileId,
-        source: 'offline-file',
-        formDesc: offlineSnapshot.formDesc,
-        updatedAt: offlineSnapshot.updatedAt,
-        filePath: path.relative(process.cwd(), offlineSnapshot.filePath),
-        entryCount: getInventoryEntriesCount(offlineSnapshot.inventory),
-        inventory: offlineSnapshot.inventory,
-      };
     });
 
     router.get('/api/admin/players/:userId/profile', (ctx: any) => {
@@ -4508,6 +4416,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
         ok: true,
         userId: stats.userId,
         displayName: stats.lastDisplayName,
+        profileId: stats.profileId ?? null,
         ...getSteamPlayerInfo(gScampServer, userId),
         firstJoinedAt: stats.firstJoinedAt,
         lastConnectionAt: stats.lastConnectionAt,
@@ -4551,6 +4460,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.post('/api/admin/players/:userId/kick', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canKick')) return;
+      if (!requireOnlinePlayer(ctx, getOnlinePlayerIds(), id => {
+        const actor = safeCall(() => gScampServer.getUserActor(id), 0);
+        return actor ? safeCall(() => gScampServer.get(actor, 'profileId'), null) : null;
+      })) return;
       const userId = Number(ctx.params.userId);
       if (!Number.isFinite(userId)) {
         ctx.status = 400;
@@ -4561,7 +4474,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const { user: kickAuthor } = getAdminContext(settings, ctx);
       const kickPlayerName =
         adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
-      safeCall(() => gScampServer.kick(userId), undefined);
+      endPlayerSession(gScampServer, userId, 'kick', reason);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       addAdminLog('kick', `Kicked userId=${userId}${reasonSuffix}`);
       addAdminHistory({
@@ -4577,6 +4490,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.post('/api/admin/players/:userId/ban', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canBan')) return;
+      if (!requireOnlinePlayer(ctx, getOnlinePlayerIds(), id => {
+        const actor = safeCall(() => gScampServer.getUserActor(id), 0);
+        return actor ? safeCall(() => gScampServer.get(actor, 'profileId'), null) : null;
+      })) return;
       const userId = Number(ctx.params.userId);
       if (!Number.isFinite(userId)) {
         ctx.status = 400;
@@ -4592,12 +4509,11 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const expiresAt = isPermanent
         ? null
         : Date.now() + durationMinutes * 60 * 1000;
-      bannedUsers.set(userId, expiresAt);
-      saveBans(dataDir);
+      banConnectedPlayer(gScampServer, dataDir, userId, expiresAt, reason);
       const { user: banAuthor } = getAdminContext(settings, ctx);
       const banPlayerName =
         adminPlayerStats.get(userId)?.lastDisplayName || `userId=${userId}`;
-      safeCall(() => gScampServer.kick(userId), undefined);
+      endPlayerSession(gScampServer, userId, 'ban', reason, expiresAt);
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
       const durationNote = isPermanent
         ? ' (permanent)'
@@ -4626,20 +4542,23 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.delete('/api/admin/players/:userId/ban', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canUnban')) return;
-      const userId = Number(ctx.params.userId);
-      if (!Number.isFinite(userId)) {
+      const selector = String(ctx.params.userId);
+      if (!/^(?:(?:profile|legacy):)?\d{1,10}$/.test(selector)) {
         ctx.status = 400;
         ctx.body = { ok: false, error: 'invalid userId' };
         return;
       }
-      const wasBanned = bannedUsers.delete(userId);
-      saveBans(dataDir);
-      addAdminLog('ban', `Unbanned userId=${userId}`);
-      ctx.body = { ok: true, userId, wasBanned };
+      const wasBanned = getAdminBans(dataDir).remove(selector);
+      addAdminLog('ban', `Unbanned ${selector}`);
+      ctx.body = { ok: true, banId: selector, wasBanned };
     });
 
     router.post('/api/admin/players/:userId/message', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canMessage')) return;
+      if (!requireOnlinePlayer(ctx, getOnlinePlayerIds(), id => {
+        const actor = safeCall(() => gScampServer.getUserActor(id), 0);
+        return actor ? safeCall(() => gScampServer.get(actor, 'profileId'), null) : null;
+      })) return;
       const userId = Number(ctx.params.userId);
       const message = String(ctx.request.body?.message ?? '').trim();
       const reason = String(ctx.request.body?.reason ?? '').trim();
@@ -4665,6 +4584,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.post('/api/admin/players/:userId/warn', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canWarn')) return;
+      if (!requireOnlinePlayer(ctx, getOnlinePlayerIds(), id => {
+        const actor = safeCall(() => gScampServer.getUserActor(id), 0);
+        return actor ? safeCall(() => gScampServer.get(actor, 'profileId'), null) : null;
+      })) return;
       const userId = Number(ctx.params.userId);
       const message = String(ctx.request.body?.message ?? '').trim();
       const reason = String(ctx.request.body?.reason ?? '').trim();
@@ -4705,7 +4628,7 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const userIds = getOnlinePlayerIds();
 
       userIds.forEach((userId) => {
-        safeCall(() => gScampServer.kick(userId), undefined);
+        endPlayerSession(gScampServer, userId, 'kick', reason);
       });
 
       const reasonSuffix = reason ? ` reason=${reason.slice(0, 80)}` : '';
@@ -4755,6 +4678,10 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
 
     router.post('/api/admin/players/:userId/mute', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canMute')) return;
+      if (!requireOnlinePlayer(ctx, getOnlinePlayerIds(), id => {
+        const actor = safeCall(() => gScampServer.getUserActor(id), 0);
+        return actor ? safeCall(() => gScampServer.get(actor, 'profileId'), null) : null;
+      })) return;
       const userId = Number(ctx.params.userId);
       const durationRaw = Number(ctx.request.body?.durationMinutes);
       const reason = String(ctx.request.body?.reason ?? '').trim();
@@ -4809,9 +4736,9 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       if (!ensureAdminCapability(settings, ctx, 'canUnban')) return;
       cleanupExpiredBans();
       const now = Date.now();
-      ctx.body = Array.from(bannedUsers.entries()).map(
-        ([userId, expiresAt]) => ({
-          userId,
+      ctx.body = getAdminBans(dataDir).list().map(
+        ({ userId, profileId, banId, reason, expiresAt }) => ({
+          userId, profileId, banId, reason, legacy: profileId === null,
           permanent: expiresAt === null,
           expiresAt: expiresAt ?? null,
           remainingSec:
@@ -4981,6 +4908,8 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       const accessError = validatePlayerAccess(parsed);
       if (accessError) { ctx.status = 400; ctx.body = { ok: false, error: accessError }; return; }
       const localeRouting = ensureLocaleRoutingSettingsInObject(parsed);
+      const consoleError = validateConsoleSecuritySettings(parsed);
+      if (consoleError) { ctx.status = 400; ctx.body = { ok: false, code: consoleError }; return; }
       const joinAccess = ensureJoinAccessSettingsInObject(parsed);
       const discordBot = ensureDiscordBotSettingsInObject(parsed);
       const supervisor = ensureSupervisorSettingsInObject(parsed);
@@ -5472,6 +5401,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
       ctx.body = filtered.slice(sliceFrom).reverse();
     });
 
+    registerPluginLoadOrder(router, {
+      read: readServerSettingsJson,
+      write: value => { writeServerSettingsJson(value); settings.allSettings = value; },
+      authorize: (ctx, write) => ensureAdminCapability(settings, ctx, write ? 'canConsole' : 'canViewLogs'),
+      log: message => addAdminLog('console', message),
+    });
+
     // ── Plugin management ───────────────────────────────────────────────
     router.get('/api/admin/plugins/settings', (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;
@@ -5654,24 +5590,38 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
   registerServerAssets(router);
   registerPlayerAccess(router, {
     settings: () => readServerSettingsJson(),
+    onBlocked: entry => {
+      if (isDashboardRuntime()) { notifyManagedSettingsChanged(); return; }
+      for (const userId of getVerifiedSteamUsers(gScampServer, entry.id.slice('steam:'.length))) endPlayerSession(gScampServer, userId, 'ban');
+    },
     authorize: (ctx: any) => {
       if (!ensureAdminCapability(settings, ctx, 'canConsole')) return false;
       if (getAdminContext(settings, ctx).role !== 'admin') { ctx.status = 403; ctx.body = { ok: false, error: 'Administrator role required.' }; return false; }
       return true;
     },
   });
+  const pluginRuntimeStore = registerPluginRuntimes(router, dataDir);
+  if (!isDashboardRuntime()) onManagedMessage(message => {
+    if (message?.type !== 'skymp:settings-changed') return;
+    try {
+      for (const entry of listPlayerAccess(readServerSettingsJson())) if (entry.status === 'blocked')
+        for (const userId of getVerifiedSteamUsers(gScampServer, entry.id.slice('steam:'.length))) endPlayerSession(gScampServer, userId, 'ban');
+    } catch (error) { console.error('[session] Could not refresh blocked Steam identities:', error); }
+  });
   registerLauncherResources(router, () => {
     const parsed = isDashboardRuntime() ? readServerSettingsJson() : settings.allSettings;
     const launcherConfig = parsed?.launcherResources as
-      { directory?: string; enabled?: boolean; runtimeSource?: string } | undefined;
+      { enabled?: boolean; runtimeSource?: string; skseFolders?: string[]; skseGameVersion?: string } | undefined;
     return {
       dataDir,
       loadOrder: Array.isArray(parsed?.loadOrder) ? parsed.loadOrder as string[] : settings.loadOrder,
-      directory: launcherConfig?.directory,
+      modFolders: Array.isArray(parsed?.modFolders) ? parsed.modFolders as string[] : undefined,
       enabled: launcherConfig?.enabled,
       runtimeSource: launcherConfig?.runtimeSource,
+      skseFolders: launcherConfig?.skseFolders,
+      skseGameVersion: launcherConfig?.skseGameVersion,
     };
-  });
+  }, () => pluginRuntimeStore.advertisement());
 
   // Public Resource Distribution API (legacy flat-file contract)
   // No authentication required — clients use this to sync resources on connect
@@ -5737,9 +5687,16 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
     ctx.body = fs.createReadStream(absPath);
   });
 
+  // dataDir also holds credentials, state and mods, so only the game manifest is public.
+  router.get('/manifest.json', (ctx: any) => {
+    const manifestPath = path.join(dataDir, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) { ctx.status = 404; return; }
+    ctx.type = 'application/json';
+    ctx.body = fs.createReadStream(manifestPath);
+  });
+
   app.use(router.routes()).use(router.allowedMethods());
   app.use(serve('ui'));
-  app.use(serve('data'));
   return app;
 };
 
@@ -5992,6 +5949,7 @@ export const main = (settings: Settings): void => {
                 userId,
                 actorId,
                 online: true,
+                profileId: actorId ? safeCall(() => gScampServer.get(actorId, 'profileId'), null) : null,
                 ...getSteamPlayerInfo(gScampServer, userId),
                 actorName: actorId
                   ? safeCall(() => gScampServer.getActorName(actorId), '') ||
@@ -6017,6 +5975,7 @@ export const main = (settings: Settings): void => {
                 userId,
                 actorId: 0,
                 online: false,
+                profileId: stats.profileId ?? null,
                 actorName: stats.lastDisplayName || `userId=${userId}`,
                 ip: '',
                 pos: [],

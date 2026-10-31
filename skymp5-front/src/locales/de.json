@@ -93,7 +93,18 @@
       "running": "Geladen / läuft",
       "failed": "Fehler",
       "stopped": "Gestoppt",
-      "unknown": "Keine Laufzeitmeldung"
+      "unknown": "Keine Laufzeitmeldung",
+      "orderTitle": "Plugin-Ladereihenfolge",
+      "orderHint": "Dienste wie UI Core vor den Plugins laden, die sie benötigen. Die Reihenfolge gilt ab dem nächsten Gameserver-Start.",
+      "orderSave": "Ladereihenfolge speichern",
+      "orderDiscard": "Änderungen verwerfen",
+      "orderChanged": "Ungespeicherte Ladereihenfolge.",
+      "orderSaved": "Reihenfolge gespeichert. Gameserver neu starten, um sie anzuwenden.",
+      "orderStale": "Reihenfolge oder Pluginliste wurde inzwischen geändert. Änderungen verwerfen, neu laden und erneut speichern.",
+      "orderUnavailable": "Ladereihenfolge nicht verfügbar. Dashboard/Serverpaket aktualisieren oder die gespeicherte Konfiguration prüfen.",
+      "orderUp": "Nach oben",
+      "orderDown": "Nach unten",
+      "orderPosition": "Position {{position}}"
     },
     "close": "Schließen",
     "profileTitle": "Spielerprofil",
@@ -812,7 +823,65 @@
       "observedSince": "Beobachtet seit {{time}}. Die Historie bleibt bei Gameserver-Neustarts erhalten.",
       "activityMemoryOnly": "Die Historie liegt derzeit nur im Arbeitsspeicher. Schreibrechte im Datenordner prüfen.",
       "metricsPermission": "Dein Konto darf keine Servermetriken ansehen."
-    }
+    },
+    "playerOnline": "Online",
+    "playerOfflineLabel": "Offline",
+    "playerOffline": "Dieser Spieler ist offline. Live-Aktionen sind erst nach der Verbindung verfügbar.",
+    "playerSessionChanged": "Die Spielersitzung hat sich geändert. Bitte die Liste aktualisieren.",
+    "inventoryProfileMissing": "Diesem Eintrag ist noch kein Charakterprofil zugeordnet. Nach der nächsten Anmeldung erneut versuchen.",
+    "inventoryNotSaved": "Für diesen Charakter wurde noch kein Inventar gespeichert.",
+    "inventoryUnsupportedStorage": "Für diesen Datenbanktyp ist kein Dateisnapshot verfügbar. Ein geladener Charakter kann weiterhin abgefragt werden.",
+    "inventoryUnavailable": "Der Inventarstand konnte nicht gelesen werden. Bitte Serverlog und Datenbankkonfiguration prüfen.",
+    "inventorySourceOnline": "Aktueller Spieler",
+    "inventorySourceMemory": "Geladener Offline-Charakter",
+    "inventorySourceFile": "Gespeicherter Charakter",
+    "consoleSecurity": {
+      "title": "Konsolen- & Cheat-Schutz",
+      "intro": "Core-Richtlinie für die native Skyrim-Konsole. Chat-Commands behalten ihre eigenständigen Plugin-Berechtigungen.",
+      "configuration": "Gespeicherte Richtlinie",
+      "mode": "Konsolenmodus",
+      "restricted": "Eingeschränkt",
+      "development": "Entwicklermodus",
+      "blockVanillaCheats": "Vanilla-Cheats blockieren",
+      "blockUnauthorizedServerCommands": "Serverbefehle autorisieren",
+      "monitorMovement": "Bewegungen überwachen",
+      "movementEnforcement": "Bewegungsanalyse",
+      "logViolations": "Abgelehnte Befehle und Auffälligkeiten protokollieren",
+      "logAllowedAdminCommands": "Autorisierte Admin-Befehle protokollieren",
+      "off": "Aus",
+      "monitor": "Beobachten",
+      "yes": "Ja",
+      "no": "Nein",
+      "unknown": "Nicht bestätigt",
+      "developmentWarning": "Entwicklermodus: Lokale Debug-Befehle können ausdrücklich freigegeben werden. Dadurch entstehen keine administrativen Serverrechte.",
+      "nativeUnknown": "Der aktive native Schutz ist nicht bestätigt. Native Serverkomponente aktualisieren und den Gameserver starten.",
+      "legacyWarning": "enableConsoleCommandsForAll wird ignoriert. Charakterrechte auf dem Server vergeben; der Entwicklermodus umgeht keine Autorisierung.",
+      "configurationWarning": "Die Konfiguration enthält ungültige oder unbekannte Sicherheitswerte. Sichere Standardwerte greifen; Serverlog und Konfiguration prüfen.",
+      "restartRequired": "Gespeicherte und aktive Richtlinie unterscheiden sich. Zum Übernehmen den Gameserver neu starten.",
+      "activeMatches": "Die gespeicherte Richtlinie entspricht der aktiven nativen Serverrichtlinie.",
+      "inactive": "Keine aktive native Richtlinie verfügbar. Gespeicherte Änderungen gelten beim nächsten Gameserver-Start.",
+      "movementLimit": "Geschwindigkeit und Aufwärtsbewegung liefern nur Beobachtungen. Durchsetzung erhält geprüfte Koordinaten-, Zell- und Positionsschrittregeln. Latenz, Fallen, Reiten und Skriptbewegungen können Auffälligkeiten erklären. Keine vollständige Noclip-Erkennung und keine automatischen Bans.",
+      "authorizationAlways": "Serverautorisierung bleibt immer aktiv. Der Core-Schutz funktioniert ohne Chat-Plugin.",
+      "effectiveConfiguration": "Gespeicherte und aktive Richtlinie",
+      "setting": "Einstellung",
+      "stored": "Gespeichert",
+      "active": "Im nativen Server aktiv",
+      "clientReports": "Clientmeldungen zu Konsolen-Hooks",
+      "clientReportsUnverified": "Diese Clientmeldungen belegen keinen aktiven Schutz. Veränderte Clients können sie fälschen. Nicht unterstützte Befehle werden ausdrücklich aufgeführt.",
+      "noReports": "Noch keine Clientmeldung zu Konsolen-Hooks vorhanden.",
+      "reportedHooks": "Gemeldete Hooks",
+      "unsupported": "Nicht unterstützt",
+      "player": "Spieler",
+      "save": "Sicherheitsrichtlinie speichern",
+      "saving": "Wird gespeichert …",
+      "savedNextStart": "Gespeichert. Zur Aktivierung den Gameserver neu starten.",
+      "saveFailed": "Speichern fehlgeschlagen. Rechte und Konfiguration prüfen.",
+      "loadFailed": "Console Security konnte nicht geladen werden. Administratorkonto mit Konsolenberechtigung erforderlich.",
+      "conflict": "Ein anderer Administrator hat die Richtlinie geändert. Vor dem Speichern diese Seite neu laden.",
+      "loading": "Sicherheitsstatus wird geladen …"
+    },
+    "cfgTab_security": "Sicherheit",
+    "legacyBanUnbound": "Alter Eintrag ohne Profilbindung"
   },
   "serverList": {
     "title": "Serverliste",
@@ -1349,5 +1418,42 @@
     "NON_RP": "Nicht-RP",
     "SETTINGS": "Einstellungen",
     "MOVE_CHAT": "Chat verschieben"
+  },
+  "sessionEnd": {
+    "kick": {
+      "title": "Vom Server getrennt",
+      "body": "Der Server hat deine Sitzung beendet."
+    },
+    "ban": {
+      "title": "Vom Server gesperrt",
+      "body": "Dein Zugang zu diesem Server wurde gesperrt."
+    },
+    "restart": {
+      "title": "Server wird neu gestartet",
+      "body": "Deine Sitzung wurde beendet. Sobald der Server wieder verfügbar ist, kannst du dich erneut verbinden."
+    },
+    "shutdown": {
+      "title": "Server wurde beendet",
+      "body": "Der Server wurde heruntergefahren. Deine Sitzung wurde beendet."
+    },
+    "connectionLost": {
+      "title": "Verbindung verloren",
+      "body": "Die Verbindung zum Server wurde unterbrochen. Deine Sitzung wurde beendet."
+    },
+    "connectionFailed": {
+      "title": "Verbindung fehlgeschlagen",
+      "body": "Der Server konnte nicht erreicht werden. Prüfe deine Verbindung und versuche es erneut."
+    },
+    "connectionDenied": {
+      "title": "Verbindung abgelehnt",
+      "body": "Der Server hat die Verbindung nicht angenommen. Prüfe deinen Zugang und die Verfügbarkeit des Servers."
+    },
+    "until": "Sperre endet:",
+    "permanent": "Diese Sperre hat kein Ablaufdatum.",
+    "reconnecting": "Verbindung unterbrochen. Verbinde neu …",
+    "returning": "Rückkehr ins Hauptmenü …",
+    "sessionEnded": "Du bist nicht mehr mit dem Server verbunden.",
+    "mainMenu": "Zum Hauptmenü",
+    "retry": "Erneut verbinden"
   }
 }

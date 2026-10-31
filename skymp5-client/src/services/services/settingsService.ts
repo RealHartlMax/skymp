@@ -182,10 +182,17 @@ export class SettingsService extends ClientListener {
         logTrace(this, `Resolved target peer`, targetPeer);
 
         const enrichedTargetPeer = { ...targetPeer };
-        enrichedTargetPeer.publicKeys = {
+        const publicKeys = {
           ...defaultPeer.publicKeys,
           ...targetPeer.publicKeys,
         };
+        if (Object.keys(publicKeys).length > 0) {
+          enrichedTargetPeer.publicKeys = publicKeys;
+        } else {
+          // An empty merge is not a configured trust store. Keeping {} here
+          // incorrectly makes unsigned gamemode code require a signature.
+          delete enrichedTargetPeer.publicKeys;
+        }
 
         logTrace(this, `Enriched target peer`, enrichedTargetPeer);
 

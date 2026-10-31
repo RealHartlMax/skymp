@@ -5,8 +5,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "webpack --config webpack.config.ts --mode production",
-    "build:dev": "webpack --config webpack.config.ts --mode development",
+    "build": "node scripts/build.cjs",
+    "build:dev": "node scripts/build.cjs --mode development",
     "watch": "webpack serve --mode development --port auto",
     "watch:fixed": "webpack serve --mode development --port 1234",
     "dev:lan": "webpack serve --mode development --host 0.0.0.0 --port auto",

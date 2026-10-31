@@ -1,6 +1,15 @@
+[Deutsch](README-plugins.md) · [English](docs/i18n/en/README-plugins.md) · [Русский](docs/i18n/ru/README-plugins.md)
+
 # Plugin-System fuer den SkyMP-Server
 
 Dieses Dokument beschreibt Einrichtung, Betrieb und Migration fuer das Plugin-System.
+
+Neu im Quellstand fuer v2.1.0: [Plugin Runtime Loader](docs/docs_plugin_runtime.md).
+Plugins koennen eigene signierte Client-/CEF-Pakete ueber `Runtime/manifest.json`
+deklarieren. Der Launcher laedt sie vom Gameserver; nach dem einmaligen generischen
+Bootstrap erfordern kompatible Plugin-Aenderungen keinen gemeinsamen Runtime-Neubau.
+Der genaue Vertrag mit Signierung und Installationspfaden steht unter
+[misc/plugin-runtime](misc/plugin-runtime/README.md).
 
 ## Zweck
 
@@ -412,165 +421,73 @@ API-Details: [Serverside Scripting](docs/docs_serverside_scripting_reference.md)
 
 ## Voice Activity Adapters (für Lipsync & Proximity Chat)
 
-Dieser Abschnitt beschreibt einen internen TypeScript-Adaptervertrag.
-Eine Datei unter `Plugins/` registriert einen solchen Adapter nicht automatisch;
-die Anbindung an den Voice Activity Manager muss ausdruecklich implementiert
-werden. Die Beispiele ersetzen keine fertig integrierte Voice-Loesung.
+**Stand 27. Oktober 2026: teilweise implementiert.** VAD-Vertrag,
+Serververteilung und ein Client-Animationsversuch existieren. Durchgängiges
+Voice-Lipsync ist noch nicht im Spiel nachgewiesen. Die neue lokale YACA-Bridge
+aktiviert diesen Pfad im normalen Plugin-Einstieg nicht automatisch.
 
-Das Voice Activity Detection (VAD) System nutzt ein **Adapter-Pattern** für verschiedene Voice-Anbieter.
+Der vollständige [Lipsync-Befund mit benötigten Angaben und Spieltest](docs/docs_voice_lipsync_status.md)
+beschreibt die fehlende Anbindung, Actor-ID-Zuordnung, Meterumrechnung,
+Timeouts und den Animationsreset.
 
-### Was ist ein Voice Adapter?
+### Adaptervertrag und aktuelle YACA-Bridge
 
-Ein Voice Adapter ist ein einfaches Plugin, das:
-1. Voice-Events von einem externen System empfängt (TeamSpeak, Discord, custom VoIP)
-2. Events ins standardisierte SkyMP-Format konvertiert
-3. An den Server Voice Activity Manager sendet
-4. Der Manager broadcastet dann die Lipsync-Animation zu Clients
+Ein Voice-Adapter übersetzt echte Sprechereignisse eines Providers in
+`VoiceActivityState` und meldet sie über seine beim
+`VoiceActivityManager` registrierten Callbacks. Eine Datei unter `Plugins/`
+registriert einen solchen Adapter nicht automatisch.
 
-### Vorteile des Adapter-Patterns
+Das Servergerüst
+[YacaTeamSpeakAdapter.ts](skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts)
+stellt `handleYacaVoiceEvent(...)` bereit. Sein `initialize()` stellt aber
+keine TeamSpeak-Verbindung her. Die neue lokale Bridge im separaten
+`SkyMP-YACA-TS`-Repository verwendet CEF, `TALK_STATE`/`SOUND_STATE` und
+`_yacaClient`. Sie benötigt dafür keine Papyrus-Quest. Ihr optionaler
+`onVoiceActivity`-Callback ist im normalen Plugin-Einstieg nicht verbunden.
 
-- **Provider-neutral**: YACA-TS, Discord, Mumble, custom 3D-VoIP — alle über die gleiche API
-- **Keine Server-Code-Changes**: Neue Voice-Systeme brauchen nur einen neuen Adapter
-- **Modulare Health-Tracking**: Admin-Dashboard zeigt Status pro Voice-Provider
-- **Asynchron erweiterbar**: Dritte können neue Adapter schreiben, ohne Kernel zu verändern
+`voiceActivity.enabled: true` in `server-settings.json` startet den Manager;
+es schließt diese Integrationslücke nicht. Der vorhandene
+`voiceActivity`/`yaca:voiceActivity`-Custom-Packet-Eingang broadcastet direkt
+und umgeht Registry und Inaktivitätstimer. Vor einer fertigen Anbindung müssen
+Absenderzuordnung und Zustandsführung vereinheitlicht werden.
 
-### YACA-TS Reference Implementation
+### Diagnose und Prüfgrenzen
 
-Die YACA-TS Adapter ist in `skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts` definiert.
+- Implementiert sind `GET /api/admin/voice/status` und
+  `GET /api/admin/voice/speakers`, jeweils mit Admin-Recht `canViewLogs`.
+- Eine eigene Voice-Diagnoseansicht im Dashboard und
+  `POST /api/admin/voice/range` sind nicht implementiert.
+- Adapter-Health und ein bestandener Paketparser-Test belegen keine sichtbare
+  Mundbewegung. Sprecherzahlen sind beim bisherigen Datenweg nur eingeschränkt
+  aussagekräftig.
+- Der bestehende Clientpfad überträgt „spricht / spricht nicht“ und versucht eine
+  Dialoganimation. Audiopegel- oder Phonemsteuerung ist darin nicht enthalten.
 
-**Funktionsweise:**
-1. YacaBridgeQuest.psc (Papyrus) empfängt TeamSpeak YACA-Plugin-Events
-2. Sendet via `mp.callGamemodeApi()` custom packet an Server
-3. Adapter empfängt Packet und konvertiert zu `VoiceActivityState`
-4. Voice Activity Manager broadcastet zu Proximity-Clients
-5. Clients spielen IdleDialogueLock Animation während Player spricht
+Aktuelle Paketformate, Konfiguration und Grenzen stehen in der
+[Voice-API-Referenz](docs/docs_voice_api.md). Offene Arbeit steht im
+[Voice-Backlog](ROADMAP.md#voice--proximity-chat-sync-backlog-proposed).
 
-**Konfiguration (server-settings.json):**
-```json
-{
-  "voiceActivity": {
-    "enabled": true,
-    "providers": ["yaca-ts"],
-    "voiceRangeTiers": [1.0, 3.0, 8.0, 15.0, 20.0, 25.0, 30.0, 40.0],
-    "defaultVoiceRange": 8.0,
-    "proximityDistance": 100.0,
-    "inactivityTimeoutMs": 1000
-  }
-}
-```
+## Plugin-Ladereihenfolge im Dashboard
 
-### Custom Voice Adapter Erstellen
+Unter **Ressourcen → Server-Plugins** zeigen Positionsnummern die Reihenfolge fuer
+den naechsten Gameserver-Start. Mit den Pfeilen nach oben/unten verschieben und
+**Ladereihenfolge speichern** waehlen. Aktivierung bleibt eine getrennte Einstellung.
+Ungespeicherte Aenderungen koennen verworfen werden. Suchfilter entfernen keine
+Plugins aus der gespeicherten Liste. Gleichzeitige Aenderungen werden mit einem
+Konflikthinweis abgewiesen.
 
-Siehe `docs/docs_voice_api.md` für vollständige API-Dokumentation und Beispiele.
+Die Auswahl wird als Plugin-IDs in pluginsLoadOrder der server-settings.json
+gespeichert; private Einstellungen, Mod-Reihenfolge und Discovery-State bleiben
+erhalten. Dienste muessen vor ihren Verbrauchern stehen, beispielsweise
+skymp-ui-core vor example-ui-consumer und second-ui-consumer. Ohne explizite
+Reihenfolge greift weiterhin die alphabetische Sortierung des bestehenden Loaders.
+Nicht aufgefuehrte neue Plugins folgen alphabetisch. Bereits konfigurierte,
+voruebergehend fehlende Plugin-IDs bleiben erhalten. Keine automatische
+Abhaengigkeitsaufloesung und kein einzelner Plugin-Hot-Reload.
 
-**Minimales Beispiel (Discord Bot Adapter):**
-
-```typescript
-import { IVoiceProviderAdapter, VoiceActivityState } from "../voiceActivityApi";
-
-export class DiscordVoiceAdapter implements IVoiceProviderAdapter {
-  readonly providerId = "discord-bot";
-  private callbacks: Set<(state: VoiceActivityState) => void> = new Set();
-  
-  async initialize(): Promise<void> {
-    // Verbinde zu Discord Bot API
-    // Subscribiere zu Voice State Update Events
-    console.log("[Discord Adapter] Initialized");
-  }
-  
-  async shutdown(): Promise<void> {
-    // Cleanup
-  }
-  
-  onVoiceActivityUpdate(callback: (state: VoiceActivityState) => void): void {
-    this.callbacks.add(callback);
-  }
-  
-  // Wird aufgerufen, wenn Discord Bot User Voice State ändert
-  handleDiscordVoiceEvent(userId: string, inVoiceChannel: boolean): void {
-    const state: VoiceActivityState = {
-      actorId: this.mapDiscordIdToActorId(userId),
-      isSpeaking: inVoiceChannel,
-      voiceRange: 8.0,
-      providerId: this.providerId,
-      timestamp: Date.now(),
-    };
-    
-    for (const cb of this.callbacks) {
-      cb(state);
-    }
-  }
-  
-  getHealthStatus() {
-    return {
-      isHealthy: true,
-      uptime: process.uptime() * 1000,
-      activeSpeakers: 0,
-      lastEventTimestamp: 0,
-      errors: [],
-    };
-  }
-  
-  // Hilfsmethode: Discord User ID → Skyrim Actor ID Mapping
-  private mapDiscordIdToActorId(discordId: string): string {
-    // TODO: Implementiere Mapping-Logic
-    // Optionen: JSON-Datei, Datenbank, oder Redis-Cache
-    return "0x00000000"; 
-  }
-}
-```
-
-### Admin Panel für Voice Status
-
-Das Admin-Dashboard zeigt pro Adapter:
-- **Health Status**: 🟢 Running, 🔴 Failed, 🟡 Starting
-- **Active Speakers**: Aktuelle Sprecherzahl
-- **Uptime**: Wie lange Adapter aktiv ist
-- **Errors**: Letzte Fehler
-
-API-Endpoint: `GET /api/admin/voice/status`
-
-```json
-{
-  "isEnabled": true,
-  "activeSpeakers": 3,
-  "registeredAdapters": [
-    {
-      "providerId": "yaca-ts",
-      "isHealthy": true,
-      "uptime": 3600000
-    },
-    {
-      "providerId": "discord-bot",
-      "isHealthy": false,
-      "uptime": 1800000
-    }
-  ],
-  "lastBroadcastTime": 1715691234567,
-  "errors": []
-}
-```
-
-### Troubleshooting Voice Adapters
-
-**Problem: Adapter lädt nicht**
-- Check: `GET /api/admin/voice/status` → `errors[]`
-- Verifiziere Provider ist in `allowedProviders` oder `allowedProviders=null`
-- Logs checken: `[Voice Activity Manager] Registered provider: ...`
-
-**Problem: Lipsync funktioniert nicht**
-- Verifiziere Adapter sendet Events: `getHealthStatus()` → `lastEventTimestamp`
-- Check Client-seitige Animation Handler sind aktiv
-- Teste mit Admin API: `GET /api/admin/voice/speakers` → sollte aktive Speaker zeigen
-
-**Problem: Hohe Latenz zwischen Voice und Lipsync**
-- Reduce `inactivityTimeoutMs` in Config (aktuell 1000ms)
-- Check Proximity-Filter: `proximityDistance` könnte zu klein sein
-- Monitor `lastBroadcastTime` in Admin Status
-
-### Weitere Ressourcen
-
-- Komplette Voice API Spec: `docs/docs_voice_api.md`
-- YACA-TS Repo: `https://github.com/skyrim-multiplayer/SkyMP-YACA-TS`
-- Reference Adapter: `skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts`
-- Roadmap: `ROADMAP.md` → Voice & Proximity Chat Backlog
+GET /api/admin/plugins/load-order liefert Reihenfolge und Revision (canViewLogs).
+PUT mit {revision, pluginsLoadOrder} speichert die vollstaendige Liste (canConsole).
+Veraltete Revision: 409; ungueltige/unvollstaendige Liste: 400. Aenderungen gelten
+ab dem naechsten Gameserver-Start. Fuer die Installation dieses neuen Dashboard-/
+Backend-Builds einmal den Starter/Dashboarddienst neu starten; beim spaeteren
+Umordnen genuegt ein Gameserver-Neustart.

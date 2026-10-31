@@ -117,7 +117,7 @@ function createSupervisor({ root = ROOT, args = process.argv.slice(2), entry = '
     publishGameState();
     clearTimeout(startupTimer);
     const owned = child;
-    if (owned.connected) send(owned, { type: 'skymp:shutdown' });
+    if (owned.connected) send(owned, { type: 'skymp:shutdown', reason: operation === 'restart' ? 'restart' : 'shutdown' });
     else owned.kill('SIGTERM');
     killTimer = setTimeout(() => {
       if (child === owned) owned.kill('SIGKILL');

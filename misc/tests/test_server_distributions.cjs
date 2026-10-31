@@ -17,7 +17,7 @@ try {
     'gamemode.js': '// default gamemode', 'package.json': '{}', 'package-lock.json': '{}',
     'logo.png': 'default root logo', 'banner.png': 'default root banner',
     'server-assets/logo.png': 'default logo', 'server-assets/banner.png': 'default banner',
-    'data/scripts/ActiveMagicEffect.pex': 'default script', 'data/SPIELDATEN.txt': 'own masters required', 'client-resources/README.md': 'custom mods here',
+    'data/scripts/ActiveMagicEffect.pex': 'default script', 'data/SPIELDATEN.txt': 'own masters required',
     'scam_native.node': 'ELF fixture', 'dist_back/skymp5-server.js': '// new game backend', 'dist_back/skymp5-admin.js': '// new dashboard backend',
     'ui/build.js': '// new frontend', 'ui/index.html': '<html></html>', 'setup-ui/setup.js': '// setup', 'supervisor-ui/app.js': '// control',
     'start-test-server.sh': '#!/bin/sh\nexit 0\n', 'launch_server.sh': '#!/bin/sh\nexit 0\n', 'bootstrap-runtime.sh': '#!/bin/sh\n',

@@ -88,7 +88,7 @@ function createDistributions(options) {
         const target = path.join(stage, file.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(path.join(source, file.path), target);
         assert.equal(hash(target), file.sha256);
       }
-      if (mode === 'full') fs.mkdirSync(path.join(stage, 'client-resources/Data'), { recursive: true });
+      if (mode === 'full') fs.mkdirSync(path.join(stage, 'data/mods'), { recursive: true });
       const next = { ...manifest, distributionMode: mode, requiresExistingInstallation: mode === 'update', preservedPathsOnUpdate: preservedPaths, files };
       fs.writeFileSync(path.join(stage, 'build-manifest.json'), json(next));
       const name = base + '-' + mode + '.zip', destination = path.join(output, name);

@@ -7,6 +7,15 @@ das mitgelieferte Serverlogo.
 
 ## Deutsch
 
+**Einstellungen → Sicherheit** (`#settings/security`) verwaltet den
+Core-eigenen Konsolen- und Cheat-Schutz. Erforderlich sind Administratorrolle
+und `canConsole`. Gespeicherte Werte und die vom nativen Gameserver bestätigte
+aktive Konfiguration werden getrennt angezeigt; Änderungen benötigen einen
+Gameserver-Neustart. Clientmeldungen über gefundene Konsolenhooks sind
+unbestätigte Selbstauskünfte. Der Schutz funktioniert ohne Chat-Plugin und
+verändert dessen `/`-Commands nicht. Migration, Entwicklermodus und die Grenzen
+der Bewegungsanalyse stehen unter [Console Security](docs_console_security.md).
+
 **Server-Log** erhält neue Konsolen- und Adminmeldungen auch über die aktive
 WebSocket-Verbindung. Die Live-Konsole und die HTTP-Logliste bleiben ebenfalls
 verfügbar. JavaScript-Konsolenmeldungen werden einmal ins Terminal und in die

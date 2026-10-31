@@ -15,6 +15,7 @@ import { ServerPerformancePanel } from './ServerPerformancePanel';
 import { ResourcesPanel, RESOURCE_TAB_STORAGE_KEY } from './ResourcesPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { RestartSchedulePanel, RestartScheduleSummary } from './RestartSchedulePanel';
+import { ConsoleSecurityPanel } from './ConsoleSecurityPanel';
 import type { ScheduleView } from './RestartSchedulePanel';
 import { normalizeJoinMode, validateLoginSettings, WORLDS_MASTER } from './loginProviders';
 
@@ -32,6 +33,8 @@ import './styles.scss';
 import './dashboardRefinements.scss';
 import {
   filterAdminPlayers,
+  isAdminPlayerOnline,
+  inventoryFailureKey,
   formatAdminPos,
   formatAdminTime,
   formatAdminUptime,
@@ -128,6 +131,7 @@ interface PlayerPos {
 interface AdminPlayer {
   userId: number;
   actorId: number;
+  profileId?: number | null;
   online?: boolean;
   actorName: string;
   playerName?: string;
@@ -152,7 +156,7 @@ interface AdminPlayerInventorySnapshot {
   userId: number;
   actorId: number;
   profileId: number | null;
-  source: 'online' | 'offline-file';
+  source: 'online' | 'offline-memory' | 'offline-file';
   formDesc?: string;
   updatedAt?: number;
   filePath?: string;
@@ -244,6 +248,10 @@ interface MutedUserEntry {
 
 interface BannedUserEntry {
   userId: number;
+  banId?: string;
+  profileId?: number | null;
+  legacy?: boolean;
+  reason?: string;
   permanent: boolean;
   expiresAt: number | null;
   remainingSec: number | null;
@@ -422,7 +430,7 @@ interface TopbarAdminFormState {
   discordId: string;
 }
 
-type CfgEditorTab = 'general' | 'server' | 'access' | 'discord' | 'inventory' | 'json';
+type CfgEditorTab = 'general' | 'server' | 'security' | 'access' | 'discord' | 'inventory' | 'json';
 
 const DEFAULT_CAPABILITIES: AdminCapabilities = {
   canKick: true,
@@ -1203,6 +1211,10 @@ const AdminDashboard = () => {
         return;
       }
 
+      if (res.status === 409) {
+        void res.clone().json().then(payload => setStatusMsg(t('adminDashboard.' + (payload.code === 'PLAYER_OFFLINE' ? 'playerOffline' : payload.code === 'PLAYER_SESSION_CHANGED' ? 'playerSessionChanged' : 'apiError')))).catch(() => setStatusMsg(t('adminDashboard.apiError')));
+        return;
+      }
       setStatusMsg(t('adminDashboard.apiError'));
     },
     [t],
@@ -2238,7 +2250,17 @@ const AdminDashboard = () => {
     ],
   );
 
+  const allowLivePlayerAction = (userId: number) => {
+    if (isAdminPlayerOnline(players.find(player => player.userId === userId))) return true;
+    setStatusMsg(t('adminDashboard.playerOffline')); return false;
+  };
+  const expectedPlayerProfile = (userId: number) => {
+    const profileId = players.find(player => player.userId === userId)?.profileId;
+    return typeof profileId === 'number' && Number.isSafeInteger(profileId) && profileId >= 0 ? profileId : undefined;
+  };
+
   const kickPlayer = async (userId: number) => {
+    if (!allowLivePlayerAction(userId)) return;
     if (!isValidModerationReason(moderationReason)) {
       setStatusMsg(
         t('adminDashboard.reasonTooLong', {
@@ -2254,7 +2276,7 @@ const AdminDashboard = () => {
       const res = await fetch(`/api/admin/players/${userId}/kick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reason ? { reason } : {}),
+        body: JSON.stringify({ reason, expectedProfileId: expectedPlayerProfile(userId) }),
       });
       setForbiddenAwareStatus(res, `${t('adminDashboard.kicked')}: ${userId}`);
       if (res.ok) {
@@ -2266,6 +2288,7 @@ const AdminDashboard = () => {
   };
 
   const banPlayer = async (userId: number) => {
+    if (!allowLivePlayerAction(userId)) return;
     if (!window.confirm(`${t('adminDashboard.banConfirm')} userId=${userId}?`))
       return;
 
@@ -2283,6 +2306,7 @@ const AdminDashboard = () => {
     try {
       const body: Record<string, unknown> = {
         durationMinutes: banDurationMinutes,
+        expectedProfileId: expectedPlayerProfile(userId),
       };
       if (reason) body.reason = reason;
       const res = await fetch(`/api/admin/players/${userId}/ban`, {
@@ -2300,13 +2324,13 @@ const AdminDashboard = () => {
     }
   };
 
-  const unbanPlayer = async (userId: number) => {
+  const unbanPlayer = async (userId: number | string) => {
     if (
-      !window.confirm(`${t('adminDashboard.unbanConfirm')} userId=${userId}?`)
+      !window.confirm(`${t('adminDashboard.unbanConfirm')} ${userId}?`)
     )
       return;
     try {
-      const res = await fetch(`/api/admin/players/${userId}/ban`, {
+      const res = await fetch(`/api/admin/players/${encodeURIComponent(String(userId))}/ban`, {
         method: 'DELETE',
       });
       setForbiddenAwareStatus(
@@ -2320,7 +2344,7 @@ const AdminDashboard = () => {
   };
 
   const sendMessageToPlayer = async () => {
-    if (sendMsgTargetId === null || !capabilities.canMessage) return;
+    if (sendMsgTargetId === null || !capabilities.canMessage || !allowLivePlayerAction(sendMsgTargetId)) return;
     const text = sendMsgText.trim();
 
     if (!isValidModerationReason(moderationReason)) {
@@ -2341,7 +2365,7 @@ const AdminDashboard = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          reason ? { message: text, reason } : { message: text },
+          { message: text, reason, expectedProfileId: expectedPlayerProfile(sendMsgTargetId) },
         ),
       });
       setForbiddenAwareStatus(res, t('adminDashboard.messageSent'));
@@ -2375,7 +2399,7 @@ const AdminDashboard = () => {
   };
 
   const sendWarn = async () => {
-    if (warnTargetId === null || !capabilities.canWarn) return;
+    if (warnTargetId === null || !capabilities.canWarn || !allowLivePlayerAction(warnTargetId)) return;
     const message = warnMessage.trim();
 
     if (!isValidModerationReason(warnReason)) {
@@ -2402,7 +2426,7 @@ const AdminDashboard = () => {
       const res = await fetch(`/api/admin/players/${warnTargetId}/warn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reason ? { message, reason } : { message }),
+        body: JSON.stringify({ message, reason, expectedProfileId: expectedPlayerProfile(warnTargetId) }),
       });
       setForbiddenAwareStatus(
         res,
@@ -2419,33 +2443,20 @@ const AdminDashboard = () => {
     }
   };
 
-  const showPlayerInventory = async (userId: number, actorName: string) => {
-    setInventoryTargetUserId(userId);
-    setInventoryTargetName(actorName || String(userId));
-    setInventoryError('');
-    setPlayerInventory(null);
-    setInventoryLoading(true);
-
+  const inventoryRequest = useRef(0);
+  const showPlayerInventory = async (userId: number, actorName: string, profileId?: number | null) => {
+    const request = ++inventoryRequest.current;
+    setInventoryTargetUserId(userId); setInventoryTargetName(actorName || String(userId));
+    setInventoryError(''); setPlayerInventory(null); setInventoryLoading(true);
     try {
-      const res = await fetch(`/api/admin/players/${userId}/inventory`);
-      const payload = await res
-        .json()
-        .catch(() => ({} as Record<string, unknown>));
-      if (!res.ok) {
-        const errorText =
-          typeof payload.error === 'string'
-            ? payload.error
-            : t('adminDashboard.apiError');
-        setInventoryError(errorText);
-        return;
-      }
-
+      const query = Number.isSafeInteger(profileId) && Number(profileId) >= 0 ? '?profileId=' + profileId : '';
+      const res = await fetch('/api/admin/players/' + userId + '/inventory' + query, { cache: 'no-store' });
+      const payload = await res.json().catch(() => ({}));
+      if (request !== inventoryRequest.current) return;
+      if (!res.ok) { setInventoryError(t('adminDashboard.' + inventoryFailureKey(payload.code))); return; }
       setPlayerInventory(payload as AdminPlayerInventorySnapshot);
-    } catch {
-      setInventoryError(t('adminDashboard.apiError'));
-    } finally {
-      setInventoryLoading(false);
-    }
+    } catch { if (request === inventoryRequest.current) setInventoryError(t('adminDashboard.apiError')); }
+    finally { if (request === inventoryRequest.current) setInventoryLoading(false); }
   };
 
   const kickAllPlayers = async () => {
@@ -2590,6 +2601,7 @@ const AdminDashboard = () => {
   };
 
   const mutePlayer = async (userId: number) => {
+    if (!allowLivePlayerAction(userId)) return;
     if (!capabilities.canMute) return;
 
     if (!isValidModerationReason(moderationReason)) {
@@ -3081,7 +3093,7 @@ const AdminDashboard = () => {
       const route = window.location.hash;
       const requested = route === '#discord' ? 'discord' : route.startsWith('#settings/') ? route.slice(10) : route === '#settings' ? 'general' : '';
       const tab = requested === 'game' ? 'inventory' : requested;
-      if (!['general', 'server', 'access', 'discord', 'inventory', 'json'].includes(tab)) return;
+      if (!['general', 'server', 'security', 'access', 'discord', 'inventory', 'json'].includes(tab)) return;
       openSettings(tab as CfgEditorTab);
       window.dispatchEvent(new Event('showAdminDashboard'));
     };
@@ -3564,8 +3576,11 @@ const AdminDashboard = () => {
   );
   const activeBanByUserId = useMemo(
     () =>
-      new Map(activeBannedUsers.map((entry) => [entry.userId, entry] as const)),
-    [activeBannedUsers],
+      new Map(players.flatMap(player => {
+        const entry = activeBannedUsers.find(ban => typeof ban.profileId === 'number' && ban.profileId === player.profileId);
+        return entry ? [[player.userId, entry] as const] : [];
+      })),
+    [activeBannedUsers, players],
   );
 
   const openOlderLogs = () => {
@@ -6945,6 +6960,7 @@ const AdminDashboard = () => {
                                       {player.playerName || player.actorName ||
                                         `userId=${player.userId}`}
                                     </button>
+                                    <span className={isAdminPlayerOnline(player) ? 'admin-dashboard__player-online' : 'admin-dashboard__player-offline'}>{t(isAdminPlayerOnline(player) ? 'adminDashboard.playerOnline' : 'adminDashboard.playerOfflineLabel')}</span>
                                     {player.playerName && <div style={{ fontSize: '0.82em', opacity: 0.75 }}>
                                       {player.actorName && player.actorName !== player.playerName ? player.actorName + ' · ' : ''}{player.steamId ? 'Steam ' + player.steamId : ''}
                                     </div>}
@@ -6983,7 +6999,7 @@ const AdminDashboard = () => {
                                       type="button"
                                       className="admin-dashboard__kick-btn"
                                       onClick={() => kickPlayer(player.userId)}
-                                      disabled={!capabilities.canKick}
+                                      disabled={!capabilities.canKick || !isAdminPlayerOnline(player)}
                                       title={
                                         !capabilities.canKick
                                           ? t('adminDashboard.noPermission')
@@ -6996,7 +7012,7 @@ const AdminDashboard = () => {
                                       type="button"
                                       className="admin-dashboard__ban-btn"
                                       onClick={() => banPlayer(player.userId)}
-                                      disabled={!capabilities.canBan}
+                                      disabled={!capabilities.canBan || !isAdminPlayerOnline(player)}
                                       title={
                                         !capabilities.canBan
                                           ? t('adminDashboard.noPermission')
@@ -7010,7 +7026,7 @@ const AdminDashboard = () => {
                                       className="admin-dashboard__mute-btn"
                                       data-testid={`admin-mute-btn-${player.userId}`}
                                       onClick={() => mutePlayer(player.userId)}
-                                      disabled={!capabilities.canMute}
+                                      disabled={!capabilities.canMute || !isAdminPlayerOnline(player)}
                                       title={
                                         !capabilities.canMute
                                           ? t('adminDashboard.noPermission')
@@ -7023,6 +7039,7 @@ const AdminDashboard = () => {
                                     <button
                                       type="button"
                                           className="admin-dashboard__msg-btn admin-dashboard__warn-btn"
+                                          disabled={!isAdminPlayerOnline(player)}
                                           data-testid={`admin-warn-btn-${player.userId}`}
                                           onClick={() =>
                                             openWarnDialog(
@@ -7067,7 +7084,7 @@ const AdminDashboard = () => {
                                         setSendMsgText('');
                                         setStatusMsg('');
                                       }}
-                                      disabled={!capabilities.canMessage}
+                                      disabled={!capabilities.canMessage || !isAdminPlayerOnline(player)}
                                       title={
                                         !capabilities.canMessage
                                           ? t('adminDashboard.noPermission')
@@ -7083,6 +7100,7 @@ const AdminDashboard = () => {
                                         void showPlayerInventory(
                                           player.userId,
                                           player.actorName,
+                                          player.profileId,
                                         )
                                       }
                                     >
@@ -7122,12 +7140,14 @@ const AdminDashboard = () => {
                                   );
                               return (
                                 <div
-                                  key={entry.userId}
+                                  key={entry.banId ?? entry.userId}
                                   className="admin-dashboard__ban-row"
                                   data-testid={`admin-banned-row-${entry.userId}`}
                                 >
                                   <span className="admin-dashboard__ban-user">
                                     userId: {entry.userId}
+                                    {typeof entry.profileId === 'number' ? ` • profileId: ${entry.profileId}` : ` • ${t('adminDashboard.legacyBanUnbound')}`}
+                                    {entry.reason && ` • ${entry.reason}`}
                                     {entry.permanent
                                       ? ` • ${t('adminDashboard.banPermanent')}`
                                       : remainingBanSec !== null
@@ -7142,7 +7162,7 @@ const AdminDashboard = () => {
                                     type="button"
                                     className="admin-dashboard__unban-btn"
                                     data-testid={`admin-unban-btn-${entry.userId}`}
-                                    onClick={() => unbanPlayer(entry.userId)}
+                                    onClick={() => unbanPlayer(entry.banId ?? entry.userId)}
                                     disabled={!capabilities.canUnban}
                                     title={
                                       !capabilities.canUnban
@@ -7243,7 +7263,7 @@ const AdminDashboard = () => {
                                   {t('adminDashboard.inventorySource', {
                                     defaultValue: 'Source',
                                   })}
-                                  : {playerInventory.source}
+                                  : {t('adminDashboard.' + ({ online: 'inventorySourceOnline', 'offline-memory': 'inventorySourceMemory', 'offline-file': 'inventorySourceFile' }[playerInventory.source]))}
                                 </span>
                                 {typeof playerInventory.profileId ===
                                   'number' && (
@@ -7269,7 +7289,7 @@ const AdminDashboard = () => {
                                       defaultValue: 'Updated',
                                     })}
                                     :{' '}
-                                    {formatAdminTime(playerInventory.updatedAt)}
+                                    {new Date(playerInventory.updatedAt).toLocaleString()}
                                   </span>
                                 )}
                               </div>
@@ -8203,7 +8223,7 @@ const AdminDashboard = () => {
                     role="tabpanel"
                     aria-labelledby="admin-tab-cfg"
                   >
-                    {!['discord', 'server'].includes(cfgEditorTab) && <div className="admin-dashboard__panel-toolbar admin-dashboard__cfg-toolbar">
+                    {!['discord', 'server', 'security'].includes(cfgEditorTab) && <div className="admin-dashboard__panel-toolbar admin-dashboard__cfg-toolbar">
                       <div className="admin-dashboard__panel-toolbar-left">
                         <span className="admin-dashboard__panel-toolbar-title">{t('adminDashboard.cfgEditorTitle')}</span>
                         <span className="admin-dashboard__cfg-hint">{t('adminDashboard.cfgToolbarHint')}</span>
@@ -8230,6 +8250,7 @@ const AdminDashboard = () => {
                         [
                           'general',
                           'server',
+                          'security',
                           'access',
                           'discord',
                           'inventory',
@@ -8261,6 +8282,7 @@ const AdminDashboard = () => {
                     </div>
 
                     {cfgEditorTab === 'server' && <div role="tabpanel" id="admin-cfg-panel-server" aria-labelledby="admin-cfg-tab-server" tabIndex={0}><RestartSchedulePanel canEdit={adminRole === 'admin' && capabilities.canConsole} onChanged={() => void fetchData()} /></div>}
+                    {cfgEditorTab === 'security' && <div role="tabpanel" id="admin-cfg-panel-security" aria-labelledby="admin-cfg-tab-security" tabIndex={0}><ConsoleSecurityPanel canEdit={adminRole === 'admin' && capabilities.canConsole} /></div>}
 
                     {cfgEditorTab === 'general' && <LauncherConnectionPanel onSaved={() => void loadCfgEditor()} />}
                     {cfgEditorTab === 'general' && (

@@ -1,4 +1,5 @@
 #include "ConsoleApi.h"
+#include "ConsoleCommandParser.h"
 #include "InGameConsolePrinter.h"
 #include "InvalidArgumentException.h"
 #include "NullPointerException.h"
@@ -6,6 +7,7 @@
 #include "ThreadPoolWrapper.h"
 #include "Validators.h"
 #include "WindowsConsolePrinter.h"
+#include <algorithm>
 
 std::shared_ptr<IConsolePrinter> g_printer(new InGameConsolePrinter);
 std::shared_ptr<IConsolePrinter> g_windowsConsolePrinter = nullptr;
@@ -194,41 +196,6 @@ void CreateExecuteProperty(Napi::Object& obj, ConsoleCommand* replaced)
   obj.DefineProperty(executeProperty);
 }
 
-struct ParseCommandResult
-{
-  std::string commandName;
-  std::vector<std::string> params;
-};
-
-ParseCommandResult ParseCommand(std::string command)
-{
-  ParseCommandResult res;
-  static const std::string delimiterComa = ".";
-  static const std::string delimiterSpase = " ";
-  std::string token;
-
-  size_t pos = command.find(delimiterComa);
-  if (pos != std::string::npos) {
-    command.erase(0, pos + delimiterComa.length());
-  }
-
-  while ((pos = command.find(delimiterSpase)) != std::string::npos) {
-
-    token = command.substr(0, pos);
-    if (res.commandName.empty()) {
-      res.commandName = token;
-    } else {
-      res.params.push_back(token);
-    }
-    command.erase(0, pos + delimiterSpase.length());
-  }
-
-  if (command.size() >= 1)
-    res.params.push_back(command);
-
-  return res;
-}
-
 Napi::Value GetObject(Napi::Env env, const std::string& param)
 {
   if (auto formByEditorId = RE::TESForm::LookupByEditorID(param))
@@ -292,7 +259,7 @@ bool ConsoleComand_Execute(const RE::SCRIPT_PARAMETER* paramInfo,
         throw NullPointerException("scriptObj");
 
       std::string command = scriptObj->GetCommand();
-      auto parseCommandResult = ParseCommand(command);
+      auto parseCommandResult = ConsoleCommandParser::Parse(command);
 
       for (auto& item : g_replacedConsoleCmd) {
         if (IsNameEqual(item.second.longName,
@@ -306,6 +273,8 @@ bool ConsoleComand_Execute(const RE::SCRIPT_PARAMETER* paramInfo,
           refr ? args.push_back(Napi::Number::New(env, (double)refr->formID))
                : args.push_back(Napi::Number::New(env, 0));
 
+          if (parseCommandResult.params.size() > item.second.numArgs)
+            throw std::runtime_error("Too many console command arguments");
           for (size_t i = 0; i < parseCommandResult.params.size(); ++i) {
             if (!paramInfo)
               break;
@@ -357,8 +326,18 @@ Napi::Value FindCommand(Napi::Env env, const std::string& commandName,
         IsNameEqual(_iter->shortName, commandName)) {
       Napi::Object obj = Napi::Object::New(env);
 
-      auto& replaced = g_replacedConsoleCmd[commandName];
-      replaced = FillCmdInfo(env, _iter);
+      // Short/long names and repeated lookups refer to the same native
+      // command. Reinitializing it loses the installed JS handler and can save
+      // our own trampoline as the "original", causing recursion when vanilla
+      // is allowed.
+      auto existing = std::find_if(
+        g_replacedConsoleCmd.begin(), g_replacedConsoleCmd.end(),
+        [_iter](const auto& item) { return item.second.myIter == _iter; });
+      const bool alreadyHooked = existing != g_replacedConsoleCmd.end();
+      auto& replaced =
+        alreadyHooked ? existing->second : g_replacedConsoleCmd[commandName];
+      if (!alreadyHooked)
+        replaced = FillCmdInfo(env, _iter);
 
       CreateLongNameProperty(obj, &replaced);
       CreateShortNameProperty(obj, &replaced);

@@ -10,21 +10,19 @@ export class KeyboardEventsService extends ClientListener {
   }
 
   private onUpdate() {
-    const numKeys = this.sp.Input.getNumKeysPressed();
-
-    if (this.lastNumKeys !== numKeys) {
-      this.lastNumKeys = numKeys;
-
-      this.controller.emitter.emit('queryKeyCodeBindings', {
-        isDown: (binding: DxScanCode[]) => {
-          if (binding.every((key) => this.sp.Input.isKeyPressed(key))) {
-            return true;
-          }
-          return false;
-        },
-      });
-    }
+    const current = new Map<DxScanCode, boolean>();
+    this.controller.emitter.emit('queryKeyCodeBindings', {
+      isDown: (binding: DxScanCode[]) => {
+        for (const key of binding) current.set(key, this.sp.Input.isKeyPressed(key));
+        return binding.every(key => current.get(key)) && binding.some(key => !this.previous.get(key));
+      },
+    });
+    // Also sample bindings skipped by short-circuiting callers this frame.
+    this.previous.forEach((_pressed, key) => {
+      if (!current.has(key)) current.set(key, this.sp.Input.isKeyPressed(key));
+    });
+    this.previous = current;
   }
 
-  private lastNumKeys = 0;
+  private previous = new Map<DxScanCode, boolean>();
 }

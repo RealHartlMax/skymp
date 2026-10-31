@@ -1,5 +1,6 @@
 #pragma once
 #include "ConditionsEvaluator.h" // ConditionsEvaluatorSettings
+#include "ConsoleSecurity.h"
 #include "FormIndex.h"
 #include "Grid.h"
 #include "GridElement.h"
@@ -197,6 +198,8 @@ public:
       *outDestroyedForm = std::dynamic_pointer_cast<FormType>(it->second);
 
     it->second->BeforeDestroy();
+    consoleSecurity.movement.erase(formId);
+    consoleSecurity.movementAllowances.erase(formId);
 
     if (auto formIndex = dynamic_cast<FormIndex*>(form.get())) {
       if (formIdxManager && !formIdxManager->DestroyID(formIndex->idx))
@@ -232,7 +235,6 @@ public:
   void SetNpcSettings(
     std::unordered_map<std::string, NpcSettingsEntry>&& settings);
   void SetForbiddenRelootTypes(const std::set<std::string>& types);
-  void SetEnableConsoleCommandsForAllSetting(bool enable);
   enum class ItemPickupMode
   {
     Allow,    // default: any item can be picked up
@@ -280,7 +282,7 @@ public:
     bool skipUnowned = false;
   };
   ItemLoadFilter itemLoadFilter;
-  bool enableConsoleCommandsForAll = false;
+  ConsoleSecurity::State consoleSecurity;
 
   bool disableVanillaScriptsInExterior = true;
 

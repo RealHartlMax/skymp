@@ -29,3 +29,9 @@
   &__message { white-space: pre-wrap; font-size: 12px; }
 }
 @media (max-width: 600px) { .server-plugins { padding: 16px; &__entry { padding: 14px; gap: 14px; } &__actions > button { width: 100%; } } }
+
+.server-plugins__moves { display: grid; grid-template-columns: repeat(2, 36px); gap: 5px; align-items: center; justify-items: stretch; }
+.server-plugins__moves > strong { grid-column: 1 / -1; text-align: center; color: #d8c39c; font-variant-numeric: tabular-nums; }
+.server-plugins__moves > button { padding: 5px; min-height: 36px; font-size: 20px; }
+.server-plugins__order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
+.server-plugins__order-actions > span { color: #e8d3a4; }

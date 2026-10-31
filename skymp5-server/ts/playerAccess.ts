@@ -190,7 +190,7 @@ export async function authenticateSteamTicket(settings: Config, ticket: unknown,
   return { steamId, steamSession, expiresAt: expires, accountLoginRequired: policy.mode === 'account', approvalRequired: policy.approvalRequired, status: entry.status, playerName: entry.name };
 }
 
-export function registerPlayerAccess(router: any, options: { settings: () => Config; authorize: (ctx: any) => boolean; fetch?: typeof fetch }) {
+export function registerPlayerAccess(router: any, options: { settings: () => Config; authorize: (ctx: any) => boolean; fetch?: typeof fetch; onBlocked?: (entry: Principal) => void }) {
   const attempts = new Map<string, { at: number; count: number }>();
   router.get('/api/launcher/auth-policy', (ctx: any) => {
     const policy = playerAccessPolicy(options.settings());
@@ -234,7 +234,11 @@ export function registerPlayerAccess(router: any, options: { settings: () => Con
     try { sameOrigin = new URL(ctx.get('origin')).host === ctx.host; } catch { /* Required for browser writes. */ }
     if (!sameOrigin || ctx.get('content-type').split(';')[0] !== 'application/json') { ctx.status = 403; ctx.body = { ok: false }; return; }
     ctx.set('Cache-Control', 'no-store');
-    try { ctx.body = { ok: true, entry: changePlayerAccess(options.settings(), String(ctx.request.body?.id || ''), String(ctx.request.body?.action || '')) }; }
+    try {
+      const entry = changePlayerAccess(options.settings(), String(ctx.request.body?.id || ''), String(ctx.request.body?.action || ''));
+      if (entry.status === 'blocked') options.onBlocked?.(entry);
+      ctx.body = { ok: true, entry };
+    }
     catch { ctx.status = 400; ctx.body = { ok: false, error: 'Player access could not be changed. Reload and retry.' }; }
   });
 }
@@ -244,6 +248,9 @@ const liveSessions = new WeakMap<object, SteamPlayerSessions>();
 export function getSteamPlayerInfo(server: object, userId: number): { steamId?: string; playerName?: string } {
   return liveSessions.get(server)?.info(server, userId) || {};
 }
+export function getVerifiedSteamUsers(server: object, steamId: string): number[] {
+  return liveSessions.get(server)?.usersForIdentity(server, steamId) ?? [];
+}
 export class SteamPlayerSessions {
   private verified = new Map<number, { steamId: string; token: string; guid: string; allowed: boolean; lastPoll: number }>();
   private active = new Map<string, { userId: number; guid: string }>();
@@ -251,6 +258,10 @@ export class SteamPlayerSessions {
   disconnect(userId: number) {
     this.verified.delete(userId);
     for (const [steamId, active] of this.active) if (active.userId === userId) this.active.delete(steamId);
+  }
+  usersForIdentity(server: any, steamId: string): number[] {
+    if (!validSteamId(steamId)) return [];
+    return [...this.verified].filter(([userId, session]) => session.steamId === steamId && server.isConnected(userId) && session.guid === server.getUserGuid(userId)).map(([userId]) => userId);
   }
   getSteamId(ctx: SystemContext, userId: number): string | undefined {
     const session = this.verified.get(userId);

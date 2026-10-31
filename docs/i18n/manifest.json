@@ -1,0 +1,1064 @@
+{
+  "version": 1,
+  "languages": [
+    "de",
+    "en",
+    "ru"
+  ],
+  "documents": [
+    {
+      "source": "CLA.md",
+      "sourceSha256": "8e3e1e99a31d5dead414ffc3b9d365577bf3c6f8ed5016fedac564621d24b021",
+      "languages": {
+        "de": "docs/i18n/de/CLA.md",
+        "en": "CLA.md",
+        "ru": "docs/i18n/ru/CLA.md"
+      }
+    },
+    {
+      "source": "CONTRIBUTING.md",
+      "sourceSha256": "fa11d6098ea54a7568d5ef32685505a9e15e1ce68f1a70b5be2551879c37131e",
+      "languages": {
+        "de": "docs/i18n/de/CONTRIBUTING.md",
+        "en": "CONTRIBUTING.md",
+        "ru": "docs/i18n/ru/CONTRIBUTING.md"
+      }
+    },
+    {
+      "source": "README-plugins.md",
+      "sourceSha256": "1c72baad0db41131ee5612a797a8bec83ad804eb3c4b751cbb95e6420e4178c2",
+      "languages": {
+        "de": "README-plugins.md",
+        "en": "docs/i18n/en/README-plugins.md",
+        "ru": "docs/i18n/ru/README-plugins.md"
+      }
+    },
+    {
+      "source": "README.md",
+      "sourceSha256": "23dbcc604131943dd891a2646dc023c787790605707ef7a36e6479b03edba694",
+      "languages": {
+        "de": "docs/i18n/de/README.md",
+        "en": "docs/i18n/en/README.md",
+        "ru": "docs/i18n/ru/README.md"
+      }
+    },
+    {
+      "source": "ROADMAP.md",
+      "sourceSha256": "c75c84581c1d752a9b03ea59086bbc5e8b4782492626710dbad70460db2b4e40",
+      "languages": {
+        "de": "docs/i18n/de/ROADMAP.md",
+        "en": "docs/i18n/en/ROADMAP.md",
+        "ru": "docs/i18n/ru/ROADMAP.md"
+      }
+    },
+    {
+      "source": "ROADMAP_FIVEM_IDEAS.md",
+      "sourceSha256": "e570a263167b518084aa97dcca9f75c8e501be2a6cc4e810db168ac873ec1644",
+      "languages": {
+        "de": "docs/i18n/de/ROADMAP_FIVEM_IDEAS.md",
+        "en": "ROADMAP_FIVEM_IDEAS.md",
+        "ru": "docs/i18n/ru/ROADMAP_FIVEM_IDEAS.md"
+      }
+    },
+    {
+      "source": "TERMS.md",
+      "sourceSha256": "fa451744402ff96f239525e7727b28c2627e4526bbc652da36f3e8c8746a35f6",
+      "languages": {
+        "de": "docs/i18n/de/TERMS.md",
+        "en": "TERMS.md",
+        "ru": "docs/i18n/ru/TERMS.md"
+      }
+    },
+    {
+      "source": "WEBSOCKET_INTEGRATION_GUIDE.md",
+      "sourceSha256": "214d3bd6d539b6c0fdccdb5eba4e5afbf6e9f3410ccfc98d4e477815f82f13ae",
+      "languages": {
+        "de": "docs/i18n/de/WEBSOCKET_INTEGRATION_GUIDE.md",
+        "en": "WEBSOCKET_INTEGRATION_GUIDE.md",
+        "ru": "docs/i18n/ru/WEBSOCKET_INTEGRATION_GUIDE.md"
+      }
+    },
+    {
+      "source": "WEBSOCKET_PATCHES.md",
+      "sourceSha256": "4241212fd5b65f5d074ec4c0bca2e6b8f8d806a4e37caf331538acf68508d61d",
+      "languages": {
+        "de": "docs/i18n/de/WEBSOCKET_PATCHES.md",
+        "en": "WEBSOCKET_PATCHES.md",
+        "ru": "docs/i18n/ru/WEBSOCKET_PATCHES.md"
+      }
+    },
+    {
+      "source": "WEBSOCKET_ROADMAP_UPDATE.md",
+      "sourceSha256": "6bdfaa08a5469858080732b83deabd8edf7eaed8ea6e27d45cc6bfc22a5fc39b",
+      "languages": {
+        "de": "docs/i18n/de/WEBSOCKET_ROADMAP_UPDATE.md",
+        "en": "WEBSOCKET_ROADMAP_UPDATE.md",
+        "ru": "docs/i18n/ru/WEBSOCKET_ROADMAP_UPDATE.md"
+      }
+    },
+    {
+      "source": "WEBSOCKET_TESTING_REPORT.md",
+      "sourceSha256": "bbde2cbb39a67e517296f517fedc5bd6277a3ebc4062b9dda16785014824594a",
+      "languages": {
+        "de": "docs/i18n/de/WEBSOCKET_TESTING_REPORT.md",
+        "en": "WEBSOCKET_TESTING_REPORT.md",
+        "ru": "docs/i18n/ru/WEBSOCKET_TESTING_REPORT.md"
+      }
+    },
+    {
+      "source": "WEBSOCKET_WORKFLOW_ANALYSIS.md",
+      "sourceSha256": "82c11cef0b32e09924faa88ff906699bded3279722a5c0add07758d766bfc12e",
+      "languages": {
+        "de": "docs/i18n/de/WEBSOCKET_WORKFLOW_ANALYSIS.md",
+        "en": "WEBSOCKET_WORKFLOW_ANALYSIS.md",
+        "ru": "docs/i18n/ru/WEBSOCKET_WORKFLOW_ANALYSIS.md"
+      }
+    },
+    {
+      "source": "docs/README.md",
+      "sourceSha256": "89205600cfcafac9649a7f8bf1540c60bd6f47d9ba3c16d2160c7ac87738e748",
+      "languages": {
+        "de": "docs/i18n/de/docs/README.md",
+        "en": "docs/i18n/en/docs/README.md",
+        "ru": "docs/i18n/ru/docs/README.md"
+      }
+    },
+    {
+      "source": "docs/SUMMARY.md",
+      "sourceSha256": "bd820c474b5e354f8a4ee30a23f717688c9bce843f51eeab32f4b4179f66b03d",
+      "languages": {
+        "de": "docs/i18n/de/docs/SUMMARY.md",
+        "en": "docs/i18n/en/docs/SUMMARY.md",
+        "ru": "docs/i18n/ru/docs/SUMMARY.md"
+      }
+    },
+    {
+      "source": "docs/contributing/en/How to create packet on the server.md",
+      "sourceSha256": "c44426a35d9f4a2fea242cc3bc8a6eec46d23b21fc194c4f018a824967efc8de",
+      "languages": {
+        "de": "docs/i18n/de/docs/contributing/en/How to create packet on the server.md",
+        "en": "docs/contributing/en/How to create packet on the server.md",
+        "ru": "docs/contributing/ru/Как создать пакет на сервере.md"
+      }
+    },
+    {
+      "source": "docs/contributing/en/How to release SP update.md",
+      "sourceSha256": "25e9e759651a864606fb09447822e132bfec56699be4e3ffab1defee98d087f4",
+      "languages": {
+        "de": "docs/i18n/de/docs/contributing/en/How to release SP update.md",
+        "en": "docs/contributing/en/How to release SP update.md",
+        "ru": "docs/contributing/ru/Как выпустить обновление SP.md"
+      }
+    },
+    {
+      "source": "docs/contributing/en/How to send packet from client.md",
+      "sourceSha256": "77f28cd0fba017bf6a213eea9a61564ae2e9fb70f4c148660fafe45e97405818",
+      "languages": {
+        "de": "docs/i18n/de/docs/contributing/en/How to send packet from client.md",
+        "en": "docs/contributing/en/How to send packet from client.md",
+        "ru": "docs/contributing/ru/Как отправить пакет с клиента.md"
+      }
+    },
+    {
+      "source": "docs/contributing/en/How to work with skymp5-client.md",
+      "sourceSha256": "bdafd24059a8fec25d419afed23d7794b4c39918c81a241b95b77fb5e517e9f1",
+      "languages": {
+        "de": "docs/i18n/de/docs/contributing/en/How to work with skymp5-client.md",
+        "en": "docs/contributing/en/How to work with skymp5-client.md",
+        "ru": "docs/contributing/ru/Как работать с skymp5-client.md"
+      }
+    },
+    {
+      "source": "docs/contributing/en/How to work with skyrim-platform.md",
+      "sourceSha256": "0fa989e55aab442c6cbb2a29b40a4d85dade557c60cf84205b40645bede3c6a8",
+      "languages": {
+        "de": "docs/i18n/de/docs/contributing/en/How to work with skyrim-platform.md",
+        "en": "docs/contributing/en/How to work with skyrim-platform.md",
+        "ru": "docs/contributing/ru/Как работать с skyrim-platform.md"
+      }
+    },
+    {
+      "source": "docs/docs_admin_console_commands.md",
+      "sourceSha256": "cc811a0c5d1e5320b74e0b001c905f52adf8d562c8c19c6a676cdf9be5618dd4",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_admin_console_commands.md",
+        "en": "docs/i18n/en/docs/docs_admin_console_commands.md",
+        "ru": "docs/i18n/ru/docs/docs_admin_console_commands.md"
+      }
+    },
+    {
+      "source": "docs/docs_admin_discord_oauth.md",
+      "sourceSha256": "227d73cbe5734db67a545d82f1a5a15cec23ba18b2eee00922d60a05ede51267",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_admin_discord_oauth.md",
+        "en": "docs/i18n/en/docs/docs_admin_discord_oauth.md",
+        "ru": "docs/i18n/ru/docs/docs_admin_discord_oauth.md"
+      }
+    },
+    {
+      "source": "docs/docs_alchemy_system_plan.md",
+      "sourceSha256": "da4a7117a7969de1988d7f5c8d6fc486f3d321593594fedacb57c5664cac568b",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_alchemy_system_plan.md",
+        "en": "docs/i18n/en/docs/docs_alchemy_system_plan.md",
+        "ru": "docs/i18n/ru/docs/docs_alchemy_system_plan.md"
+      }
+    },
+    {
+      "source": "docs/docs_chat_integration.md",
+      "sourceSha256": "fc667021721cd50beb1ecaf748c8812d7fd99e8b1a3ae301c1b334035f65a5ad",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_chat_integration.md",
+        "en": "docs/i18n/en/docs/docs_chat_integration.md",
+        "ru": "docs/i18n/ru/docs/docs_chat_integration.md"
+      }
+    },
+    {
+      "source": "docs/docs_client_installation.md",
+      "sourceSha256": "777a678a18c51867aad51ec01641bbbb78e6da57d400ca34e84684c2d4b97b70",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_client_installation.md",
+        "en": "docs/i18n/en/docs/docs_client_installation.md",
+        "ru": "docs/i18n/ru/docs/docs_client_installation.md"
+      }
+    },
+    {
+      "source": "docs/docs_clientside_scripting_reference.md",
+      "sourceSha256": "efaa1a50880e775f8b1cc7ebafb1600b86f32f92b80a2568191d81cb4c20dd63",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_clientside_scripting_reference.md",
+        "en": "docs/i18n/en/docs/docs_clientside_scripting_reference.md",
+        "ru": "docs/i18n/ru/docs/docs_clientside_scripting_reference.md"
+      }
+    },
+    {
+      "source": "docs/docs_cmake_workflow.md",
+      "sourceSha256": "a959f8a49e55414cbb38b8da3a6fbabc493937438df87be8b066e41138a799e1",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_cmake_workflow.md",
+        "en": "docs/i18n/en/docs/docs_cmake_workflow.md",
+        "ru": "docs/i18n/ru/docs/docs_cmake_workflow.md"
+      }
+    },
+    {
+      "source": "docs/docs_console_security.md",
+      "sourceSha256": "89873cee750c7e6db36f674a26b3897fd6897ff87c451a66a26804d7468d6aca",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_console_security.md",
+        "en": "docs/i18n/en/docs/docs_console_security.md",
+        "ru": "docs/i18n/ru/docs/docs_console_security.md"
+      }
+    },
+    {
+      "source": "docs/docs_cpp_code_guidelines.md",
+      "sourceSha256": "0ce9161650db7a969416ceff0fa9a2b5085dc9380b3c73a549ecd3cbe7097ac1",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_cpp_code_guidelines.md",
+        "en": "docs/i18n/en/docs/docs_cpp_code_guidelines.md",
+        "ru": "docs/i18n/ru/docs/docs_cpp_code_guidelines.md"
+      }
+    },
+    {
+      "source": "docs/docs_dashboard_operations.md",
+      "sourceSha256": "4883d60b49d0a4cce5d80c238d960850e01c68a510082c4c3ff4ab9e26ddb649",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_dashboard_operations.md",
+        "en": "docs/i18n/en/docs/docs_dashboard_operations.md",
+        "ru": "docs/i18n/ru/docs/docs_dashboard_operations.md"
+      }
+    },
+    {
+      "source": "docs/docs_database_drivers.md",
+      "sourceSha256": "1be1af87dcffe4cbcc067d361bdbdacb49eea58b2c35d38e24a4d8a58374399b",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_database_drivers.md",
+        "en": "docs/i18n/en/docs/docs_database_drivers.md",
+        "ru": "docs/i18n/ru/docs/docs_database_drivers.md"
+      }
+    },
+    {
+      "source": "docs/docs_deploy.md",
+      "sourceSha256": "dbdd5abd6ffea9f1f9233c1dbad923dcb8cfe5241c6813752319b8d4c3ee73e5",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_deploy.md",
+        "en": "docs/i18n/en/docs/docs_deploy.md",
+        "ru": "docs/i18n/ru/docs/docs_deploy.md"
+      }
+    },
+    {
+      "source": "docs/docs_discord_bot.md",
+      "sourceSha256": "4a25ec547a5baa8569256a9ecdd9bf905c220dfcc2eba8d11d4fc2dd7e6b3ea3",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_discord_bot.md",
+        "en": "docs/i18n/en/docs/docs_discord_bot.md",
+        "ru": "docs/i18n/ru/docs/docs_discord_bot.md"
+      }
+    },
+    {
+      "source": "docs/docs_events_system.md",
+      "sourceSha256": "26b97e10a256c3848f33d6a753ad480f6a6d34f3e8412ea67fb9de5508d0b35c",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_events_system.md",
+        "en": "docs/i18n/en/docs/docs_events_system.md",
+        "ru": "docs/i18n/ru/docs/docs_events_system.md"
+      }
+    },
+    {
+      "source": "docs/docs_external_fork_ideas.md",
+      "sourceSha256": "d63fcdabfa11f818d92f1343aca833f7a9d4ac0207d74cbc81c1649550961def",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_external_fork_ideas.md",
+        "en": "docs/i18n/en/docs/docs_external_fork_ideas.md",
+        "ru": "docs/i18n/ru/docs/docs_external_fork_ideas.md"
+      }
+    },
+    {
+      "source": "docs/docs_ingame_login.md",
+      "sourceSha256": "d7df5407fc031702c96885f7769746cb24170d1a7fd1179823a43ef120bbabcf",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_ingame_login.md",
+        "en": "docs/i18n/en/docs/docs_ingame_login.md",
+        "ru": "docs/i18n/ru/docs/docs_ingame_login.md"
+      }
+    },
+    {
+      "source": "docs/docs_launcher_modpacks.md",
+      "sourceSha256": "2cea3604a1b4180b427e235cff981ee6776c83e0aea42429f4bb4fc0dce79071",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_launcher_modpacks.md",
+        "en": "docs/i18n/en/docs/docs_launcher_modpacks.md",
+        "ru": "docs/i18n/ru/docs/docs_launcher_modpacks.md"
+      }
+    },
+    {
+      "source": "docs/docs_launcher_runtime_updates.md",
+      "sourceSha256": "acecd2c91073a496430c596909a91ad1372c931e13c2c667a31c0886dd6bb97b",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_launcher_runtime_updates.md",
+        "en": "docs/i18n/en/docs/docs_launcher_runtime_updates.md",
+        "ru": "docs/i18n/ru/docs/docs_launcher_runtime_updates.md"
+      }
+    },
+    {
+      "source": "docs/docs_launcher_worlds.md",
+      "sourceSha256": "b184b6fee5b0029816aad035cb535dab63821a479fdbc04ebeb41acc51117420",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_launcher_worlds.md",
+        "en": "docs/i18n/en/docs/docs_launcher_worlds.md",
+        "ru": "docs/i18n/ru/docs/docs_launcher_worlds.md"
+      }
+    },
+    {
+      "source": "docs/docs_linux_vps.md",
+      "sourceSha256": "857079db660d94ec27dc03b0bbb63493415ed9080c15efd52535356ade9b2c27",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_linux_vps.md",
+        "en": "docs/i18n/en/docs/docs_linux_vps.md",
+        "ru": "docs/i18n/ru/docs/docs_linux_vps.md"
+      }
+    },
+    {
+      "source": "docs/docs_maintainer_rules.md",
+      "sourceSha256": "63e888401a417bc449f01db1378147181a8cba4946e88f1366da21ba0aa980c6",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_maintainer_rules.md",
+        "en": "docs/i18n/en/docs/docs_maintainer_rules.md",
+        "ru": "docs/i18n/ru/docs/docs_maintainer_rules.md"
+      }
+    },
+    {
+      "source": "docs/docs_mod_folders.md",
+      "sourceSha256": "12e4fb065be04bd82cfaac3468d03ff2d4c69e6fe693360adf53b487abfef170",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_mod_folders.md",
+        "en": "docs/i18n/en/docs/docs_mod_folders.md",
+        "ru": "docs/i18n/ru/docs/docs_mod_folders.md"
+      }
+    },
+    {
+      "source": "docs/docs_multicharacter_system_plan.md",
+      "sourceSha256": "1f9f84c41aaf90f424d0acbfb926ac9702ff6133b44c772eda03a7bbdfb35167",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_multicharacter_system_plan.md",
+        "en": "docs/i18n/en/docs/docs_multicharacter_system_plan.md",
+        "ru": "docs/i18n/ru/docs/docs_multicharacter_system_plan.md"
+      }
+    },
+    {
+      "source": "docs/docs_native_validation_2026_10_19.md",
+      "sourceSha256": "691314a6aeff4ae046f79337f6867ea6df065edeee4a4b6f620e70ae96241c79",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_native_validation_2026_10_19.md",
+        "en": "docs/i18n/en/docs/docs_native_validation_2026_10_19.md",
+        "ru": "docs/i18n/ru/docs/docs_native_validation_2026_10_19.md"
+      }
+    },
+    {
+      "source": "docs/docs_onhit_and_damage.md",
+      "sourceSha256": "0f0c75f9a194c8e1783b3c9c49c940beee97e4ed6f12788d9d8a7e8b8487b56a",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_onhit_and_damage.md",
+        "en": "docs/i18n/en/docs/docs_onhit_and_damage.md",
+        "ru": "docs/i18n/ru/docs/docs_onhit_and_damage.md"
+      }
+    },
+    {
+      "source": "docs/docs_packaged_server_update.md",
+      "sourceSha256": "64c77537e1161b7541ebc34e3a9ca73d62b0f9d8f218a24ec3f0a72b5f268ed5",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_packaged_server_update.md",
+        "en": "docs/i18n/en/docs/docs_packaged_server_update.md",
+        "ru": "docs/i18n/ru/docs/docs_packaged_server_update.md"
+      }
+    },
+    {
+      "source": "docs/docs_plugin_runtime.md",
+      "sourceSha256": "34c74eff1581aba2524b467248c1970145f1c19b89b03a46e3d4f7e136915355",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_plugin_runtime.md",
+        "en": "docs/i18n/en/docs/docs_plugin_runtime.md",
+        "ru": "docs/i18n/ru/docs/docs_plugin_runtime.md"
+      }
+    },
+    {
+      "source": "docs/docs_plugin_ui_troubleshooting.md",
+      "sourceSha256": "2e60f1ed86848c2d875514e13cc2e43c89b09b7f875e31149459ac61dc98a4b3",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_plugin_ui_troubleshooting.md",
+        "en": "docs/i18n/en/docs/docs_plugin_ui_troubleshooting.md",
+        "ru": "docs/i18n/ru/docs/docs_plugin_ui_troubleshooting.md"
+      }
+    },
+    {
+      "source": "docs/docs_project_history.md",
+      "sourceSha256": "6f1480eb8244e46ce5b09664bc8aa91a1c6813d5fd05a6c299707dfacd10df66",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_project_history.md",
+        "en": "docs/i18n/en/docs/docs_project_history.md",
+        "ru": "docs/i18n/ru/docs/docs_project_history.md"
+      }
+    },
+    {
+      "source": "docs/docs_project_status.md",
+      "sourceSha256": "2cae99e4b11c732bb32b1509bb5da9dbdf610ad343127a07da3638e145540077",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_project_status.md",
+        "en": "docs/i18n/en/docs/docs_project_status.md",
+        "ru": "docs/i18n/ru/docs/docs_project_status.md"
+      }
+    },
+    {
+      "source": "docs/docs_properties_system.md",
+      "sourceSha256": "a0bbd1a3f47eb88cbe46babd395cf367dc99cd96ad35324a5bbff6ab7818b3e8",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_properties_system.md",
+        "en": "docs/i18n/en/docs/docs_properties_system.md",
+        "ru": "docs/i18n/ru/docs/docs_properties_system.md"
+      }
+    },
+    {
+      "source": "docs/docs_repository_structure.md",
+      "sourceSha256": "76bcf9b73016bcb385c8e596a3491c8103999dffe218073faeb1b7b64dbf6149",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_repository_structure.md",
+        "en": "docs/i18n/en/docs/docs_repository_structure.md",
+        "ru": "docs/i18n/ru/docs/docs_repository_structure.md"
+      }
+    },
+    {
+      "source": "docs/docs_resource_auto_download.md",
+      "sourceSha256": "9899aa149d78a0bfb0a8de52d5f6755281ac2c2ae1bd4ecb14b1bf77f74f0312",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_resource_auto_download.md",
+        "en": "docs/i18n/en/docs/docs_resource_auto_download.md",
+        "ru": "docs/i18n/ru/docs/docs_resource_auto_download.md"
+      }
+    },
+    {
+      "source": "docs/docs_respawn_control_system.md",
+      "sourceSha256": "655b37b1b5b9c9a309e858dffa8268a8b6963840492207edbf789d58ead614c0",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_respawn_control_system.md",
+        "en": "docs/i18n/en/docs/docs_respawn_control_system.md",
+        "ru": "docs/i18n/ru/docs/docs_respawn_control_system.md"
+      }
+    },
+    {
+      "source": "docs/docs_running_a_server.md",
+      "sourceSha256": "146789224a0333b795219d4f2b3e4cf8c4e43d486e07f7603400716ae80ef942",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_running_a_server.md",
+        "en": "docs/i18n/en/docs/docs_running_a_server.md",
+        "ru": "docs/i18n/ru/docs/docs_running_a_server.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_command_line_api.md",
+      "sourceSha256": "ed1974757b3c5a2f43a27eafefb5106a079c912242ac067e442443a55fb66486",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_command_line_api.md",
+        "en": "docs/i18n/en/docs/docs_server_command_line_api.md",
+        "ru": "docs/i18n/ru/docs/docs_server_command_line_api.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_configuration_reference.md",
+      "sourceSha256": "1ac857c241e0fc65763c3046829297a65deaeabe75cd974c38e949681b0c48b8",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_configuration_reference.md",
+        "en": "docs/i18n/en/docs/docs_server_configuration_reference.md",
+        "ru": "docs/i18n/ru/docs/docs_server_configuration_reference.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_data_directory.md",
+      "sourceSha256": "d527dfedd87397c208114d63aec785e90733b48b77f98f74e618ac504d4f7621",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_data_directory.md",
+        "en": "docs/i18n/en/docs/docs_server_data_directory.md",
+        "ru": "docs/i18n/ru/docs/docs_server_data_directory.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_metrics.md",
+      "sourceSha256": "8f41dcce48494b2e9f633d3307d7ded6ec1fe896ae2ce755cf1d618547f2f9fc",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_metrics.md",
+        "en": "docs/i18n/en/docs/docs_server_metrics.md",
+        "ru": "docs/i18n/ru/docs/docs_server_metrics.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_ports_usage.md",
+      "sourceSha256": "16bca6b7aa70be9ba9919d06a3ce0074548b1efd4bc84ac9c38ae2390e13fa50",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_ports_usage.md",
+        "en": "docs/i18n/en/docs/docs_server_ports_usage.md",
+        "ru": "docs/i18n/ru/docs/docs_server_ports_usage.md"
+      }
+    },
+    {
+      "source": "docs/docs_server_update_playbook.md",
+      "sourceSha256": "41ff6f4dc62c088135e51808393504011e8a622a9b765b2bc7cb24f10d1762ef",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_server_update_playbook.md",
+        "en": "docs/i18n/en/docs/docs_server_update_playbook.md",
+        "ru": "docs/i18n/ru/docs/docs_server_update_playbook.md"
+      }
+    },
+    {
+      "source": "docs/docs_serverside_scripting_reference.md",
+      "sourceSha256": "8fd8888697c104ab74ca64528d1e0ddb459af9b2a24f406ad0d327b0f13ffcdc",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_serverside_scripting_reference.md",
+        "en": "docs/i18n/en/docs/docs_serverside_scripting_reference.md",
+        "ru": "docs/i18n/ru/docs/docs_serverside_scripting_reference.md"
+      }
+    },
+    {
+      "source": "docs/docs_session_end.md",
+      "sourceSha256": "37f7ed69c0704bd06f824355861b7c82ead08a3311464c15fcf2b10607391065",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_session_end.md",
+        "en": "docs/i18n/en/docs/docs_session_end.md",
+        "ru": "docs/i18n/ru/docs/docs_session_end.md"
+      }
+    },
+    {
+      "source": "docs/docs_skyrim_platform.md",
+      "sourceSha256": "b9502f7ef2c55b059b61ef3a147ce788e93fc7dba62502613fb434f46c10f56f",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_skyrim_platform.md",
+        "en": "docs/i18n/en/docs/docs_skyrim_platform.md",
+        "ru": "docs/i18n/ru/docs/docs_skyrim_platform.md"
+      }
+    },
+    {
+      "source": "docs/docs_upstream_sync_2026-10-18.md",
+      "sourceSha256": "daabab21d7b3bb3de2d311c90aa65e8be8cf30f0f1f767814528c8acf44a7588",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_upstream_sync_2026-10-18.md",
+        "en": "docs/i18n/en/docs/docs_upstream_sync_2026-10-18.md",
+        "ru": "docs/i18n/ru/docs/docs_upstream_sync_2026-10-18.md"
+      }
+    },
+    {
+      "source": "docs/docs_voice_api.md",
+      "sourceSha256": "dd2ff44f39c0db52e5162d2e94d23acceaf9d47ba3d2ca30b667b3a29abdd3fb",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_voice_api.md",
+        "en": "docs/i18n/en/docs/docs_voice_api.md",
+        "ru": "docs/i18n/ru/docs/docs_voice_api.md"
+      }
+    },
+    {
+      "source": "docs/docs_voice_lipsync_status.md",
+      "sourceSha256": "a3cbb7e1ea3df8fdd342d70e5008d71bb3d3186a16a167f20e67aba3b15b1a28",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_voice_lipsync_status.md",
+        "en": "docs/i18n/en/docs/docs_voice_lipsync_status.md",
+        "ru": "docs/i18n/ru/docs/docs_voice_lipsync_status.md"
+      }
+    },
+    {
+      "source": "docs/docs_vps_ports_and_process_control.md",
+      "sourceSha256": "3bedb034f2676e389682aa89c1c6d7cf8fc57cd25f19fddff078ce60712c4c0e",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_vps_ports_and_process_control.md",
+        "en": "docs/i18n/en/docs/docs_vps_ports_and_process_control.md",
+        "ru": "docs/i18n/ru/docs/docs_vps_ports_and_process_control.md"
+      }
+    },
+    {
+      "source": "docs/docs_zone_handover_roadmap.md",
+      "sourceSha256": "c918292f9f0f694a7a02000e3c00307df8dfbaff049d84b18a96cd3538e8e34c",
+      "languages": {
+        "de": "docs/i18n/de/docs/docs_zone_handover_roadmap.md",
+        "en": "docs/i18n/en/docs/docs_zone_handover_roadmap.md",
+        "ru": "docs/i18n/ru/docs/docs_zone_handover_roadmap.md"
+      }
+    },
+    {
+      "source": "docs/release/changelog_template.md",
+      "sourceSha256": "d9a9d83797059a2b81ad85370da775e95a129d55b03229287c23cd11b48d517b",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/changelog_template.md",
+        "en": "docs/i18n/en/docs/release/changelog_template.md",
+        "ru": "docs/i18n/ru/docs/release/changelog_template.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/0-sample-topic.md",
+      "sourceSha256": "f7e858987650effed1793f8d5e380b5aef199d79979606452e99df88181274d2",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/0-sample-topic.md",
+        "en": "docs/i18n/en/docs/release/dev/0-sample-topic.md",
+        "ru": "docs/i18n/ru/docs/release/dev/0-sample-topic.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-aaa-flatrim.md",
+      "sourceSha256": "b8b8eacfa38336e78b911f5a38b041aa0d92f967c356d502dec13bc50ebc939a",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-aaa-flatrim.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-aaa-flatrim.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-aaa-flatrim.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-aaa-nodejs.md",
+      "sourceSha256": "b8b22747ad90d42590ebca3b380f9dcac1f1950a489b33d9e3945ec313aad4e1",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-aaa-nodejs.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-aaa-nodejs.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-aaa-nodejs.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-aaa-skyrimvr.md",
+      "sourceSha256": "2ea56a8a64b7d20969e3b397907f8307016765cd7974960825208f6618e75cd5",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-aaa-skyrimvr.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-aaa-skyrimvr.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-aaa-skyrimvr.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-castspellimmediate.md",
+      "sourceSha256": "f72096c58fb634306a9b0a52fc1c717f049dcdf53facab561c2698a0d6b1d6cf",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-castspellimmediate.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-castspellimmediate.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-castspellimmediate.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-class-to-interface.md",
+      "sourceSha256": "fc18b9e1e0a87cd303886c534eabc5896e5dfdb11f7fe48274dfa480419f7419",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-class-to-interface.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-class-to-interface.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-class-to-interface.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-fix-onplayerbowshot.md",
+      "sourceSha256": "77d5040bd2f2b773cd19c7e32147d61b38a00293a715afe0330292eac17623f9",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-fix-onplayerbowshot.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-fix-onplayerbowshot.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-fix-onplayerbowshot.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-improve-enum.md",
+      "sourceSha256": "0a67d84afbbaf8b77b16233aef5b3ac5e5ba025b6b3d882c4ceded859c045c8d",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-improve-enum.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-improve-enum.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-improve-enum.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-js-only.md",
+      "sourceSha256": "9cb6565c4eb6fbc687e47e00588715c5d6f5cc61e9412817f134895ba9ef6b88",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-js-only.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-js-only.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-js-only.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-loadGame-isFemale.md",
+      "sourceSha256": "f57dbc911095421e18a260335e7267545d56488ddb6b44166be439faa81befbd",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-loadGame-isFemale.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-loadGame-isFemale.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-loadGame-isFemale.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-magic-api.md",
+      "sourceSha256": "92ba17e54296bcfe0eb45f82ca0bb54f8adac558e7a153767045776dde4a8ae0",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-magic-api.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-magic-api.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-magic-api.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-plugins-path-ini.md",
+      "sourceSha256": "dde239d5190ffdcdf86184323b30afdf3012d89cb34a48f6fccae46e899885cb",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-plugins-path-ini.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-plugins-path-ini.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-plugins-path-ini.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-plugins-path-override-folder.md",
+      "sourceSha256": "55d1d74a22d797a2e9923eed1b0d60d2508f77bf50d52c8c872b4d9ee35c062c",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-plugins-path-override-folder.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-plugins-path-override-folder.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-plugins-path-override-folder.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-plugins-path-use.md",
+      "sourceSha256": "7566f8bd4e393768c98cd682fcc2a0f3595583dba36bd6be71b6c1a564416b8e",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-plugins-path-use.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-plugins-path-use.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-plugins-path-use.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-set-collision.md",
+      "sourceSha256": "dff2025741cde04099db62fdfd7e3f71fc938e2efe266458928fb3baae48f51a",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-set-collision.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-set-collision.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-set-collision.md"
+      }
+    },
+    {
+      "source": "docs/release/dev/sp-text-refr.md",
+      "sourceSha256": "0f9071eba4ef22e97af1327435c3108e6c4addc2ab7e75c334e50e6e95b852c9",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/dev/sp-text-refr.md",
+        "en": "docs/i18n/en/docs/release/dev/sp-text-refr.md",
+        "ru": "docs/i18n/ru/docs/release/dev/sp-text-refr.md"
+      }
+    },
+    {
+      "source": "docs/release/server_operator_announcement_template.md",
+      "sourceSha256": "c983b31e419aab49b2c1a9ac8564a21453e1e5999e9e68e068dccb1425a02d85",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/server_operator_announcement_template.md",
+        "en": "docs/i18n/en/docs/release/server_operator_announcement_template.md",
+        "ru": "docs/i18n/ru/docs/release/server_operator_announcement_template.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.1.md",
+      "sourceSha256": "e7177a8cd2ad2f4725874ede83a055ba88ab66bb0bb93bb15f77db161b2270f7",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.1.md",
+        "en": "docs/i18n/en/docs/release/sp-2.1.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.1.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.2.md",
+      "sourceSha256": "214962d061ddc317ba189b1ec35b27ca459396b731e5a1d7591d9ebd6ccd7c89",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.2.md",
+        "en": "docs/i18n/en/docs/release/sp-2.2.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.2.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.3.md",
+      "sourceSha256": "28b472524d7747bcad08cf6ab009a7ae51b0b29bb43d636d67c8f6876eb7d0b3",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.3.md",
+        "en": "docs/i18n/en/docs/release/sp-2.3.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.3.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.4.md",
+      "sourceSha256": "99bb3f6f7c36d86d5a8800ced50b3648abe1bec26512cd8acecec0a6c9c03a98",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.4.md",
+        "en": "docs/i18n/en/docs/release/sp-2.4.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.4.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.5.md",
+      "sourceSha256": "29f957af6e9d0c5ec3e2c5e8fb22364c22b1fe0b5e3f7f2f632a5bb8a04da7b2",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.5.md",
+        "en": "docs/i18n/en/docs/release/sp-2.5.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.5.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.6.md",
+      "sourceSha256": "7465a57ff85fd1f2d498175a0b8aff09d7b28f35a44d00b66ae66654744a0806",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.6.md",
+        "en": "docs/i18n/en/docs/release/sp-2.6.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.6.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.7.1.md",
+      "sourceSha256": "73ec405ee1a1f114d22aa09f72da899c4f3f30cd7e976ccbc3459d7966047f78",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.7.1.md",
+        "en": "docs/i18n/en/docs/release/sp-2.7.1.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.7.1.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.7.md",
+      "sourceSha256": "61e74b7e4311f9af8d2046cbff82bddd631c433e2e824f16d3f99616d1e35807",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.7.md",
+        "en": "docs/i18n/en/docs/release/sp-2.7.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.7.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.8.md",
+      "sourceSha256": "284e30416f0e550142be1f8f01ffa8cedcd08e2a40c04bcbb3b8b983fcd54afd",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.8.md",
+        "en": "docs/i18n/en/docs/release/sp-2.8.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.8.md"
+      }
+    },
+    {
+      "source": "docs/release/sp-2.9.md",
+      "sourceSha256": "9e073ec185eab8ae525533b040931f0457c18a1e6d25f5c8afaca5095463c344",
+      "languages": {
+        "de": "docs/i18n/de/docs/release/sp-2.9.md",
+        "en": "docs/i18n/en/docs/release/sp-2.9.md",
+        "ru": "docs/i18n/ru/docs/release/sp-2.9.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/browser.md",
+      "sourceSha256": "46e69b734e87bb38ffd3bc18090eb7fda9c8d6700985be2ef73dc1f0c7bee90d",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/browser.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/browser.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/browser.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/cookbook.md",
+      "sourceSha256": "5aa739429b15b9d7441d68d548627d8b7771407808c35a5bd20206ecf3eaf203",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/cookbook.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/cookbook.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/cookbook.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/events.md",
+      "sourceSha256": "46b502f212084ac1ac6ff417312a004345d5171376f6691a7fed6fcf9a278416",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/events.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/events.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/events.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/features.md",
+      "sourceSha256": "2c1ae548d58f18ea4fd59b98449b4a55138ccec950144d8b09acacc18e713f67",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/features.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/features.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/features.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/http.md",
+      "sourceSha256": "97e728c27585d41ea57697cd4e367d3e2663e5e39eda6b2259b532371c1ffb12",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/http.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/http.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/http.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/ini_settings.md",
+      "sourceSha256": "bfff6ef5ad4da8e96e4be411048accd01df8fbb9c53c93fe238ef65f2fc1cb20",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/ini_settings.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/ini_settings.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/ini_settings.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/native.md",
+      "sourceSha256": "495b46b8d838d75af5777952ca305b9aee46b295c2f983cff5b02199a5ca3c8b",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/native.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/native.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/native.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/new_events.md",
+      "sourceSha256": "6efbfb3e45c4cd8672c4df3beb3d779ba13b951d3e097f77c76cc1f9b9027508",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/new_events.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/new_events.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/new_events.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/new_methods.md",
+      "sourceSha256": "adb2e8f77d40b423a81d647cd6c784a92f6574c68a4c05ce0275a46ea5e02937",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/new_methods.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/new_methods.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/new_methods.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/new_types.md",
+      "sourceSha256": "91f9bbda2806df5c7a348305587bc7ded09a60bfabb335a94db4af2db5cc1ba6",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/new_types.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/new_types.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/new_types.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/papyrus.md",
+      "sourceSha256": "efb2a5ff22bc57bcb6b1d920a66789bdeb6829d9bd306352cfa3c7cd0f2be72a",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/papyrus.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/papyrus.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/papyrus.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/texts.md",
+      "sourceSha256": "a14fc843951d006f3e114f67f1f65c76ba0e0edb24170a17dc11c1a71b119538",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/texts.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/texts.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/texts.md"
+      }
+    },
+    {
+      "source": "docs/skyrim_platform/win32.md",
+      "sourceSha256": "b383c2a2c90e47fcd0d7aafc55905b1f62897a3c2e7102bc1bfccd60d8690b68",
+      "languages": {
+        "de": "docs/i18n/de/docs/skyrim_platform/win32.md",
+        "en": "docs/i18n/en/docs/skyrim_platform/win32.md",
+        "ru": "docs/i18n/ru/docs/skyrim_platform/win32.md"
+      }
+    },
+    {
+      "source": "misc/deploy/test-server/README.md",
+      "sourceSha256": "ad097d99de7c076fdd759f465eebee33e18cb381867285e68c156a5e7a071ad6",
+      "languages": {
+        "de": "misc/deploy/test-server/README.md",
+        "en": "docs/i18n/en/misc/deploy/test-server/README.md",
+        "ru": "docs/i18n/ru/misc/deploy/test-server/README.md"
+      }
+    },
+    {
+      "source": "misc/plugin-runtime/README.md",
+      "sourceSha256": "34abc2da89c88ca22493cc63e06a6aee10c702525af52186a048e0d5e03f8904",
+      "languages": {
+        "de": "misc/plugin-runtime/README.de.md",
+        "en": "misc/plugin-runtime/README.md",
+        "ru": "docs/i18n/ru/misc/plugin-runtime/README.md"
+      }
+    },
+    {
+      "source": "misc/plugin-runtime/VALIDATION.md",
+      "sourceSha256": "c23ae6b33ed4f8915b81218389b8424d6a50284e39c75b6dc4a21ffc4b700b47",
+      "languages": {
+        "de": "misc/plugin-runtime/VALIDATION.md",
+        "en": "docs/i18n/en/misc/plugin-runtime/VALIDATION.md",
+        "ru": "docs/i18n/ru/misc/plugin-runtime/VALIDATION.md"
+      }
+    },
+    {
+      "source": "skymp5-client/README.md",
+      "sourceSha256": "7933d8b2d8d40de50a67b451a2dbdead6e3742844ecde4d176dc53c914c7720f",
+      "languages": {
+        "de": "docs/i18n/de/skymp5-client/README.md",
+        "en": "skymp5-client/README.md",
+        "ru": "docs/i18n/ru/skymp5-client/README.md"
+      }
+    },
+    {
+      "source": "skymp5-front/README.md",
+      "sourceSha256": "9f3ba661066937128816e62c38679aa995f56fbfa7c7913df5f7d87b3485875b",
+      "languages": {
+        "de": "docs/i18n/de/skymp5-front/README.md",
+        "en": "skymp5-front/README.md",
+        "ru": "docs/i18n/ru/skymp5-front/README.md"
+      }
+    },
+    {
+      "source": "skymp5-front/docs/chat.md",
+      "sourceSha256": "395e5c11206b52c141b1426ce5087b8e2f4fa615d0d2f9bd0883038509d315d1",
+      "languages": {
+        "de": "skymp5-front/docs/chat.md",
+        "en": "docs/i18n/en/skymp5-front/docs/chat.md",
+        "ru": "docs/i18n/ru/skymp5-front/docs/chat.md"
+      }
+    },
+    {
+      "source": "skymp5-server/MOD_LOAD_ORDER.md",
+      "sourceSha256": "b3f85ff63d7526517560699880111769c2f47bc800b9466eda3219cb4eaa7967",
+      "languages": {
+        "de": "docs/i18n/de/skymp5-server/MOD_LOAD_ORDER.md",
+        "en": "docs/i18n/en/skymp5-server/MOD_LOAD_ORDER.md",
+        "ru": "docs/i18n/ru/skymp5-server/MOD_LOAD_ORDER.md"
+      }
+    },
+    {
+      "source": "skyrim-platform/README.md",
+      "sourceSha256": "30a60b83e9f91717747643de358920458b89a31c8898607b13bc281659a1f972",
+      "languages": {
+        "de": "docs/i18n/de/skyrim-platform/README.md",
+        "en": "skyrim-platform/README.md",
+        "ru": "docs/i18n/ru/skyrim-platform/README.md"
+      }
+    }
+  ],
+  "exclusions": []
+}

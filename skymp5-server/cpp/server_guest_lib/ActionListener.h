@@ -101,10 +101,10 @@ private:
   // Returns user's actor if there is attached one
   MpActor* SendToNeighbours(uint32_t idx, Networking::UserId userId,
                             Networking::PacketData data, size_t length,
-                            bool reliable);
+                            bool reliable, bool forward = true);
 
   MpActor* SendToNeighbours(uint32_t idx, const RawMessageData& rawMsgData,
-                            bool reliable = false);
+                            bool reliable = false, bool forward = true);
 
   PartOne& partOne;
 

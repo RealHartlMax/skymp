@@ -64,7 +64,6 @@
           <label for="serverUid">Öffentliche Server-ID</label><input id="serverUid" maxlength="128" pattern="[a-zA-Z0-9_\-]{3,128}" autocomplete="off" placeholder="srv_…">
           <label for="masterKey">Privater Serverschlüssel</label><input id="masterKey" type="password" maxlength="128" autocomplete="off" aria-describedby="master-key-hint"><p class="hint" id="master-key-hint">Aus dem zentralen Dashboard. Ein vorhandener Schlüssel bleibt erhalten, wenn dieses Feld leer bleibt. Er wird niemals an Spieler weitergegeben.</p>
           <label for="resourcesEnabled">Mod-Synchronisation</label><select id="resourcesEnabled"><option value="true">Aktiviert</option><option value="false">Deaktiviert</option></select>
-          <label for="resourceDirectory">Mod-Verzeichnis auf dem Server</label><input id="resourceDirectory" maxlength="240" value="./client-resources" required>
           <label for="runtimeSource">Clientpaket / Versionskatalog</label><input id="runtimeSource" type="url" maxlength="2048" value="https://update.skymp-worlds.net/client-runtime/catalog.json" aria-describedby="runtime-hint"><p class="hint" id="runtime-hint">Ein Versionskatalog stellt das passende Clientpaket einschließlich SKSE bereit. Leer: kein Clientpaket über diesen Server vorgeben.</p>
         </fieldset>
         <div class="actions"><button type="submit">Weiter zu den Spieldaten</button></div>

@@ -2,10 +2,14 @@
 
 ## Language
 
-The project uses standard C++17.
+The root CMake configuration requires standard C++20 (`CMAKE_CXX_STANDARD 20`).
 
-SkyrimPlatform and client code must be compilable with Microsoft Visual C++ 2019.
-Server code and unit tests must be also compilable with Clang 15.
+Use the toolchain selected by the current CMake configuration. On 29 October
+2026, targeted Windows native unit-test and server-addon builds were verified
+with Visual Studio 18 2026 / MSVC 14.51. Earlier references to Microsoft Visual
+C++ 2019 and Clang 15 describe previous compatibility targets; they are not
+evidence of a current successful build on those compilers. Linux/server
+compatibility must be validated separately.
 
 ## Code Style
 

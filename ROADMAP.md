@@ -6,6 +6,8 @@ Browser setup, launcher mod sync and versioned client packages are implemented;
 actual Skyrim/CEF gameplay and live rollout remain open.
 
 
+Update of **31 October 2026**: the [session end](docs/docs_session_end.md) flow (kick, ban, restart, connection loss) and [console security](docs/docs_console_security.md) are implemented and covered by source tests. Acceptance in real Skyrim/CEF is still open.
+
 Welcome to the roadmap of the project! You can see synchronizations here, but there probably would also be non-sync and even non-code parts in the future.
 
 # Build & Release Automation
@@ -115,7 +117,7 @@ Welcome to the roadmap of the project! You can see synchronizations here, but th
 | _Wait_                                  | Players should be able to sleep/wait if all players on the server are willing to do so.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | _Statics_                               | The server should “see” them (do everything lazily and once again not spoil the database. It is desirable to be able to reset the state of such an object, completely clearing everything). We need to be able to move them around with SetPosition, etc.                                                                                                                                                                                                                                                                            |
 | _Sounds and music_                      | Music can definitely be synchronized within cells, work with combat music - now it is included in PvP. Now, also after death, the music of death is superimposed on another. We should be able to play sounds from Art. server in a specific location (Seems to be decided by SpSnippet). Also, you need to define a set of actions for which the sounds will be synchronized.                                                                                                                                                       |
-| _Lipsync_                               | Standardized Voice Activity Detection (VAD) API that supports any voice provider (YACA-TS, Discord, Mumble, custom VoIP). Server receives speaker state from provider adapters, broadcasts "player X is speaking" in proximity (configurable distance). Client plays IdleDialogueLock animation while player speaks. Integrates with proximity chat voice range system (configurable ranges: 1.0–40.0 meters by default). Provider-agnostic architecture enables third-party voice solutions without core server changes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| _Lipsync_                               | Partial: VAD contract, server distribution and client dialogue-idle attempt exist. The local YACA bridge does not wire its optional voice callback into this path automatically. Actor mapping, coordinate units, state lifecycle and animation reset remain open; no real Skyrim/TeamSpeak acceptance yet. See [current status and required information](docs/docs_voice_lipsync_status.md). |
 | _Linked Refs_                           | As far as I remember, linking propagates activation - this is important for dungeons, there is often a lever linked to a door, for example.                                                                                                                                                                                                                                                                                                                                                                                          |
 | _Staff crafting_                        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | _Playable monster races_                | Replacing a player with any NPC (animals, monsters, etc.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -260,13 +262,20 @@ This backlog focuses specifically on taking current mod/plugin support from oper
 
 This backlog defines the integration path for voice activity detection (VAD) and lip-sync animation synchronization. The architecture is **provider-agnostic**: any voice system (YACA-TS, Discord, Mumble, custom 3D-VoIP, etc.) can integrate by implementing the standardized Voice Activity API.
 
+**Source audit, 27 October 2026:** the end-to-end feature remains partial. The
+new local YACA plugin has an optional voice callback but does not connect it to
+the animation path in its standard entry. Current blockers, missing target
+information and the two-player acceptance procedure are documented in
+[Lipsync status](docs/docs_voice_lipsync_status.md). The tables below describe
+targets; they are not a gameplay acceptance record.
+
 ## Context
 
 - **Voice providers**: Multiple voice solutions may be in use (YACA TeamSpeak, Discord bots, self-hosted VoIP, etc.)
 - **Standard API contract**: All providers implement a common VAD interface for server-side absorption.
-- **Client-side**: YacaBridgeQuest.psc (Papyrus) and other adapters receive server-sent voice state and apply animation/mute updates.
+- **Client-side**: `VoiceActivitySyncService` receives `syncVoiceActivity` and calls the animation handler. The new local YACA bridge uses CEF and `_yacaClient`; its optional callback still needs integration. A Papyrus quest is not part of that bridge's current transport.
 - **Server-side**: Voice Activity Manager abstracts provider details; broadcasts "player X is speaking" events to proximity-aware clients.
-- **Animation pool**: Idle dialogue animations (IdleDialogueLock, IdleDialogueUnlock, MotionDrivenDialogueNextClip) triggered while player voice is active.
+- **Animation attempt**: The current handler calls `playIdle(0x0005B1B0)`, labeled IdleDialogueLock in code. Visible mouth motion and a suitable reset need game validation; an extended animation pool is not implemented.
 
 ## Voice Activity API Specification (Design First)
 
@@ -274,9 +283,9 @@ Before implementation, establish the contract:
 
 | Component | Interface | Notes |
 | --- | --- | --- |
-| **Server Voice Activity Manager** | `onVoiceStateUpdate(actorId: string, state: {isSpeaking: bool, voiceRange: number, providerId?: string, timestamp: ms})` | Abstracted receiver; multiple providers can send to same endpoint. State is merged/conflict-resolved server-side. |
+| **Server Voice Activity Manager** | `IVoiceProviderAdapter.onVoiceActivityUpdate(callback)` emits `VoiceActivityState` to the registered manager | Existing adapter callback contract. The current registry stores one latest state per actor; merging/conflict resolution remains a target. |
 | **Server→Client Broadcast** | Custom packet `syncVoiceActivity(actorId, isSpeaking, voiceRange)` | Client determines animation based on received state; not provider-specific. |
-| **Client Adapter Interface** | Script/plugin receives server packet and applies local state (animation, effects). Adapter-specific glue layer. | E.g., YacaBridgeQuest adapter listens for TeamSpeak voice events → calls Voice Activity Manager. Custom Discord adapter does same. |
+| **Client Adapter Interface** | Script/plugin receives server packet and applies local state (animation, effects). Adapter-specific glue layer. | YACA bridge `onVoiceActivity` must be connected to a complete state/animation path. Further providers need real speaking events. |
 | **Provider Identity** | Optional `providerId` field in state update (e.g., "yaca-ts", "discord-bot", "custom-voip") | For diagnostics/debugging; allows operators to see which provider sent each update. |
 | **Voice Range Model** | Discrete tiers (1.0, 3.0, 8.0, 15.0, 20.0, 25.0, 30.0, 40.0 meters) or continuous distance (0–100m). | Operators choose model; server enforces proximity filtering. |
 
@@ -286,18 +295,19 @@ Before implementation, establish the contract:
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| VOICE-API-SPEC-001 — Done (TypeScript contract/docs) | Voice Activity API specification | Formalize VAD interface contract in JSON schema or TypeScript types. Document provider adapter pattern with example (YACA-TS reference impl). | Multiple voice providers need clear integration path; ambiguity leads to custom hacks. | Interface spec published in `docs/docs_voice_api.md` with OpenAPI/TypeScript examples; YACA-TS is first reference implementation. |
+| VOICE-API-SPEC-001 — Done (TypeScript contract/docs) | Voice Activity API specification | Formalize VAD interface contract in TypeScript types and document current limits. | Multiple voice providers need clear integration path; ambiguity leads to custom hacks. | Types in `voiceActivityApi.ts` and current implementation reference in `docs/docs_voice_api.md`; YACA adapter remains a transport skeleton. No additional OpenAPI artifact is claimed. |
 | VOICE-VAD-MNG-001 — Partial | Server Voice Activity Manager | Implement abstracted VAD receiver in gamemode (C++ or TS plugin). Routes voice state updates from any provider to proximity-aware client broadcasts. | Core server-side logic is decoupled from provider; enables third-party voice solutions without server modification. | Manager accepts provider-agnostic state updates; broadcasts only to proximity-filtered clients; state merging/conflict resolution is deterministic. |
 
-**VOICE-API-SPEC-001 Implementation Status** ✅ (Completed May 2026):
+**Existing source components (checked 27 October 2026; gameplay acceptance remains open):**
 - `skymp5-server/ts/voiceActivityApi.ts`: Full TypeScript interface spec (VoiceActivityState, IVoiceProviderAdapter, IVoiceActivityManager, VoiceActivityConfig)
 - `skymp5-server/ts/voiceActivityManager.ts`: Server Voice Activity Manager implementation (state registry, inactivity timers, broadcasting)
 - `skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts`: YACA-TS reference adapter skeleton
 - `skymp5-client/src/sync/voiceActivitySync.ts`: Client-side lip-sync handler (IdleDialogueLock animations)
-- `docs/docs_voice_api.md`: Complete API documentation with architecture, integration steps, custom adapter template, troubleshooting
-- `README-plugins.md`: Voice Adapter pattern guide + configuration examples
+- `docs/docs_voice_api.md`: Current contract, actual packet formats, configuration and diagnostic limits
+- `docs/docs_voice_lipsync_status.md`: Source findings, required information and two-player acceptance procedure
+- `README-plugins.md`: Voice adapter integration boundaries and links
 
-**Next (VOICE-VAD-MNG-001 & VOICE-LIP-001)**: Adapter-specific edge-case handling and animation timing validation.
+**Next (VOICE-VAD-MNG-001 & VOICE-LIP-001)**: Connect the bridge, unify authenticated state ingestion, convert coordinate units and actor IDs, implement stop/expiry behavior and validate the actual animation in Skyrim.
 
 | VOICE-LIP-001 — Partial | Client-side lip-sync animation sync | On receiving speaker state, client plays IdleDialogueLock while `isSpeaking=true`; resumes idle/locomotion when false. | Gives immediate visual feedback that voice communication is active and synchronized across players. | Clients in proximity see consistent lock/unlock animation on remote players matching voice state; no animation race conditions. |
 | VOICE-PROX-001 — Partial | Proximity distance enforcement | Server respects voice range config (tiers or continuous) and only sends VAD updates to clients within range. | Bandwidth efficiency; privacy; matches voice privacy model to visual feedback. | Clients outside range do not receive VAD updates; dynamically recalculate on player move; no broadcast storm. |
@@ -306,8 +316,8 @@ Before implementation, establish the contract:
 
 | ID | Area | Scope | Why | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| VOICE-YACA-IMPL-001 — Open | YACA-TS TeamSpeak adapter | Extend YacaBridgeQuest.psc to call Voice Activity Manager API. Map YACA plugin state → standard VAD interface. | First reference implementation; validates API design; unblocks YACA-based servers. | YacaBridgeQuest sends properly formatted state updates; server confirms receipt; lipsync animations play correctly. |
-| VOICE-DISCORD-IMPL-001 — Open | Discord-bot voice adapter (optional) | Create TypeScript plugin or server hook for Discord voice bot integration (bot presence in VC → broadcast to server). | Supports Discord-first servers; shows API is provider-agnostic. | Server receives Discord voice state; clients render lipsync correctly; no YACA dependency. |
+| VOICE-YACA-IMPL-001 — Open | YACA-TS TeamSpeak adapter | Connect the local bridge's `onVoiceActivity` to a complete state/animation path; the new bridge uses CEF and native event sources. | First provider integration; validates API design; unblocks YACA-based servers. | Real TALK/SOUND events drive the correct remote actor, sustained speech and stop/cleanup work, and two-player Skyrim/TeamSpeak acceptance passes. |
+| VOICE-DISCORD-IMPL-001 — Open | Discord-bot voice adapter (optional) | Create an adapter for actual Discord speaking activity with authenticated actor mapping; channel presence alone is insufficient. | Supports Discord-first servers; shows API is provider-agnostic. | Server receives speaking start/stop; clients render the agreed animation correctly; no YACA dependency. |
 | VOICE-CUSTOM-IMPL-001 — Open | Custom VoIP adapter template | Publish adapter starter template/docs for operators implementing proprietary voice backends. | Enables third-party voice solutions without core server changes. | Template includes example implementation, validation checklist, and diagnostic tooling. |
 
 ## P1 - Admin & Diagnostics
@@ -331,9 +341,9 @@ Before implementation, establish the contract:
 
 ## Notes
 
-- **Provider Abstraction**: The Voice Activity API is designed to be provider-agnostic. YACA-TS is the first reference implementation; Discord, Mumble, or custom VoIP systems can implement the same interface.
+- **Provider Abstraction**: The Voice Activity API is designed to be provider-agnostic. YACA-TS has an adapter skeleton and a separate local bridge; their end-to-end connection remains open. Discord, Mumble, or custom VoIP systems can implement the same interface.
 - **Adapter Pattern**: Each voice provider implements a server-side adapter that translates provider-specific state → standardized VAD interface. No core server changes needed for new providers.
-- **Player inactivity**: If speaker stops transmitting, server clears `isSpeaking=false` after configured timeout (e.g., 1 second) to prevent animation stutter.
-- **Multiplayer race conditions**: VAD updates are processed in-order on client; animation state is authoritative on speaker authority (local client), observed on remote clients.
+- **Player inactivity**: The manager installs an inactivity timer for adapter-driven updates. The current direct Custom Packet route bypasses it. Coordinate timeout, heartbeat, previous recipients and client expiry before claiming reliable cleanup.
+- **Multiplayer lifecycle**: Ordering, actor despawn/recreation, missing stop packets and interaction with other animations require real multiplayer acceptance.
 - **Future extensibility**: If voice providers add native audio streaming, effect pipeline can be extended without VAD API changes.
 - **Documentation**: `voiceActivityApi.ts` and `docs/docs_voice_api.md` already define the TypeScript contract and adapter guide. Provider/gameplay acceptance and any additional OpenAPI artifact remain separate work.

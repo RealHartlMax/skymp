@@ -56,14 +56,14 @@ async function runProcess(args) {
     const repaired = await runProcess(args); assert.equal(repaired.status, 0, repaired.stderr);
     assert.equal(JSON.parse(repaired.stdout).downloadedFiles, 1);
     report.checks.push('A corrupted cache entry is detected and downloaded again');
-    write(f.publication, 'Data/textures/second/shared.dds', 'updated texture from the operator');
+    write(f.publication, 'textures/second/shared.dds', 'updated texture from the operator');
     await sleep(2100); // The public snapshot deliberately has a two-second metadata cache.
     const updated = await runProcess(args); assert.equal(updated.status, 0, updated.stderr);
     assert.equal(JSON.parse(updated.stdout).downloadedFiles, 1);
     assert.equal(fs.readFileSync(path.join(game, 'Data/textures/second/shared.dds'), 'utf8'), 'updated texture from the operator');
     report.checks.push('A server-side mod update changes the revision and replaces only the changed file');
     const originalSettings = fs.readFileSync(path.join(game, 'Data/Platform/Plugins/skymp5-client-settings.txt'));
-    write(f.publication, 'Data/Community.esp', 'different from active server plugin');
+    fs.unlinkSync(path.join(f.data, 'Community.esp'));
     await sleep(2100);
     const rejected = await runProcess(args); assert.notEqual(rejected.status, 0); assert(rejected.stderr.includes('503'));
     assert.deepEqual(fs.readFileSync(path.join(game, 'Data/Platform/Plugins/skymp5-client-settings.txt')), originalSettings);

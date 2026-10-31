@@ -33,8 +33,7 @@ if (options.platform === 'linux-x64' && header.toString('hex') !== '7f454c46') t
 if (options.platform === 'windows-x64' && header.subarray(0, 2).toString() !== 'MZ') throw new Error('Windows package requires a PE module');
 
 fs.mkdirSync(path.join(output, 'data/scripts'), { recursive: true });
-fs.mkdirSync(path.join(output, 'client-resources/Data'), { recursive: true });
-fs.copyFileSync(path.join(__dirname, 'test-server/client-resources/README.md'), path.join(output, 'client-resources/README.md'));
+fs.mkdirSync(path.join(output, 'data/mods'), { recursive: true });
 fs.mkdirSync(path.join(output, 'server-assets'));
 for (const name of ['logo.png', 'banner.png']) {
   const source = path.resolve(__dirname, '../..', name);
@@ -55,7 +54,7 @@ const settings = {
   listenHost: '0.0.0.0', uiListenHost: '127.0.0.1', dataDir: 'data',
   loadOrder: ['Skyrim.esm', 'Update.esm', 'Dawnguard.esm', 'HearthFires.esm', 'Dragonborn.esm'],
   offlineMode: false, playerAccess: { mode: 'guest', approvalRequired: false, steamApiKey: '', steamAppId: 489830 }, master: 'https://api.skymp-worlds.net', masterKey: masterKey || '', serverUid: '',
-  launcherResources: { enabled: true, directory: './client-resources', runtimeSource: 'https://update.skymp-worlds.net/client-runtime/catalog.json' },
+  launcherResources: { enabled: true, runtimeSource: 'https://update.skymp-worlds.net/client-runtime/catalog.json' },
   npcEnabled: false, itemsEnabled: true, discordAuth: null, discordBot: { enabled: false },
   adminApi: { enabled: true }, adminUiUsers: user ? { [user]: { role: 'admin' } } : {},
   startSpawn: { pos: [133857, -61130, 14662], worldOrCell: '0x3c', angleZ: 72 },

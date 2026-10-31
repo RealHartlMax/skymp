@@ -1,5 +1,7 @@
 # Modpakete vor dem Spielstart installieren
 
+> **Neu:** Mods liegen jetzt in `data/mods/<Mod>/`; `client-resources` wird nicht mehr gelesen. Angaben dazu auf dieser Seite sind überholt. Siehe [Mods in data/mods](docs_mod_folders.md).
+
 Der eigenständige Launcher in `skymp-client-launcher` bereitet die benötigten
 Dateien vor, bevor er SKSE startet. Die Dateien kommen vom Dateiserver des
 Spielserverbetreibers. Spieler benötigen dafür keinen Nexus-/Vortex-Account.

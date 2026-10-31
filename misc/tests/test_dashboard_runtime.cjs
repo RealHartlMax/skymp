@@ -31,12 +31,12 @@ async function freeTcpPort() {
     fs.mkdirSync(path.join(root, 'data'));
     fs.writeFileSync(path.join(root, 'data/Skyrim.esm'), 'TES4-dashboard-fixture-only');
     fs.mkdirSync(path.join(root, 'ui'));
-    fs.mkdirSync(path.join(root, 'client-resources/Data/textures'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'data/mods/DashboardTest/textures'), { recursive: true });
     fs.writeFileSync(path.join(root, 'ui/index.html'), '<html>persistent-full-dashboard</html>');
     fs.writeFileSync(path.join(root, 'ui/build.js'), '/* persistent dashboard asset */');
     const asset = 'persistent-launcher-resource';
-    fs.writeFileSync(path.join(root, 'client-resources/Data/textures/dashboard-test.dds'), asset);
-    const cfg = { name: 'Independent dashboard test', port: 27779, uiPort: port, uiListenHost: '127.0.0.1', dataDir: 'data', loadOrder: ['Skyrim.esm'], offlineMode: true, adminApi: { enabled: true }, adminUiUsers: { owner: { role: 'admin' } }, launcherResources: { enabled: true, directory: './client-resources' } };
+    fs.writeFileSync(path.join(root, 'data/mods/DashboardTest/textures/dashboard-test.dds'), asset);
+    const cfg = { name: 'Independent dashboard test', port: 27779, uiPort: port, uiListenHost: '127.0.0.1', dataDir: 'data', loadOrder: ['Skyrim.esm'], offlineMode: true, adminApi: { enabled: true }, adminUiUsers: { owner: { role: 'admin' } }, launcherResources: { enabled: true } };
     if (testDiscord) {
       cfg.localeRouting = { defaultLanguage: 'de' };
       cfg.discordBot = { enabled: true, token: 'LOCAL_FIXTURE_ONLY', guildId: '123456789012345678', statusChannelId: '223456789012345678', warningsChannelId: '323456789012345678' };
@@ -108,6 +108,8 @@ process.send = (message, ...args) => { if (message.type === 'skymp:ready') fs.wr
       const relogin = await post('/api/admin/session/login', { user: 'owner', password });
       assert.equal(relogin.status, 200); cookie = relogin.headers.get('set-cookie').split(';')[0];
       await wait('new early session reaches game', async () => (await fetch(`http://127.0.0.1:${gamePort}/api/admin/players`, { headers: { cookie } })).status === 200);
+    for (const route of ['/admin-auth.json', '/mods/DashboardTest/textures/dashboard-test.dds']) assert.equal((await fetch(base + route)).status, 404, route);
+    assert.equal((await fetch(base + '/manifest.json')).status, 200);
       fs.writeFileSync(path.join(root, 'release-dashboard'), 'ready');
       checks.push('Owner login, touch and logout before dashboard readiness reach an already running game; the new session remains valid when dashboard becomes ready');
     }

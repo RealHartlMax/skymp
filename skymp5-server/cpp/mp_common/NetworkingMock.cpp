@@ -1,6 +1,7 @@
 #include "NetworkingMock.h"
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -45,10 +46,14 @@ public:
 
   void Tick(OnPacket onPacket, void* state) override
   {
-    for (auto& p : packets)
+    auto pending = packets.size();
+    while (pending > 0 && !packets.empty()) {
+      --pending;
+      auto p = std::move(packets.front());
+      packets.pop_front();
       onPacket(state, p->type, p->data.empty() ? nullptr : &p->data[0],
                p->data.size(), p->error);
-    packets.clear();
+    }
   }
 
   bool IsConnected() const override { return true; }
@@ -64,7 +69,7 @@ public:
 private:
   Networking::MockServer* const parent;
   const SendFn sendFn;
-  std::vector<std::unique_ptr<NetworkingMock::Packet>> packets;
+  std::deque<std::unique_ptr<NetworkingMock::Packet>> packets;
   Networking::UserId id = Networking::InvalidUserId;
 };
 }
@@ -72,7 +77,7 @@ private:
 struct Networking::MockServer::Impl
 {
   std::vector<std::weak_ptr<NetworkingMock::MockClient>> clients;
-  std::vector<
+  std::deque<
     std::pair<Networking::UserId, std::unique_ptr<NetworkingMock::Packet>>>
     packets;
 };
@@ -150,12 +155,17 @@ void Networking::MockServer::Send(UserId targetUserId, PacketData data,
 
 void Networking::MockServer::Tick(OnPacket onPacket, void* state)
 {
-  for (auto& pair : pImpl->packets) {
+  auto pending = pImpl->packets.size();
+  while (pending > 0 && !pImpl->packets.empty()) {
+    --pending;
+    // A throwing handler has still consumed this datagram. Retrying the tick
+    // must never replay earlier side effects or the rejected packet forever.
+    auto pair = std::move(pImpl->packets.front());
+    pImpl->packets.pop_front();
     auto& p = pair.second;
     onPacket(state, pair.first, p->type,
              p->data.empty() ? nullptr : &p->data[0], p->data.size());
   }
-  pImpl->packets.clear();
 }
 
 std::string Networking::MockServer::GetIp(UserId userId) const

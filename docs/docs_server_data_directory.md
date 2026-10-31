@@ -1,5 +1,7 @@
 # Server Data Directory
 
+> **New:** mods now live in `data/mods/<mod>/`; `client-resources` is no longer read. Statements about it on this page are outdated. See [mods in data/mods](docs_mod_folders.md).
+
 Data directory of the server (`"./data"` by default) contains different kinds of game resources, including mods, UI, etc.
 
 Client mod publication uses a separate `client-resources/Data/` directory,

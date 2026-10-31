@@ -36,7 +36,7 @@ import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
 import { Inventory, applyInventory } from '../../sync/inventory';
-import { Movement } from '../../sync/movement';
+import { Movement, Transform } from '../../sync/movement';
 import { learnSpells, removeAllSpells } from '../../sync/spell';
 import { FormModel, WorldModel } from '../../view/model';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
@@ -71,6 +71,7 @@ import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { UpdatePropertyMessage } from '../messages/updatePropertyMessage';
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { LoadGameService } from './loadGameService';
+import { isAtSpawnLocation, restorePlayerSpawn } from './playerSpawnLocation';
 import { RagdollService } from './ragdollService';
 import { TimeService } from './timeService';
 
@@ -164,6 +165,19 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on('connectionAccepted', () =>
       this.handleConnectionAccepted(),
     );
+    const invalidateSpawn = () => {
+      ++this.spawnRevision;
+      this.playerSpawning = true;
+      this.spawnTarget = undefined;
+      this.worldModel.forms = [];
+      this.worldModel.playerCharacterFormIdx = -1;
+      this.worldModel.playerCharacterRefrId = 0;
+      storage['hosted'] = [];
+      delete storage['pcInv'];
+    };
+    this.controller.emitter.on('connectionDisconnect', invalidateSpawn);
+    this.controller.emitter.on('connectionFailed', invalidateSpawn);
+    this.controller.emitter.on('connectionDenied', invalidateSpawn);
 
     this.controller.emitter.on('spellCastMessage', (e) =>
       this.onSpellCastMessage(e),
@@ -340,6 +354,11 @@ export class RemoteServer extends ClientListener {
         id === this.getMyActorIndex()
           ? Game.getPlayer()
           : getObjectReference(id);
+      if (id === this.getMyActorIndex() && this.playerSpawning && this.spawnTarget) {
+        this.spawnTarget.worldOrCell = msg.worldOrCell;
+        this.spawnTarget.pos = [msg.pos[0], msg.pos[1], msg.pos[2]];
+        this.spawnTarget.rot = [msg.rot[0], msg.rot[1], msg.rot[2]];
+      }
       logTrace(
         this,
         `Teleporting id`,
@@ -617,46 +636,46 @@ export class RemoteServer extends ClientListener {
 
     if (msg.isMe) {
       const spawnTask = { running: false };
+      const revision = ++this.spawnRevision;
+      this.playerSpawning = true;
+      const spawnTarget: Transform = this.spawnTarget = {
+        worldOrCell: msg.transform.worldOrCell,
+        pos: [...msg.transform.pos],
+        rot: [...msg.transform.rot],
+      };
+      const restoreLocation = () => {
+        void restorePlayerSpawn(spawnTarget, {
+          isCurrent: () => this.spawnRevision === revision,
+          getPlayer: () => Game.getPlayer(),
+          movePlayer: target => TESModPlatform.moveRefrToPosition(
+            Game.getPlayer(),
+            Cell.from(Game.getFormEx(target.worldOrCell)),
+            WorldSpace.from(Game.getFormEx(target.worldOrCell)),
+            target.pos[0], target.pos[1], target.pos[2],
+            target.rot[0], target.rot[1], target.rot[2],
+          ),
+          wait: () => Utility.wait(1),
+          onError: error => logError(this, 'Restoring server login position', error),
+        }).then(restored => {
+          if (restored && this.spawnRevision === revision) {
+            const player = Game.getPlayer();
+            if (!player || !isAtSpawnLocation(player, spawnTarget)) {
+              restoreLocation();
+              return;
+            }
+            this.playerSpawning = false;
+            logTrace(this, 'Restored server login position', JSON.stringify(spawnTarget));
+          }
+        }).catch(error => logError(this, 'Restoring server login position', error));
+      };
       once('update', () => {
+        if (this.spawnRevision !== revision) return;
         // Use MoveRefrToPosition to spawn if possible (not in main menu)
         // In case of connection lost this is essential
         if (!spawnTask.running) {
           spawnTask.running = true;
           logTrace(this, 'Using moveRefrToPosition to spawn player');
-          (async () => {
-            while (true) {
-              logTrace(this, 'Spawning...');
-              TESModPlatform.moveRefrToPosition(
-                Game.getPlayer(),
-                Cell.from(Game.getFormEx(msg.transform.worldOrCell)),
-                WorldSpace.from(Game.getFormEx(msg.transform.worldOrCell)),
-                msg.transform.pos[0],
-                msg.transform.pos[1],
-                msg.transform.pos[2],
-                msg.transform.rot[0],
-                msg.transform.rot[1],
-                msg.transform.rot[2],
-              );
-              await Utility.wait(1);
-              const pl = Game.getPlayer();
-              if (!pl) {
-                break;
-              }
-              const pos = [
-                pl.getPositionX(),
-                pl.getPositionY(),
-                pl.getPositionZ(),
-              ];
-              const sqr = (x: number) => x * x;
-              const distance = Math.sqrt(
-                sqr(pos[0] - msg.transform.pos[0]) +
-                  sqr(pos[1] - msg.transform.pos[1]),
-              );
-              if (distance < 256) {
-                break;
-              }
-            }
-          })();
+          restoreLocation();
           // Unfortunatelly it requires two calls to work
           Utility.wait(1).then(applyPcInv);
           Utility.wait(1.3).then(applyPcInv);
@@ -702,6 +721,7 @@ export class RemoteServer extends ClientListener {
       });
       once('tick', () => {
         once('tick', () => {
+          if (this.spawnRevision !== revision) return;
           if (!spawnTask.running) {
             spawnTask.running = true;
 
@@ -748,6 +768,8 @@ export class RemoteServer extends ClientListener {
               },
             );
             once('update', () => {
+              if (this.spawnRevision !== revision) return;
+              restoreLocation();
               applyPcInv();
               Utility.wait(0.3).then(applyPcInv);
               // Note: appearance part was copy-pasted
@@ -999,6 +1021,9 @@ export class RemoteServer extends ClientListener {
   }
 
   private handleConnectionAccepted(): void {
+    ++this.spawnRevision;
+    this.playerSpawning = true;
+    this.spawnTarget = undefined;
     this.worldModel.forms = [];
     this.worldModel.playerCharacterFormIdx = -1;
     this.worldModel.playerCharacterRefrId = 0;
@@ -1062,6 +1087,10 @@ export class RemoteServer extends ClientListener {
 
   getMyActorIndex(): number {
     return this.worldModel.playerCharacterFormIdx;
+  }
+
+  isPlayerSpawning(): boolean {
+    return this.playerSpawning;
   }
 
   getMyRemoteRefrId(): number {
@@ -1222,4 +1251,7 @@ export class RemoteServer extends ClientListener {
   }
 
   private numSetInventory = 0;
+  private spawnRevision = 0;
+  private playerSpawning = true;
+  private spawnTarget?: Transform;
 }

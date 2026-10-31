@@ -1,5 +1,7 @@
 # Server Configuration Reference
 
+> **New:** mods now live in `data/mods/<mod>/`; `client-resources` is no longer read. Statements about it on this page are outdated. See [mods in data/mods](docs_mod_folders.md).
+
 The recommended way to configure the server is setting up all required values in `server-settings.json`. It's standard JSON without C-style comments support. See also [Server Command Line API](docs_server_command_line_api.md).
 
 Checked against the local checkout on **26 October 2026**. Examples labelled
@@ -805,15 +807,47 @@ If omitted or invalid, safe defaults are applied (`defaultLanguage: "en"` and bu
 
 ## enableConsoleCommandsForAll
 
-Enable console commands for all, useful for testing.
+Deprecated. `true` is ignored and produces `LEGACY_CONSOLE_BYPASS_IGNORED`.
+It never grants permission to execute server console commands. Remove this
+setting and configure `consoleSecurity` explicitly. Existing per-actor
+`consoleCommandsAllowed` permissions remain available to trusted server code.
 
-```json5
+## consoleSecurity
+
+The Core owns console protection independently of any Chat plugin. Defaults:
+
+```json
 {
-  // ...
-  enableConsoleCommandsForAll: true,
-  // ...
+  "consoleSecurity": {
+    "mode": "restricted",
+    "blockVanillaCheats": true,
+    "blockUnauthorizedServerCommands": true,
+    "monitorMovement": true,
+    "movementEnforcement": "monitor",
+    "logViolations": true,
+    "logAllowedAdminCommands": true
+  }
 }
 ```
+
+`restricted` always blocks the supported local cheat commands. Only an explicit
+`development` policy may set `blockVanillaCheats:false`; server authorization
+remains mandatory in both modes. Invalid startup values fall back safely and
+produce diagnostics; invalid dashboard writes are rejected.
+
+`movementEnforcement` accepts `off` or `monitor`. The former value `enforce` was
+never stricter and is read as `monitor`. The existing hard movement checks remain
+active in all modes. Speed and upward-motion heuristics only produce observations;
+they do not ban players or prove noclip. `monitorMovement:false` disables these additional observations.
+
+Configure **Settings → Security** (`#settings/security`) with administrator role
+and `canConsole`. Saved changes take effect after a gameserver restart. The
+dashboard compares saved values with the actual native process, and labels
+client hook reports as unverified. Updating the Core, client bootstrap and
+dashboard is required before claiming the new protection is available.
+
+See [Console Security](docs_console_security.md) for supported hooks, native
+request validation, migration, the optional permission resolver, and limitations.
 
 ## sweetPieMinimumPlayersToStart
 

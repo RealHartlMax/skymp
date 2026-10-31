@@ -43,6 +43,8 @@ import { SendMessageWithRefrIdEvent } from './sendMessageWithRefrIdEvent';
 import { SendRawMessageEvent } from './sendRawMessageEvent';
 
 type EventTypes = {
+  pluginRuntimeBeforeConnect: [{ hostName: string; port: number }];
+  sessionEnded: [{ active: boolean }];
   gameLoad: [GameLoadEvent];
 
   sendMessage: [SendMessageEvent<AnyMessage>];

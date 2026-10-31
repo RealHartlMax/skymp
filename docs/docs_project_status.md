@@ -1,5 +1,13 @@
 # Projektstand und offene Aufgaben
 
+Quellstand-Ergänzung **29. Oktober 2026**: [v2.1.0-Vorbereitung und Plugin Runtime
+Loader](docs_plugin_runtime.md). Inventar-Snapshot, Offline-Aktionen und das
+Release-Repository sind korrigiert; die generischen Loader sowie Plugin-/Launcher-
+Quellen sind ergänzt. Die Quelltests und No-Emit-Prüfungen sind vom späteren
+vollständigen Build und der Skyrim-/CEF-/TeamSpeak-Abnahme getrennt. Für diese
+Ergänzung wurden keine Builds, ZIPs, Commits oder Pushes erstellt. Die folgenden
+älteren Versions- und Buildangaben bleiben historische Nachweise.
+
 Stand: **26. Oktober 2026** für den Serverbuild; letzter Dokumentationsabgleich
 des separaten Launchers am **24. Oktober 2026**. Betrachtet werden der lokale
 Server-Fork `D:\GitHub\skymp` und der Launcher `D:\GitHub\skymp-client-launcher`.
@@ -62,7 +70,8 @@ beispielsweise noch keine funktionierende Spielsitzung.
 | Barrierefreiheit / Responsive | Kernansichten und mehrere Breiten automatisiert geprüft | Weitere Formulare/Geräte, manuelle Screenreader-Prüfung und echte CEF-Prüfung |
 | Frontend-Optimierung | Produktionsbuild, Größenmessung und Budgetprüfung vorhanden | Code-Splitting und 500-KiB-gzip-Ziel; dokumentierte frühere Basis: 813.004 Bytes |
 | Automatische Launcher-EXE-Updates | Versions-/Downloadmetadaten vorhanden; Clientpaket-Updates funktionieren separat | Vollständiger signierter EXE-Updateablauf mit gültigen Plattformsignaturen |
-| Voice, Gameplay und Skalierung | Teilimplementierungen vorhanden | Provider-/Animationsabnahme, verbleibende Gameplay-TODOs, Scheduler, State Bags und Zone-Handover |
+| Voice-Lipsync (Quellabgleich 27. Oktober 2026) | VAD-Vertrag, Serververteilung und Client-Animationsversuch vorhanden; lokale YACA-Bridge aktiviert Lipsync nicht automatisch | Bridge-Anbindung, Actor-Mapping, Meterumrechnung, Stop/Failsafe und Zwei-Spieler-Abnahme; [Befund und benötigte Angaben](docs_voice_lipsync_status.md) |
+| Gameplay und Skalierung | Teilimplementierungen vorhanden | Verbleibende Gameplay-TODOs, Scheduler, State Bags und Zone-Handover |
 
 ## Nachweise und ihre Gültigkeit
 

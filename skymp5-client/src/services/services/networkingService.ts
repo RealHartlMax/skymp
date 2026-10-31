@@ -7,10 +7,17 @@ import { SendRawMessageEvent } from '../events/sendRawMessageEvent';
 import { AnyMessage } from '../messages/anyMessage';
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { RemoteServer } from './remoteServer';
+import { assertPluginRuntimeReady } from './pluginRuntimeLoader';
+import { SessionEndClient } from './sessionEndClient';
 
 export class NetworkingService extends ClientListener {
+  private stopped = false;
+  private transportRevision = 0;
+  private session: SessionEndClient;
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
+    this.session = new SessionEndClient(sp, controller, () => this.stopTransport(), () => this.reconnect(true));
+    this.stopped = this.session.isStopped();
     this.controller.on('tick', () => this.onTick());
 
     this.controller.emitter.on('sendMessage', (e) => this.onSendMessage(e));
@@ -23,6 +30,7 @@ export class NetworkingService extends ClientListener {
   }
 
   private onSendMessage(e: SendMessageEvent<AnyMessage>) {
+    if (this.stopped) return;
     this.sp.mpClientPlugin.send(
       JSON.stringify(e.message),
       this.isReliable(e.reliability),
@@ -30,6 +38,7 @@ export class NetworkingService extends ClientListener {
   }
 
   private onSendRawMessage(e: SendRawMessageEvent) {
+    if (this.stopped) return;
     // @ts-expect-error
     this.sp.mpClientPlugin.sendRaw(
       e.rawMessage,
@@ -39,6 +48,7 @@ export class NetworkingService extends ClientListener {
   }
 
   private onSendMessageWithRefrId(e: SendMessageWithRefrIdEvent<AnyMessage>) {
+    if (this.stopped) return;
     const refrId = e.message._refrId;
 
     const remoteServer = this.controller.lookupListener(RemoteServer);
@@ -70,35 +80,45 @@ export class NetworkingService extends ClientListener {
     this.createClientSafe();
   }
 
-  reconnect() {
+  reconnect(manual = false) {
+    if (this.stopped && !manual) return;
     this.createClientSafe();
   }
 
   close() {
-    this.sp.mpClientPlugin.destroyClient();
+    this.session.stopReconnect();
+    this.stopTransport();
   }
 
   isConnected() {
-    return this.sp.mpClientPlugin.isConnected();
+    return !this.stopped && this.sp.mpClientPlugin.isConnected();
+  }
+
+  private stopTransport() {
+    this.stopped = true;
+    const revision = ++this.transportRevision;
+    // Destroy outside the native packet callback to avoid invalidating its client.
+    this.controller.once('tick', () => {
+      if (this.stopped && revision === this.transportRevision) this.sp.mpClientPlugin.destroyClient();
+    });
   }
 
   private onTick() {
+    if (this.stopped) return;
     this.sp.mpClientPlugin.tick((packetType, rawContent, error) => {
+      if (this.stopped) return;
       switch (packetType) {
         case 'connectionAccepted':
           this.controller.emitter.emit('connectionAccepted', {});
           break;
         case 'connectionDenied':
           this.controller.emitter.emit('connectionDenied', { error });
-          this.reconnect();
           break;
         case 'connectionFailed':
           this.controller.emitter.emit('connectionFailed', {});
-          this.reconnect();
           break;
         case 'disconnect':
           this.controller.emitter.emit('connectionDisconnect', {});
-          this.reconnect();
           break;
         case 'message':
           // TODO: in theory can be empty jsonContent and non-empty error
@@ -220,6 +240,9 @@ export class NetworkingService extends ClientListener {
     logTrace(this, 'createClientSafe ' + hostName + ':' + port);
 
     if (this.serverAddress.hostName !== '' && this.serverAddress.port !== 0) {
+      try { this.controller.emitter.emit('pluginRuntimeBeforeConnect', { hostName, port }); assertPluginRuntimeReady(this.sp, hostName, port); }
+      catch (error) { logError(this, String(error)); return; }
+      ++this.transportRevision; this.stopped = false; this.session.beginConnection();
       this.sp.mpClientPlugin.createClient(hostName, port);
     } else {
       logError(this, 'createClientSafe failed');

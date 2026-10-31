@@ -11,6 +11,7 @@ import { ConnectionMessage } from '../events/connectionMessage';
 import { CreateActorMessage } from '../messages/createActorMessage';
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { SettingsService, TargetPeer } from './settingsService';
+import { getSessionEndNotice } from './sessionEndClient';
 
 printConsole('Hello Multiplayer!');
 printConsole('SkyMP connection settings loaded');
@@ -39,6 +40,7 @@ export class SkympClient extends ClientListener {
     const storageHasValidAuthGameData =
       authGameData?.local || authGameData?.remote || authGameData?.steamSession;
 
+    if (getSessionEndNotice(this.sp.storage)) return;
     if (storageHasValidAuthGameData) {
       logTrace(this, `Recovered AuthGameData from storage, starting client`);
       this.startClient();
@@ -57,6 +59,7 @@ export class SkympClient extends ClientListener {
   }
 
   private onAuthAttempt(e: AuthAttemptEvent) {
+    if (getSessionEndNotice(this.sp.storage)) return;
     logTrace(this, `Caught auth event`);
 
     storage[authGameDataStorageKey] = e.authGameData;
@@ -95,6 +98,7 @@ export class SkympClient extends ClientListener {
   }
 
   private establishConnectionConditional() {
+    if (getSessionEndNotice(this.sp.storage)) return;
     const isConnected = this.controller
       .lookupListener(networking.NetworkingService)
       .isConnected();

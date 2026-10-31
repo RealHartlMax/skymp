@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { constants, createReadStream } from 'node:fs';
+import { constants, createReadStream, type Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -8,18 +8,22 @@ const MAX_FILE_BYTES = 8 * 1024 ** 3;
 const MAX_TOTAL_BYTES = 64 * 1024 ** 3;
 const ASSETS = new Set(['.nif', '.dds', '.hkx', '.tri', '.btr', '.bto', '.wav', '.xwm', '.fuz', '.lip', '.strings', '.dlstrings', '.ilstrings', '.swf', '.gfx', '.seq', '.ttf', '.otf', '.png', '.jpg', '.jpeg', '.tga', '.bmp']);
 const CONFIGS = new Set(['.ini', '.json', '.xml', '.txt', '.toml', '.yaml', '.yml']);
+const RUNTIME_DLLS = new Set(['skyrimplatform.dll', 'mpclientplugin.dll']);
+const UNPUBLISHED_DIRECTORIES = new Set(['fomod', 'modderresource', 'source']);
+const UNPUBLISHED_FILES = /\.(?:psc|md|pdb|h|hpp|c|cpp)$/i;
+const MODS_DIRECTORY = 'mods';
 
 interface LocalFile { filename: string; size: number; crc32: number }
 export interface LauncherResource {
   name: string;
   path: string;
-  kind: 'mod' | 'archive' | 'script' | 'asset' | 'config';
+  kind: 'mod' | 'archive' | 'script' | 'asset' | 'config' | 'skse-plugin';
   size: number;
   hash: string;
   downloadPath: string;
 }
 export interface LauncherManifest {
-  version: '2';
+  version: '2' | '4';
   revision: string;
   generatedAt: string;
   totalSize: number;
@@ -27,9 +31,17 @@ export interface LauncherManifest {
   requiredLocalFiles: LocalFile[];
   resources: LauncherResource[];
   runtimeSource?: string;
+  skseGameVersion?: string;
 }
-interface Source { root: string; relative: string; target: string }
+interface Source { root: string; relative: string; target: string; mod?: string }
 interface IndexedFile extends Source { fingerprint: string; resource: LauncherResource }
+export interface ModFolderReport { name: string; plugins: string[]; active: boolean; dlls: string[]; files: number }
+export interface ModScan {
+  sources: Map<string, Source>;
+  folders: ModFolderReport[];
+  conflicts: { file: string; winner: string; loser: string }[];
+  skipped: { mod: string; file: string }[];
+}
 
 class ResourceError extends Error {
   constructor(message: string, readonly status = 503) { super(message); }
@@ -67,9 +79,78 @@ function resourceKind(target: string): LauncherResource['kind'] {
     return 'archive';
   }
   if (ext === '.pex' && target.toLowerCase().startsWith('data/scripts/')) return 'script';
+  if (ext === '.dll' && /^data\/skse\/plugins\/[^/]+$/i.test(target)) {
+    if (RUNTIME_DLLS.has(path.posix.basename(target).toLowerCase())) fail(`Runtime DLLs cannot be replaced by a mod: ${target}`);
+    return 'skse-plugin';
+  }
   if (ASSETS.has(ext)) return 'asset';
   if (CONFIGS.has(ext)) return 'config';
-  return fail(`Unsupported mod file: ${target}. Client DLLs/JS belong in the separate client runtime package.`);
+  return fail(`Unsupported mod file: ${target}.`);
+}
+
+/** Folders in configured order first, the rest alphabetically; a later folder wins conflicts. */
+export async function orderedModFolders(dataDir: string, preferred?: unknown): Promise<string[]> {
+  const root = path.join(dataDir, MODS_DIRECTORY);
+  let entries: Dirent[];
+  try {
+    if ((await fs.lstat(root)).isSymbolicLink()) fail('data/mods must be a regular directory.');
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
+  const folders = entries.filter(entry => {
+    if (entry.isSymbolicLink()) fail('Symlinks are not supported in client resources.');
+    return entry.isDirectory() && !entry.name.startsWith('.');
+  }).map(entry => entry.name).sort((a, b) => a.localeCompare(b, 'en'));
+  const wanted = Array.isArray(preferred) ? preferred.filter((name): name is string => typeof name === 'string') : [];
+  return [...new Set([...wanted.filter(name => folders.includes(name)), ...folders])];
+}
+
+async function listModFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+  let scanned = 0;
+  const walk = async (relative: string, depth: number): Promise<void> => {
+    if (depth > 16) fail('Client resource directory is too deep.');
+    for (const entry of await fs.readdir(relative ? path.join(root, relative) : root, { withFileTypes: true })) {
+      if (++scanned > MAX_FILES * 2) fail('Client resource directory has too many entries.');
+      if (entry.name.startsWith('.')) continue;
+      const next = relative ? relative + '/' + entry.name : entry.name;
+      if (entry.isSymbolicLink()) fail('Symlinks are not supported in client resources.');
+      if (entry.isDirectory()) { if (!(depth === 0 && UNPUBLISHED_DIRECTORIES.has(entry.name.toLowerCase()))) await walk(next, depth + 1); continue; }
+      if (!entry.isFile()) fail('Client resources must be regular files.');
+      files.push(next);
+    }
+  };
+  await walk('', 0);
+  return files;
+}
+
+/** Maps data/mods/<mod>/<file> to the flat Data/<file> path that Skyrim and SKSE load from. */
+export async function scanModFolders(options: { dataDir: string; loadOrder: string[]; modFolders?: unknown; skseFolders?: unknown }): Promise<ModScan> {
+  const names = new Set(options.loadOrder.map(name => path.basename(String(name).replace(/\\/g, '/')).toLowerCase()));
+  const allowDlls = new Set(Array.isArray(options.skseFolders) ? options.skseFolders : []);
+  const scan: ModScan = { sources: new Map(), folders: [], conflicts: [], skipped: [] };
+  for (const mod of await orderedModFolders(options.dataDir, options.modFolders)) {
+    const root = path.join(options.dataDir, MODS_DIRECTORY, mod);
+    const files = await listModFiles(root);
+    const plugins = files.filter(file => /^[^/]+\.(?:esm|esp|esl)$/i.test(file));
+    const active = !plugins.length || plugins.some(file => names.has(file.toLowerCase()));
+    const dlls = files.filter(file => /^skse\/plugins\/[^/]+\.dll$/i.test(file));
+    scan.folders.push({ name: mod, plugins, active, dlls, files: files.length });
+    if (!active) continue;
+    for (const file of files) {
+      if (UNPUBLISHED_FILES.test(file)) continue;
+      const target = 'Data/' + file;
+      let kind: LauncherResource['kind'];
+      try { kind = resourceKind(target); }
+      catch (error) { if (!(error instanceof ResourceError)) throw error; scan.skipped.push({ mod, file }); continue; }
+      if (kind === 'mod' && !names.has(file.toLowerCase())) continue;
+      if (kind === 'skse-plugin' && !allowDlls.has(mod)) { scan.skipped.push({ mod, file }); continue; }
+      const key = target.toLowerCase(), previous = scan.sources.get(key);
+      if (previous) scan.conflicts.push({ file: target, winner: mod, loser: previous.mod || '' });
+      if (!previous && scan.sources.size >= MAX_FILES) fail('Too many client resources.');
+      scan.sources.set(key, { root, relative: file, target, mod });
+    }
+  }
+  return scan;
 }
 
 async function checkedFile(root: string, relative: string): Promise<string> {
@@ -86,16 +167,25 @@ async function checkedFile(root: string, relative: string): Promise<string> {
   return realFile;
 }
 
+export type LauncherResourceOptions = { dataDir: string; loadOrder: string[]; modFolders?: string[]; skseFolders?: string[]; skseGameVersion?: string; enabled?: boolean; runtimeSource?: string };
+
+let clientResourcesWarned = false;
+/** The removed directory is never published; operators must move its files to data/mods. */
+async function warnAboutClientResources(): Promise<void> {
+  if (clientResourcesWarned) return;
+  clientResourcesWarned = true;
+  try { if ((await fs.readdir(path.resolve('client-resources/Data'))).length) console.warn('[launcher] client-resources is no longer published. Move its files to data/mods/<mod>/.'); }
+  catch { /* A server without the old directory has nothing to migrate. */ }
+}
+
 /** Public download surface is separate from the dashboard's diagnostic scanner. */
 export class LauncherResourceStore {
   private cached?: { manifest: LauncherManifest; files: Map<string, IndexedFile>; at: number };
   private pending?: Promise<NonNullable<LauncherResourceStore['cached']>>;
   private hashes = new Map<string, { fingerprint: string; hash: string }>();
   private readonly dataDir: string;
-  private readonly directory: string;
-  constructor(private readonly options: { dataDir: string; loadOrder: string[]; directory?: string; enabled?: boolean; runtimeSource?: string }) {
+  constructor(private readonly options: LauncherResourceOptions) {
     this.dataDir = path.resolve(options.dataDir);
-    this.directory = path.resolve(options.directory || 'client-resources');
   }
 
   private async hash(source: Source): Promise<{ hash: string; size: number; fingerprint: string }> {
@@ -136,7 +226,9 @@ export class LauncherResourceStore {
     for (const name of loadOrder.filter(officialGameFile)) {
       if (!requiredLocalFiles.some(file => file.filename.toLowerCase() === name.toLowerCase())) fail(`Game manifest has no checksum for required local file: ${name}`);
     }
-    const sources = new Map<string, Source>();
+    await warnAboutClientResources();
+    const scan = await scanModFolders({ ...this.options, dataDir: this.dataDir, loadOrder });
+    const sources = scan.sources;
     const add = (source: Source) => {
       resourceKind(source.target);
       const key = source.target.toLowerCase();
@@ -144,42 +236,13 @@ export class LauncherResourceStore {
       if (sources.size >= MAX_FILES) fail('Too many client resources.');
       sources.set(key, source);
     };
-    let scanned = 0;
-    const walk = async (relative: string, depth: number): Promise<void> => {
-      if (depth > 16) fail('Client resource directory is too deep.');
-      for (const entry of await fs.readdir(path.join(this.directory, relative), { withFileTypes: true })) {
-        if (++scanned > MAX_FILES * 2) fail('Client resource directory has too many entries.');
-        if (entry.name.startsWith('.')) continue;
-        const next = relative + '/' + entry.name;
-        if (entry.isSymbolicLink()) fail('Symlinks are not supported in client resources.');
-        if (entry.isDirectory()) { await walk(next, depth + 1); continue; }
-        if (!entry.isFile()) fail('Client resources must be regular files.');
-        // Sources/readmes are not installed, and must not expose unrelated files.
-        if (/\.(?:psc|md)$/i.test(entry.name)) continue;
-        // Uploaded but disabled plugins stay available in the dashboard, outside the active modpack.
-        if (resourceKind(next) === 'mod' && !names.has(path.posix.basename(next).toLowerCase())) continue;
-        add({ root: this.directory, relative: next, target: next });
-      }
-    };
-    const publicationData = path.join(this.directory, 'Data');
-    let hasPublication = false;
-    try {
-      const stat = await fs.lstat(publicationData);
-      if (stat.isSymbolicLink() || !stat.isDirectory()) fail('client-resources/Data must be a regular directory.');
-      hasPublication = true;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    if (hasPublication) await walk('Data', 0);
     const dataEntries = await fs.readdir(this.dataDir, { withFileTypes: true });
-    // The server already has these plugins. Publish only custom load-order files,
+    // Plugins outside data/mods stay supported. Publish only custom load-order files,
     // never game masters, server scripts, credentials, DLLs or arbitrary dataDir files.
+    const configured = new Map(this.options.loadOrder.map(entry => [path.posix.basename(String(entry).replace(/\\/g, '/')).toLowerCase(), String(entry).replace(/\\/g, '/')]));
     for (const name of loadOrder.filter(name => !officialGameFile(name))) {
       const target = 'Data/' + name;
-      const serverSource = { root: this.dataDir, relative: name, target };
-      const published = sources.get(target.toLowerCase());
-      if (published) {
-        const [server, client] = await Promise.all([this.hash(serverSource), this.hash(published)]);
-        if (server.hash !== client.hash) fail(`Published plugin differs from the server: ${name}`);
-      } else add(serverSource);
+      if (!sources.has(target.toLowerCase())) add({ root: this.dataDir, relative: configured.get(name.toLowerCase()) || name, target });
       const stem = name.replace(/\.[^.]+$/, '').toLowerCase();
       for (const entry of dataEntries) {
         const lower = entry.name.toLowerCase();
@@ -205,7 +268,11 @@ export class LauncherResourceStore {
       try { url = new URL(runtimeSource); } catch { return fail('runtimeSource must be an absolute HTTP(S) runtime-manifest.json URL.'); }
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('runtimeSource must not contain credentials, query parameters or fragments.');
     }
-    const stable = { version: '2' as const, totalSize, loadOrder, requiredLocalFiles, resources, ...(runtimeSource ? { runtimeSource } : {}) };
+    const skseGameVersion = String(this.options.skseGameVersion || '').trim();
+    const hasDlls = resources.some(resource => resource.kind === 'skse-plugin');
+    if (hasDlls && !/^\d+\.\d+\.\d+\.\d+$/.test(skseGameVersion)) fail('SKSE plugins require launcherResources.skseGameVersion, for example 1.6.1170.0.');
+    // Old launchers must reject executable mod files, not silently skip them.
+    const stable = { version: (hasDlls ? '4' : '2') as '2' | '4', totalSize, loadOrder, requiredLocalFiles, resources, ...(runtimeSource ? { runtimeSource } : {}), ...(hasDlls ? { skseGameVersion } : {}) };
     const manifest = { ...stable, revision: digest(JSON.stringify(stable)), generatedAt: new Date().toISOString() };
     // Bound the hash cache to the current publication, including data-only custom plugins.
     if (this.hashes.size > MAX_FILES * 2) this.hashes.clear();
@@ -254,9 +321,7 @@ export class LauncherResourceStore {
   }
 }
 
-type LauncherResourceOptions = { dataDir: string; loadOrder: string[]; directory?: string; enabled?: boolean; runtimeSource?: string };
-
-export function registerLauncherResources(router: any, options: LauncherResourceOptions | (() => LauncherResourceOptions)): LauncherResourceStore {
+export function registerLauncherResources(router: any, options: LauncherResourceOptions | (() => LauncherResourceOptions), pluginRuntime?: () => unknown): LauncherResourceStore {
   const readOptions = () => typeof options === 'function' ? options() : options;
   let currentOptions = JSON.stringify(readOptions());
   let store = new LauncherResourceStore(JSON.parse(currentOptions));
@@ -273,7 +338,14 @@ export function registerLauncherResources(router: any, options: LauncherResource
       ctx.body = { error: error instanceof ResourceError ? error.message : 'Client resources could not be read. Check the publication directory and server log.' };
     }
   };
-  router.get('/api/launcher/manifest', handler(async ctx => { ctx.set('Cache-Control', 'no-store'); ctx.body = await currentStore().manifest(); }));
+  router.get('/api/launcher/manifest', handler(async ctx => {
+    ctx.set('Cache-Control', 'no-store');
+    const manifest = await currentStore().manifest();
+    const modules = pluginRuntime?.() as { version: number; revision: string; packages: unknown[] } | undefined;
+    // Old launchers must reject a required executable-package extension, not silently ignore it.
+    ctx.body = modules ? { ...manifest, version: manifest.version === '4' ? '4' : modules.packages.length ? '3' : '2',
+      revision: digest(manifest.revision + '\0' + modules.revision), pluginRuntime: modules } : manifest;
+  }));
   router.get('/api/launcher/files/:id', handler(ctx => currentStore().download(String(ctx.params.id), ctx)));
   return store;
 }

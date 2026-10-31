@@ -36,13 +36,11 @@ export const generateManifest = (settings: Settings): void => {
   };
 
   settings.loadOrder.forEach((loadOrderElement) => {
-    const espmName = path.isAbsolute(loadOrderElement)
-      ? path.basename(loadOrderElement)
-      : loadOrderElement;
+    const espmName = path.basename(loadOrderElement);
 
     const espmPath = path.isAbsolute(loadOrderElement)
       ? loadOrderElement
-      : path.join(settings.dataDir, espmName);
+      : path.join(settings.dataDir, loadOrderElement);
 
     if (!fs.existsSync(espmPath)) {
       console.warn(
@@ -60,7 +58,10 @@ export const generateManifest = (settings: Settings): void => {
     });
 
     const bsaName = getBsaNameByEspmName(espmName);
-    const bsaPath = path.join(settings.dataDir, bsaName);
+    const bsaDirectory = path.isAbsolute(loadOrderElement)
+      ? settings.dataDir
+      : path.dirname(espmPath);
+    const bsaPath = path.join(bsaDirectory, bsaName);
     if (fs.existsSync(bsaPath)) {
       const buf: Uint8Array = fs.readFileSync(bsaPath);
       manifest.mods.push({

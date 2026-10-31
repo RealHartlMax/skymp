@@ -1,320 +1,202 @@
 # Voice Activity Detection API
 
-## Overview
+Checked against the local sources on **27 October 2026**.
 
-The Voice Activity Detection (VAD) API is a **provider-agnostic interface** for voice activity synchronization in SkyMP. It enables any voice system (YACA-TS, Discord, Mumble, custom VoIP, etc.) to integrate with the SkyMP server and provide synchronized lip-sync animations across clients.
+**Implementation status: partial.** This contract and its packet handlers exist,
+but they do not yet provide a complete, game-validated lip-sync solution.
+Read [Lipsync status, blockers and required information](docs_voice_lipsync_status.md)
+before enabling or extending the path. That document also covers the separate
+local `SkyMP-YACA-TS` bridge.
 
-**Key Goals:**
-- **Provider abstraction**: Core server doesn't depend on any specific voice system
-- **Adapter pattern**: Each voice provider implements a lightweight adapter
-- **Proximity-aware broadcasting**: Voice state sent only to nearby players
-- **Health monitoring**: Admin visibility into voice pipeline health
+## Scope
 
----
+Voice Activity Detection (VAD) reports whether an actor is speaking.
+The current API carries a boolean state and a voice range. It does not carry
+audio samples, amplitude, phonemes or visemes. A speaking indicator or an
+attempted dialogue idle must not be treated as proven audio-driven lip sync.
 
-## Architecture
+The server contains a provider-neutral adapter contract. YACA is the existing
+adapter skeleton; Discord, Mumble and other providers are possible integrations,
+not completed providers in this checkout.
 
-```
-Voice Provider                Server-Side                       Client-Side
-(TeamSpeak, Discord, etc.)    (SkyMP)                          (Skyrim)
-        |                           |                              |
-        |-- Voice Event ----------->| (Custom Packet)              |
-        |                           |                              |
-        |    ┌─────────────────────┐|                              |
-        |    | Voice Activity API   ||                              |
-        |    | Manager             |<--- Broadcast VAD State ----->| (Animation Sync)
-        |    │                     ||                              |
-        |    │ - State Registry    ||   - Proximity Filter         |
-        |    │ - Inactivity Timer  ||   - Client Notification      |
-        |    │ - Health Tracking   ||                              |
-        |    └─────────────────────┘|                              |
-        |                           |                              |
-        |      [Provider Adapter]   |                              |
-        |    (Translates to VAD)    |                              |
-        |                           |                              |
-```
+## State and adapter contracts
 
----
-
-## Core Interfaces
-
-### VoiceActivityState
-
-Standard state structure that all providers must emit:
+The relevant fields of `VoiceActivityState` are:
 
 ```typescript
 interface VoiceActivityState {
-  actorId: string;              // Skyrim actor ID
-  isSpeaking: boolean;          // Is player currently speaking?
-  voiceRange: number;           // Proximity tier in meters
-  providerId?: string;          // Optional: "yaca-ts", "discord-bot", etc.
-  timestamp: number;            // When state was captured (ms)
-  metadata?: Record<string, any>; // Optional provider-specific data
+  actorId: string;      // Server actor ID, not a client-local Form ID
+  isSpeaking: boolean;
+  voiceRange: number;   // Metres
+  providerId?: string;
+  timestamp: number;    // Milliseconds since Unix epoch
+  // Optional provider metadata is also supported.
 }
 ```
 
-### IVoiceProviderAdapter
+The complete types, including metadata and health diagnostics, are in
+[voiceActivityApi.ts](../skymp5-server/ts/voiceActivityApi.ts).
 
-Interface that every voice provider must implement:
+A provider implements `IVoiceProviderAdapter` with `providerId`, `isReady`,
+`initialize()`, `shutdown()`, `onVoiceActivityUpdate(callback)` and an optional
+`getHealthStatus()`. Registering it through
+`VoiceActivityManager.registerAdapter(adapter)` initializes the adapter and
+subscribes the manager to those callbacks.
 
-```typescript
-interface IVoiceProviderAdapter {
-  readonly providerId: string;
-  readonly isReady: boolean;
-  
-  initialize(): Promise<void>;
-  shutdown(): Promise<void>;
-  onVoiceActivityUpdate(callback: (state: VoiceActivityState) => void): void;
-  getHealthStatus?(): { isHealthy: boolean; uptime: number; ... };
-}
-```
+Updates received through those callbacks pass through the manager's state
+registry, configured range-tier validation, inactivity timer and broadcast path.
+Its current registry stores one latest state per actor; deterministic merging
+of simultaneous providers is not implemented.
 
-### VoiceActivityConfig
+## Actual server integration
 
-Server-side configuration:
+[Server index.ts](../skymp5-server/ts/index.ts) initializes the manager only when
+`server-settings.json` contains `voiceActivity.enabled === true`.
+It installs a recipient resolver and a broadcast callback that calls
+`server.sendCustomPacket(userId, json)`. If `providers` includes `yaca-ts`,
+it registers a `YacaTeamSpeakAdapter`.
 
-```typescript
-interface VoiceActivityConfig {
-  enabled: boolean;              // Global VAD enable/disable
-  voiceRangeTiers: number[] | null;  // Supported voice ranges
-  defaultVoiceRange: number;     // Fallback range if not specified
-  proximityDistance: number;     // Broadcast range to clients
-  inactivityTimeoutMs: number;   // Auto-clear speaking state after N ms
-  maxConcurrentSpeakersPerCell?: number;
-  allowedProviders?: string[] | null; // Provider whitelist
-}
-```
+[YacaTeamSpeakAdapter.ts](../skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts)
+provides `handleYacaVoiceEvent(actorId, isSpeaking, voiceRange)`. That method
+can emit updates to its subscribed callbacks, but `initialize()` itself
+does not connect to TeamSpeak or register a transport. A ready/healthy status
+therefore does not prove that any real voice events are arriving.
 
----
+The separate local bridge's `onVoiceActivity` callback emits
+`{ actorId, isSpeaking, voiceRange }` using the native event source's actor ID.
+The bridge's standard plugin entry supplies no callback, so this is not
+automatically connected to the manager. Its new transport uses CEF and
+`_yacaClient`; it does not require a Papyrus `YacaBridgeQuest`.
 
-## Implementation Steps
+### Existing client-to-server Custom Packet path
 
-### 1. Initialize Voice Activity Manager
-
-In `skymp5-server/ts/index.ts` (server startup):
-
-```typescript
-import { createVoiceActivityManager } from "./voiceActivityManager";
-import { createYacaTeamSpeakAdapter } from "./adapters/YacaTeamSpeakAdapter";
-
-// Initialize manager (if VAD is enabled in config)
-if (serverSettings.voiceActivity?.enabled) {
-  const voiceManager = createVoiceActivityManager(serverSettings.voiceActivity);
-  
-  // Set broadcast callback to send voice state to clients
-  voiceManager.setBroadcastCallback(async (state) => {
-    // Broadcast custom packet to clients
-    // Pattern: mp.syncVoiceActivity(state) or similar
-    await broadcastPacket("syncVoiceActivity", state);
-  });
-  
-  // Register YACA adapter
-  const yacaAdapter = createYacaTeamSpeakAdapter();
-  await voiceManager.registerAdapter(yacaAdapter);
-  
-  // Store reference for later use
-  globalThis.voiceActivityManager = voiceManager;
-}
-```
-
-### 2. Register Custom Packet Handler for YACA Events
-
-In gamemode script (TypeScript):
-
-```typescript
-// When YacaBridgeQuest sends voice activity event
-mp.addEventListener("customPacket", (p) => {
-  if (p.eventName === "yaca:voiceActivity") {
-    const adapter = globalThis.voiceActivityManager?.adapters.get("yaca-ts");
-    if (adapter instanceof YacaTeamSpeakAdapter) {
-      adapter.handleYacaVoiceEvent(p.actorId, p.isSpeaking, p.voiceRange);
-    }
-  }
-});
-```
-
-### 3. Implement Client-Side Animation Sync
-
-Client receives broadcast packet and applies lip-sync animation:
-
-```typescript
-// Client-side (Papyrus or SkyrimPlatform)
-on("syncVoiceActivity", (state: VoiceActivityState) => {
-  const actor = Game.getFormFromUniqueID(state.actorId) as Actor;
-  if (!actor) return;
-  
-  if (state.isSpeaking) {
-    // Start lip-sync animation
-    actor.playIdle(Game.getForm(0x0005B1B0)); // IdleDialogueLock
-  } else {
-    // Stop animation
-    actor.stopTranslation();
-  }
-});
-```
-
-### 4. Extend YacaBridgeQuest to Send Events
-
-In `SkyMP-YACA-TS/skymp5-scripts/psc/YacaBridgeQuest.psc`:
-
-```papyrus
-; When YACA plugin detects voice activity
-Event OnVoiceActivityChanged(string playerId, bool isSpeaking, float voiceRange)
-  ; Send to server
-  int handle = ModAPI.GetObjectReference("mp")
-  if (handle > 0)
-    ModAPI.CallObjectMethod(handle, "callGamemodeApi", ...
-      {"method": "yaca:voiceActivity", \
-       "playerId": playerId, \
-       "isSpeaking": isSpeaking, \
-       "voiceRange": voiceRange})
-  endif
-EndEvent
-```
-
----
-
-## Admin API Extensions
-
-### GET /api/admin/voice/status
-
-Get overall VAD system health:
+The server currently recognizes `customPacketType: "voiceActivity"` and the
+alias `"yaca:voiceActivity"`. Example wire shape:
 
 ```json
 {
-  "isEnabled": true,
-  "activeSpeakers": 3,
-  "registeredAdapters": [
-    {"providerId": "yaca-ts", "isHealthy": true, "uptime": 3600000},
-    {"providerId": "discord-bot", "isHealthy": false, "uptime": 1800000}
-  ],
-  "lastBroadcastTime": 1715691234567,
-  "errors": []
+  "customPacketType": "voiceActivity",
+  "isSpeaking": true,
+  "voiceRange": 8,
+  "providerId": "yaca-ts"
 }
 ```
 
-### GET /api/admin/voice/speakers
+This handler calls `manager.broadcastVoiceActivity(state)` directly. It
+**bypasses the manager's state registry, range-tier validation and inactivity
+timer**, and is not called by the new bridge automatically. Its current
+payload coercion and acceptance of a payload actor ID also need correction.
+A completed integration must derive identity from the authenticated sender
+and validate the state before it enters the shared lifecycle.
 
-Get currently active speakers:
+### Server-to-client packet
 
-```json
-[
-  {
-    "actorId": "0x0001A69E",
-    "actorName": "Jervar",
-    "isSpeaking": true,
-    "voiceRange": 8.0,
-    "providerId": "yaca-ts",
-    "timestamp": 1715691234567
-  }
-]
-```
-
-### POST /api/admin/voice/range
-
-Dynamically adjust player voice range:
+The broadcast callback sends this flat JSON object:
 
 ```json
 {
-  "actorId": "0x0001A69E",
-  "voiceRange": 15.0
+  "customPacketType": "syncVoiceActivity",
+  "actorId": "4278190081",
+  "isSpeaking": true,
+  "voiceRange": 8,
+  "providerId": "yaca-ts",
+  "timestamp": 1793090000000
 }
 ```
 
----
+`VoiceActivitySyncService` receives the `customPacketMessage`, parses its
+`contentJsonDump` through `parseSyncVoiceActivityPacket`, and forwards an
+internal `{ eventName: "syncVoiceActivity", content }` envelope to the handler.
+`eventName` is not the wire discriminator.
 
-## Creating a Custom Voice Adapter
+The service is registered in
+[client index.ts](../skymp5-client/src/index.ts).
+The [animation handler](../skymp5-client/src/sync/voiceActivitySync.ts) currently
+uses the server actor ID directly with `Game.getFormEx`, attempts
+`playIdle(0x0005B1B0)`, refreshes it every two seconds and calls
+`stopTranslation()` on stop. Correct actor mapping, visible mouth motion,
+reset behavior and a client expiry mechanism remain open.
 
-To integrate a new voice system, implement `IVoiceProviderAdapter`:
+## Configuration
 
-### Example: Discord Voice Adapter
-
-```typescript
-export class DiscordVoiceAdapter implements IVoiceProviderAdapter {
-  readonly providerId = "discord-bot";
-  private voiceActivityCallbacks: Set<(state: VoiceActivityState) => void> = new Set();
-  
-  async initialize(): Promise<void> {
-    // Connect to Discord bot API
-    // Subscribe to voice state update events
-  }
-  
-  async shutdown(): Promise<void> {
-    // Disconnect from Discord
-  }
-  
-  onVoiceActivityUpdate(callback: (state: VoiceActivityState) => void): void {
-    this.voiceActivityCallbacks.add(callback);
-  }
-  
-  // Called when Discord bot detects user joined/left voice channel
-  handleDiscordVoiceEvent(userId: string, isInVoiceChannel: boolean): void {
-    const state: VoiceActivityState = {
-      actorId: this.discordUserToActorId(userId), // Map Discord ID to Skyrim actor
-      isSpeaking: isInVoiceChannel,
-      voiceRange: 8.0, // Default range
-      providerId: this.providerId,
-      timestamp: Date.now(),
-    };
-    
-    for (const callback of this.voiceActivityCallbacks) {
-      callback(state);
-    }
-  }
-  
-  // ... implement other interface methods
-}
-```
-
----
-
-## Server Configuration
-
-Add to `server-settings.json`:
+This complete example documents the currently read startup fields and keeps
+the incomplete path disabled:
 
 ```json
 {
   "voiceActivity": {
-    "enabled": true,
+    "enabled": false,
     "providers": ["yaca-ts"],
-    "voiceRangeTiers": [1.0, 3.0, 8.0, 15.0, 20.0, 25.0, 30.0, 40.0],
-    "defaultVoiceRange": 8.0,
-    "proximityDistance": 100.0,
+    "voiceRangeTiers": [1, 3, 8, 15, 20, 25, 30, 40],
+    "defaultVoiceRange": 8,
+    "proximityDistance": 100,
     "inactivityTimeoutMs": 1000,
-    "maxConcurrentSpeakersPerCell": 50
+    "allowedProviders": ["yaca-ts"]
   }
 }
 ```
 
----
+Changing `enabled` to `true` creates the manager and registers the selected
+adapter skeleton; it does not finish the bridge or animation integration.
 
-## Troubleshooting
+| Setting | Meaning and current limit |
+| --- | --- |
+| `enabled` | Explicit opt-in at game-server startup; false in the API defaults. |
+| `providers` | Startup selection; the implemented selection recognizes `yaca-ts`. |
+| `voiceRangeTiers` | Numeric array read by startup. The type contract also permits `null`, but startup currently does not forward that value. Validation applies to adapter updates, not the direct Custom Packet path. |
+| `defaultVoiceRange` | Contract fallback: 8 metres. Keep explicit while startup default handling is corrected. |
+| `proximityDistance` | Contract default: 100 metres. The resolver currently compares raw game-coordinate distances to this value and the speaker's range without unit conversion. |
+| `inactivityTimeoutMs` | Contract default: 1000 ms for adapter-driven state. Must be coordinated with the bridge's approximately two-second status reports. |
+| `allowedProviders` | Applied during adapter registration; not enforced by the direct Custom Packet broadcast path. |
 
-### No voice activity events reaching server
-- Check YacaBridgeQuest is loaded (verify in Papyrus logs)
-- Verify custom packet handler is registered in gamemode
-- Enable debug logging in Voice Activity Manager
+The contract's `maxConcurrentSpeakersPerCell` field is not enforced by the
+manager and is not forwarded by startup. Do not rely on it as an active limit.
+Startup currently passes some absent options as `undefined`, overwriting the
+manager's spread defaults; partial configurations therefore do not reliably
+inherit all contract defaults.
 
-### Lip-sync animations not playing on clients
-- Verify clients receive `syncVoiceActivity` broadcasts
-- Check animation form IDs (IdleDialogueLock, etc.)
-- Ensure client-side Papyrus/SkyrimPlatform event handlers are active
+The recipient resolver normally excludes the speaker and compares cell/world
+and distance for each connected user. Some unresolved-position cases fall back
+to all connected users. Recipient selection and the delivery of stop updates to
+previous recipients need acceptance tests alongside the unit correction.
 
-### Provider adapter crashes
-- Check adapter logs: `Admin API /api/admin/voice/status` → `errors[]`
-- Verify provider initialization parameters in server config
-- Test adapter in isolation
+## Implemented admin diagnostics
 
-### High latency in voice state updates
-- Check proximity filter isn't excluding too many clients
-- Monitor `lastBroadcastTime` in admin status
-- Reduce `inactivityTimeoutMs` if animation stutter occurs
+Both routes require an authenticated admin with `canViewLogs`:
 
----
+| Route | Current result |
+| --- | --- |
+| `GET /api/admin/voice/status` | Manager health, registered adapters, active-speaker count, last broadcast time and initialization errors; disabled/empty status if no manager exists. |
+| `GET /api/admin/voice/speakers` | Speaking states from the manager registry, or an empty array if no manager exists. |
 
-## References
+The routes are defined in [ui.ts](../skymp5-server/ts/ui.ts).
+The persistent dashboard proxies them to the game process; with that process
+stopped the proxy returns `409 GAME_NOT_RUNNING`.
 
-- YACA-TS Reference: `D:/GitHub/SkyMP-YACA-TS/README.md`
-- Adapter Implementation: `skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts`
-- API Types: `skymp5-server/ts/voiceActivityApi.ts`
-- Manager: `skymp5-server/ts/voiceActivityManager.ts`
+A dedicated voice diagnostics panel and `POST /api/admin/voice/range` are
+not implemented in this checkout. Adapter health does not prove transport
+health. Direct Custom Packet broadcasts do not populate the manager's speaker
+list, and `lastBroadcastTime` can advance even when there are no recipients.
+The YACA adapter's own speaker counter also needs per-actor deduplication.
+
+## Verification and next steps
+
+On 27 October 2026, `npm run test:voice-sync` in `skymp5-client` passed:
+it recognizes the packet discriminator, ignores unrelated types and rejects
+invalid JSON. This is a parser test, not a voice or animation test.
+
+For missing implementation work, target-version information, desired animation
+quality and a two-player acceptance procedure, use the
+[Lipsync status document](docs_voice_lipsync_status.md).
+Additional provider adapters must report actual speaking activity; voice
+channel membership alone is insufficient.
+
+## Sources
+
+- [API types and defaults](../skymp5-server/ts/voiceActivityApi.ts)
+- [Manager implementation](../skymp5-server/ts/voiceActivityManager.ts)
+- [YACA adapter skeleton](../skymp5-server/ts/adapters/YacaTeamSpeakAdapter.ts)
+- [Client service](../skymp5-client/src/services/services/voiceActivitySyncService.ts)
+- [Packet parser and test](../skymp5-client/tests/voiceActivitySyncPacket.test.ts)
+- [Plugin integration guide](../README-plugins.md#voice-activity-adapters-für-lipsync--proximity-chat)
+- [Voice backlog](../ROADMAP.md#voice--proximity-chat-sync-backlog-proposed)
